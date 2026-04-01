@@ -13,9 +13,14 @@ function isUserScope(): boolean {
 }
 
 // Data directory resolution by scope:
+// Explicit → $CLAUDE_PLUGIN_DATA (set by statusLine command)
 // User scope  → ~/.claude/tokenmon/
 // Local scope → {project}/.tokenmon/ (next to .claude-plugin/)
 function resolveDataDir(): string {
+  if (process.env.CLAUDE_PLUGIN_DATA) {
+    return process.env.CLAUDE_PLUGIN_DATA;
+  }
+
   if (isUserScope()) {
     return join(CLAUDE_DIR, 'tokenmon');
   }
