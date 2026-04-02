@@ -77,7 +77,7 @@ describe('pokedex', () => {
       assert.equal(c.caught, 0);
       assert.equal(c.seenPct, 0);
       assert.equal(c.caughtPct, 0);
-      assert.equal(c.total, 107);
+      assert.equal(c.total, 112);
     });
 
     it('returns correct percentage', () => {
@@ -90,7 +90,7 @@ describe('pokedex', () => {
       const c = getCompletion(state);
       assert.equal(c.seen, 2);
       assert.equal(c.caught, 1);
-      assert.equal(c.total, 107);
+      assert.equal(c.total, 112);
     });
   });
 

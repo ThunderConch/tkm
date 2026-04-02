@@ -43,12 +43,16 @@ describe('regions', () => {
       assert.equal(missing.length, 0, `Missing:\n${missing.join('\n')}`);
     });
 
-    it('all 107 pokemon appear in at least one region pool', () => {
+    it('all wild-encounterable pokemon appear in at least one region pool', () => {
       const inPool = new Set<string>();
       for (const r of Object.values(regionsDB.regions) as any[]) {
         for (const name of r.pokemon_pool) inPool.add(name);
       }
-      const missing = Object.keys(pokemonDB.pokemon).filter(n => !inPool.has(n));
+      // Exclude pokemon unlocked via evolution/starter/achievement (not wild-encounterable)
+      const wildPokemon = Object.entries(pokemonDB.pokemon)
+        .filter(([_, p]: [string, any]) => p.unlock === 'encounter')
+        .map(([name]) => name);
+      const missing = wildPokemon.filter(n => !inPool.has(n));
       assert.equal(missing.length, 0, `Not in any pool: ${missing.join(', ')}`);
     });
   });

@@ -13,6 +13,11 @@ export interface BaseStats {
   speed: number;
 }
 
+export interface BranchEvolution {
+  name: string;
+  condition: string;
+}
+
 export interface PokemonData {
   id: number;
   name: string;
@@ -21,6 +26,7 @@ export interface PokemonData {
   line: string[];
   evolves_at: number | null;
   evolves_condition?: string;
+  evolves_to?: string | BranchEvolution[];
   unlock: string;
   exp_group: ExpGroup;
   rarity: Rarity;
@@ -63,6 +69,8 @@ export interface PokemonState {
   level: number;
   friendship: number;
   ev: number;
+  evolution_ready?: boolean;
+  evolution_options?: string[];
 }
 
 export interface EvolutionContext {

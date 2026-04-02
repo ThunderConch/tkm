@@ -1,5 +1,152 @@
 {
   "pokemon": {
+    "280": {
+      "id": 280,
+      "name": "280",
+      "types": [
+        "psychic",
+        "fairy"
+      ],
+      "stage": 0,
+      "line": [
+        "280",
+        "281",
+        "282"
+      ],
+      "evolves_at": 20,
+      "unlock": "encounter",
+      "exp_group": "slow",
+      "rarity": "common",
+      "region": "2",
+      "base_stats": {
+        "hp": 28,
+        "attack": 25,
+        "defense": 25,
+        "speed": 40
+      },
+      "catch_rate": 235,
+      "evolves_to": "281"
+    },
+    "281": {
+      "id": 281,
+      "name": "281",
+      "types": [
+        "psychic",
+        "fairy"
+      ],
+      "stage": 1,
+      "line": [
+        "280",
+        "281",
+        "282"
+      ],
+      "evolves_at": null,
+      "evolves_to": [
+        {
+          "name": "282",
+          "condition": "level:30"
+        },
+        {
+          "name": "475",
+          "condition": "item:dawn_stone"
+        }
+      ],
+      "unlock": "evolution",
+      "exp_group": "slow",
+      "rarity": "uncommon",
+      "region": "4",
+      "base_stats": {
+        "hp": 38,
+        "attack": 35,
+        "defense": 35,
+        "speed": 50
+      },
+      "catch_rate": 120
+    },
+    "282": {
+      "id": 282,
+      "name": "282",
+      "types": [
+        "psychic",
+        "fairy"
+      ],
+      "stage": 2,
+      "line": [
+        "280",
+        "281",
+        "282"
+      ],
+      "evolves_at": null,
+      "unlock": "evolution",
+      "exp_group": "slow",
+      "rarity": "rare",
+      "region": "6",
+      "base_stats": {
+        "hp": 68,
+        "attack": 65,
+        "defense": 65,
+        "speed": 80
+      },
+      "catch_rate": 45
+    },
+    "361": {
+      "id": 361,
+      "name": "361",
+      "types": [
+        "ice"
+      ],
+      "stage": 0,
+      "line": [
+        "361",
+        "362"
+      ],
+      "evolves_at": null,
+      "evolves_to": [
+        {
+          "name": "362",
+          "condition": "level:42"
+        },
+        {
+          "name": "478",
+          "condition": "item:dawn_stone"
+        }
+      ],
+      "unlock": "encounter",
+      "exp_group": "medium_fast",
+      "rarity": "common",
+      "region": "3",
+      "base_stats": {
+        "hp": 50,
+        "attack": 50,
+        "defense": 50,
+        "speed": 50
+      },
+      "catch_rate": 190
+    },
+    "362": {
+      "id": 362,
+      "name": "362",
+      "types": [
+        "ice"
+      ],
+      "stage": 1,
+      "line": [
+        "361",
+        "362"
+      ],
+      "evolves_at": null,
+      "unlock": "evolution",
+      "exp_group": "medium_fast",
+      "rarity": "uncommon",
+      "region": "5",
+      "base_stats": {
+        "hp": 80,
+        "attack": 80,
+        "defense": 80,
+        "speed": 80
+      },
+      "catch_rate": 75
+    },
     "387": {
       "id": 387,
       "name": "387",
@@ -640,7 +787,7 @@
         "413",
         "414"
       ],
-      "evolves_at": 20,
+      "evolves_at": null,
       "unlock": "encounter",
       "exp_group": "medium_fast",
       "rarity": "common",
@@ -651,7 +798,17 @@
         "defense": 45,
         "speed": 36
       },
-      "catch_rate": 120
+      "catch_rate": 120,
+      "evolves_to": [
+        {
+          "name": "413",
+          "condition": "level:20"
+        },
+        {
+          "name": "414",
+          "condition": "level:20"
+        }
+      ]
     },
     "413": {
       "id": 413,
@@ -2169,8 +2326,10 @@
         "psychic",
         "fighting"
       ],
-      "stage": 3,
+      "stage": 2,
       "line": [
+        "280",
+        "281",
         "475"
       ],
       "evolves_at": null,
@@ -2240,8 +2399,9 @@
         "ice",
         "ghost"
       ],
-      "stage": 2,
+      "stage": 1,
       "line": [
+        "361",
         "478"
       ],
       "evolves_at": null,
