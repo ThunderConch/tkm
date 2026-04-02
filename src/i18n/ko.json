@@ -15,7 +15,7 @@
   "cli.status.stat_battles": "  전투: {count}회 ({wins}승 {losses}패)",
   "cli.status.stat_catches": "  포획: {count}종",
   "cli.status.stat_pokedex": "  도감: {caught}/{total} ({pct}%)",
-  "cli.status.stat_pokeballs": "  🔴 포켓몬볼: {count}개",
+  "cli.status.stat_pokeballs": "  🔴 몬스터볼: {count}개",
   "cli.status.stat_region": "  현재 지역: {region}",
 
   "cli.starter.already_chosen": "이미 스타터를 선택했습니다.",
@@ -82,7 +82,7 @@
 
   "cli.items.header": "[ 아이템 ]",
   "cli.items.empty": "  아이템이 없습니다.",
-  "cli.items.pokeball": "포켓몬볼",
+  "cli.items.pokeball": "몬스터볼",
   "cli.items.count": "{name}: {count}개",
 
   "cli.region.moved": "{region}(으)로 이동했습니다!",
@@ -177,7 +177,7 @@
   "guide.index.topic_region": "  region        지역 시스템 (해금 조건, 레벨 범위, 포켓몬 풀)",
   "guide.index.topic_achievement": "  achievement   업적 시스템 (트리거, 보상)",
   "guide.index.topic_xp": "  xp            XP / 레벨링 (계산식, 파티 분배, 파견 보너스)",
-  "guide.index.topic_item": "  item          아이템 (포켓몬볼, 드랍률, 포획)",
+  "guide.index.topic_item": "  item          아이템 (몬스터볼, 드랍률, 포획)",
   "guide.unknown_topic": "알 수 없는 주제: {topic}",
 
   "guide.battle.title": "=== 전투 가이드 ===",
@@ -238,7 +238,7 @@
   "guide.achievement.rewards_header": "[ 보상 종류 ]",
   "guide.achievement.reward_unlock": "  포켓몬 해금: 특정 업적 달성 시 새 포켓몬 획득",
   "guide.achievement.reward_xp": "  XP 보너스: 영구적 XP 배율 증가 (중첩 가능)",
-  "guide.achievement.reward_ball": "  포켓몬볼: 야생 포켓몬 포획에 사용",
+  "guide.achievement.reward_ball": "  몬스터볼: 야생 포켓몬 포획에 사용",
   "guide.achievement.reward_slot": "  파티 슬롯: 최대 파티 크기 증가",
 
   "guide.xp.title": "=== XP / 레벨링 가이드 ===",
@@ -267,17 +267,17 @@
   "guide.item.title": "=== 아이템 가이드 ===",
   "guide.item.check_header": "[ 아이템 확인 ]",
   "guide.item.check_cmd": "  tokenmon items   현재 보유 아이템",
-  "guide.item.pokeball_header": "[ 포켓몬볼 🔴 ]",
+  "guide.item.pokeball_header": "[ 몬스터볼 🔴 ]",
   "guide.item.pokeball_desc": "  야생 포켓몬을 포획하는 데 사용하는 소비 아이템입니다.",
   "guide.item.obtain_header": "  획득 방법:",
   "guide.item.obtain_win": "    전투 승리 시 {green}20%{reset} 확률로 드랍",
   "guide.item.obtain_lose": "    전투 패배 시 {yellow}5%{reset} 확률로 드랍",
   "guide.item.obtain_achievement": "    업적 보상 (첫 승리: 3개, 도감 연구원: 5개, 연승의 달인: 10개 등)",
   "guide.item.catch_header": "[ 포획 조건 ]",
-  "guide.item.catch_desc1": "  배틀 승리 + 미포획 포켓몬 + 포켓몬볼 보유 → 포획 (볼 1개 소비)",
+  "guide.item.catch_desc1": "  배틀 승리 + 미포획 포켓몬 + 몬스터볼 보유 → 포획 (볼 1개 소비)",
   "guide.item.catch_desc2": "  볼이 없으면 승리해도 포획 불가 (도감 등록 + XP만 획득)",
   "guide.item.catch_desc3": "  이미 포획한 포켓몬과의 전투에서는 볼이 소비되지 않습니다.",
-  "guide.item.catch_tip": "  {yellow}팁: 새로운 포켓몬을 만나기 전에 포켓몬볼을 충분히 확보하세요{reset}",
+  "guide.item.catch_tip": "  {yellow}팁: 새로운 포켓몬을 만나기 전에 몬스터볼을 충분히 확보하세요{reset}",
 
   "setup.postinstall.title": "  토큰몬 (Tokénmon) 초기 설정...",
   "setup.postinstall.already_exists": "  ✓ {path} 이미 존재 (보존)",
@@ -340,9 +340,9 @@
   "tip.xp_achievement_bonus": "⭐ 업적 달성으로 영구 XP 보너스를 얻을 수 있습니다 (최대 +55%)",
   "tip.xp_weakest_member": "⭐ 파티에서 가장 약한 {pokemon} (Lv.{level})을 파견하면 빠르게 성장합니다",
   "tip.xp_evolution": "⭐ 진화 조건이 가까운 포켓몬이 있다면 XP를 집중해보세요",
-  "tip.item_ball_drop": "🔴 포켓몬볼은 전투 승리 시 20%, 패배 시 5% 확률로 드랍됩니다",
-  "tip.item_ball_catch": "🔴 포켓몬볼이 있어야 야생 포켓몬을 포획할 수 있습니다",
-  "tip.item_ball_count": "🔴 현재 포켓몬볼: {count}개. 새로운 포켓몬을 만날 준비를 하세요!",
-  "tip.item_achievement_balls": "🔴 업적 보상으로 포켓몬볼을 대량 획득할 수 있습니다 (최대 10개!)",
-  "tip.item_ball_strategy": "🔴 이미 포획한 포켓몬과의 전투에서는 포켓몬볼이 소비되지 않습니다"
+  "tip.item_ball_drop": "🔴 몬스터볼은 전투 승리 시 20%, 패배 시 5% 확률로 드랍됩니다",
+  "tip.item_ball_catch": "🔴 몬스터볼이 있어야 야생 포켓몬을 포획할 수 있습니다",
+  "tip.item_ball_count": "🔴 현재 몬스터볼: {count}개. 새로운 포켓몬을 만날 준비를 하세요!",
+  "tip.item_achievement_balls": "🔴 업적 보상으로 몬스터볼을 대량 획득할 수 있습니다 (최대 10개!)",
+  "tip.item_ball_strategy": "🔴 이미 포획한 포켓몬과의 전투에서는 몬스터볼이 소비되지 않습니다"
 }

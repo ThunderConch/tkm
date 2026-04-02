@@ -169,10 +169,10 @@ else     dropChance = 0.05;   // 패배 시 5%
 if (Math.random() < dropChance) addItem(state, 'pokeball', 1);
 ```
 
-## 5. Pokeball Catch-Gating
+## 5. Poké Ball Catch-Gating
 
 ```typescript
-// 승리 + 미포획 + 포켓몬볼 보유 → 포획 (볼 1개 소비)
+// 승리 + 미포획 + 몬스터볼 보유 → 포획 (볼 1개 소비)
 // 승리 + 미포획 + 볼 미보유 → 포획 불가 (도감 seen + XP만)
 // 승리 + 이미 포획 → 볼 소비 없음
 if (won && !alreadyCaught && getItemCount(state, 'pokeball') > 0) {

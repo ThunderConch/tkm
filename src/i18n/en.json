@@ -15,7 +15,7 @@
   "cli.status.stat_battles": "  Battles: {count} ({wins}W {losses}L)",
   "cli.status.stat_catches": "  Catches: {count}",
   "cli.status.stat_pokedex": "  Pokedex: {caught}/{total} ({pct}%)",
-  "cli.status.stat_pokeballs": "  🔴 Pokeballs: {count}",
+  "cli.status.stat_pokeballs": "  🔴 Poké Balls: {count}",
   "cli.status.stat_region": "  Current region: {region}",
 
   "cli.starter.already_chosen": "You have already chosen a starter.",
@@ -82,7 +82,7 @@
 
   "cli.items.header": "[ Items ]",
   "cli.items.empty": "  No items.",
-  "cli.items.pokeball": "Pokeball",
+  "cli.items.pokeball": "Poké Ball",
   "cli.items.count": "{name}: {count}",
 
   "cli.region.moved": "Moved to {region}!",
@@ -177,7 +177,7 @@
   "guide.index.topic_region": "  region        Region system (unlock conditions, level ranges, Pokemon pool)",
   "guide.index.topic_achievement": "  achievement   Achievement system (triggers, rewards)",
   "guide.index.topic_xp": "  xp            XP / leveling (formula, party share, dispatch bonus)",
-  "guide.index.topic_item": "  item          Items (Pokeball, drop rates, catching)",
+  "guide.index.topic_item": "  item          Items (Poké Ball, drop rates, catching)",
   "guide.unknown_topic": "Unknown topic: {topic}",
 
   "guide.battle.title": "=== Battle Guide ===",
@@ -238,7 +238,7 @@
   "guide.achievement.rewards_header": "[ Reward Types ]",
   "guide.achievement.reward_unlock": "  Pokemon unlock: earn a new Pokemon on specific achievements",
   "guide.achievement.reward_xp": "  XP bonus: permanent XP multiplier increase (stackable)",
-  "guide.achievement.reward_ball": "  Pokeball: used to catch wild Pokemon",
+  "guide.achievement.reward_ball": "  Poké Ball: used to catch wild Pokemon",
   "guide.achievement.reward_slot": "  Party slot: increase max party size",
 
   "guide.xp.title": "=== XP / Leveling Guide ===",
@@ -267,17 +267,17 @@
   "guide.item.title": "=== Item Guide ===",
   "guide.item.check_header": "[ Checking Items ]",
   "guide.item.check_cmd": "  tokenmon items   Current held items",
-  "guide.item.pokeball_header": "[ Pokeball 🔴 ]",
+  "guide.item.pokeball_header": "[ Poké Ball 🔴 ]",
   "guide.item.pokeball_desc": "  A consumable item used to catch wild Pokemon.",
   "guide.item.obtain_header": "  How to obtain:",
   "guide.item.obtain_win": "    {green}20%{reset} drop chance on battle win",
   "guide.item.obtain_lose": "    {yellow}5%{reset} drop chance on battle loss",
   "guide.item.obtain_achievement": "    Achievement rewards (first win: 3, Pokedex researcher: 5, win streak master: 10, etc.)",
   "guide.item.catch_header": "[ Catch Conditions ]",
-  "guide.item.catch_desc1": "  Battle win + uncaught Pokemon + hold Pokeball → catch (uses 1 ball)",
+  "guide.item.catch_desc1": "  Battle win + uncaught Pokemon + hold Poké Ball → catch (uses 1 ball)",
   "guide.item.catch_desc2": "  No ball = no catch even on win (Pokedex registered + XP only)",
   "guide.item.catch_desc3": "  No ball consumed when battling already-caught Pokemon.",
-  "guide.item.catch_tip": "  {yellow}Tip: Stock up on Pokeballs before encountering new Pokemon{reset}",
+  "guide.item.catch_tip": "  {yellow}Tip: Stock up on Poké Balls before encountering new Pokemon{reset}",
 
   "setup.postinstall.title": "  Tokénmon initial setup...",
   "setup.postinstall.already_exists": "  ✓ {path} already exists (preserved)",
@@ -340,9 +340,9 @@
   "tip.xp_achievement_bonus": "⭐ Unlock permanent XP bonuses through achievements (up to +55%).",
   "tip.xp_weakest_member": "⭐ Dispatch your weakest party member {pokemon} (Lv.{level}) for faster growth.",
   "tip.xp_evolution": "⭐ If a Pokemon is close to evolving, focus XP on it.",
-  "tip.item_ball_drop": "🔴 Pokeballs drop 20% on battle win and 5% on battle loss.",
-  "tip.item_ball_catch": "🔴 You need a Pokeball to catch wild Pokemon.",
-  "tip.item_ball_count": "🔴 Current Pokeballs: {count}. Get ready for new encounters!",
-  "tip.item_achievement_balls": "🔴 Achievement rewards can give you large batches of Pokeballs (up to 10!).",
-  "tip.item_ball_strategy": "🔴 Battling already-caught Pokemon does not consume a Pokeball."
+  "tip.item_ball_drop": "🔴 Poké Balls drop 20% on battle win and 5% on battle loss.",
+  "tip.item_ball_catch": "🔴 You need a Poké Ball to catch wild Pokemon.",
+  "tip.item_ball_count": "🔴 Current Poké Balls: {count}. Get ready for new encounters!",
+  "tip.item_achievement_balls": "🔴 Achievement rewards can give you large batches of Poké Balls (up to 10!).",
+  "tip.item_ball_strategy": "🔴 Battling already-caught Pokemon does not consume a Poké Ball."
 }
