@@ -17,14 +17,14 @@ const entries = Object.values(pokemon);
 const names = Object.keys(pokemon);
 
 describe('pokemon-data (M3a)', () => {
-  describe('107 species completeness', () => {
-    it('has exactly 107 entries', () => {
-      assert.equal(entries.length, 107, `Expected 107, got ${entries.length}`);
+  describe('112 species completeness', () => {
+    it('has exactly 112 entries', () => {
+      assert.equal(entries.length, 112, `Expected 112, got ${entries.length}`);
     });
 
-    it('covers Gen 4 ID range #387-#493', () => {
+    it('covers expected ID range (pre-evos + Gen 4)', () => {
       const ids = entries.map((p: any) => p.id).sort((a: number, b: number) => a - b);
-      assert.equal(ids[0], 387);
+      assert.equal(ids[0], 280, 'lowest ID should be Ralts #280');
       assert.equal(ids[ids.length - 1], 493);
     });
 
