@@ -21,6 +21,7 @@ const DEFAULT_CONFIG: Config = {
   renderer: 'braille',
   info_mode: 'ace_full',
   tips_enabled: true,
+  notifications_enabled: true,
   language: 'ko' as const,
 };
 

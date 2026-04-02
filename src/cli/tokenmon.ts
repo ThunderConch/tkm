@@ -9,9 +9,11 @@ import { playCry } from '../audio/play-cry.js';
 import { getCompletion, getPokedexList, syncPokedexFromUnlocked } from '../core/pokedex.js';
 import { getCurrentRegion, getRegionList, moveToRegion } from '../core/regions.js';
 import { renderGuide, renderGuideIndex } from '../core/guide.js';
+import { getEligibleBranches, applyBranchEvolution } from '../core/evolution.js';
+import { getActiveNotifications, dismissAll } from '../core/notifications.js';
 import { t, initLocale } from '../i18n/index.js';
 import { withLock } from '../core/lock.js';
-import type { ExpGroup } from '../core/types.js';
+import type { ExpGroup, EvolutionContext } from '../core/types.js';
 
 // ANSI color helpers
 const BOLD = '\x1b[1m';
@@ -305,6 +307,7 @@ function cmdConfigSet(key: string, value: string): void {
     console.log(t('cli.config.key_max_party'));
     console.log(t('cli.config.key_peon_ping'));
     console.log(t('cli.config.key_tips_enabled'));
+    console.log(t('cli.config.key_notifications'));
     console.log(t('cli.config.help_renderer'));
 
     process.exit(1);
@@ -313,7 +316,7 @@ function cmdConfigSet(key: string, value: string): void {
   const config = readConfig();
   const numericKeys = ['tokens_per_xp', 'max_party_size', 'peon_ping_port'];
   const floatKeys = ['volume', 'xp_bonus_multiplier'];
-  const boolKeys = ['sprite_enabled', 'cry_enabled', 'peon_ping_integration', 'tips_enabled'];
+  const boolKeys = ['sprite_enabled', 'cry_enabled', 'peon_ping_integration', 'tips_enabled', 'notifications_enabled'];
   const stringEnumKeys: Record<string, string[]> = {
     sprite_mode: ['all', 'ace_only', 'emoji_all', 'emoji_ace'],
     info_mode:   ['ace_full', 'name_level', 'all_full', 'ace_level'],
@@ -522,6 +525,7 @@ function doReset(): void {
       encounter_count: 0, catch_count: 0, battle_count: 0,
       battle_wins: 0, battle_losses: 0, items: {}, cheat_log: cheatLog,
       last_battle: null, last_tip: null,
+      notifications: [], dismissed_notifications: [], last_known_regions: 1,
     };
     writeState(defaultState);
   });
@@ -626,6 +630,167 @@ function cmdCheat(subcmd: string, arg1?: string, arg2?: string): void {
   }
 }
 
+function cmdEvolve(pokemonArg?: string, targetArg?: string): void {
+  const config = readConfig();
+  const state = readState();
+  const pokemonDB = getPokemonDB();
+
+  // No args: list all evolution-ready pokemon in party
+  if (!pokemonArg) {
+    const ready = config.party.filter(p => state.pokemon[p]?.evolution_ready);
+    if (ready.length === 0) {
+      info(t('cli.evolve.none_ready'));
+      return;
+    }
+    bold(t('cli.evolve.ready_header'));
+    for (const p of ready) {
+      const opts = state.pokemon[p].evolution_options ?? [];
+      console.log(`  ${BOLD}${getPokemonName(p)}${RESET} → ${opts.map(getPokemonName).join(' / ')}`);
+    }
+    console.log('');
+    info(t('cli.evolve.usage_hint'));
+    return;
+  }
+
+  // Validate pokemon
+  const pState = state.pokemon[pokemonArg];
+  if (!pState) {
+    error(t('cli.evolve.not_found', { pokemon: pokemonArg }));
+    return;
+  }
+  if (!pState.evolution_ready) {
+    warn(t('cli.evolve.not_ready', { pokemon: getPokemonName(pokemonArg) }));
+    return;
+  }
+
+  const ctx: EvolutionContext = {
+    oldLevel: pState.level - 1,
+    newLevel: pState.level,
+    friendship: pState.friendship ?? 0,
+    currentRegion: config.current_region ?? '1',
+    unlockedAchievements: Object.keys(state.achievements).filter(k => state.achievements[k]),
+    items: state.items ?? {},
+  };
+  const branches = getEligibleBranches(pokemonArg, ctx);
+  const eligible = branches.filter(b => b.conditionMet);
+
+  if (eligible.length === 0) {
+    warn(t('cli.evolve.no_eligible', { pokemon: getPokemonName(pokemonArg) }));
+    return;
+  }
+
+  // Direct evolution with target specified
+  if (targetArg) {
+    const branch = eligible.find(b => b.name === targetArg);
+    if (!branch) {
+      error(t('cli.evolve.invalid_target', { target: targetArg }));
+      return;
+    }
+    executeEvolve(pokemonArg, targetArg, config);
+    return;
+  }
+
+  // Show branches and prompt
+  bold(t('cli.evolve.select_header', { pokemon: getPokemonName(pokemonArg) }));
+  console.log('');
+  for (let i = 0; i < branches.length; i++) {
+    const b = branches[i];
+    const icon = b.conditionMet ? `${GREEN}✓${RESET}` : `${RED}✗${RESET}`;
+    const targetData = pokemonDB.pokemon[b.name];
+    const types = targetData?.types?.join('/') ?? '';
+    console.log(`  ${i + 1}) ${icon} ${BOLD}${getPokemonName(b.name)}${RESET} ${GRAY}${types}${RESET}`);
+    console.log(`     ${GRAY}${t('cli.evolve.condition', { cond: b.conditionLabel })}${RESET}`);
+  }
+  console.log('');
+
+  if (eligible.length === 1) {
+    // Single eligible — confirm
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(t('cli.evolve.confirm', { target: getPokemonName(eligible[0].name) }), (answer: string) => {
+      rl.close();
+      if (answer.toLowerCase() === 'y') {
+        executeEvolve(pokemonArg!, eligible[0].name, config);
+      } else {
+        info(t('cli.evolve.cancelled'));
+      }
+    });
+  } else {
+    // Multiple eligible — select
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(t('cli.evolve.prompt_select', { count: eligible.length }), (answer: string) => {
+      rl.close();
+      const idx = parseInt(answer, 10);
+      // Map selection back to eligible branches using their position in the full branches list
+      const eligibleIndices = branches.map((b, i) => b.conditionMet ? i : -1).filter(i => i >= 0);
+      const selectedFullIdx = eligibleIndices[idx - 1];
+      if (isNaN(idx) || idx < 1 || idx > eligible.length || selectedFullIdx === undefined) {
+        error(t('cli.evolve.invalid_choice'));
+        process.exit(1);
+      }
+      executeEvolve(pokemonArg!, branches[selectedFullIdx].name, config);
+    });
+  }
+}
+
+function executeEvolve(pokemonName: string, targetName: string, _config: unknown): void {
+  const evolveResult = withLock(() => {
+    const freshState = readState();
+    const freshConfig = readConfig();
+    const result = applyBranchEvolution(freshState, freshConfig, pokemonName, targetName);
+    if (!result) return null;
+    writeState(freshState);
+    writeConfig(freshConfig);
+    return result;
+  });
+
+  if (evolveResult === null) {
+    error(t('cli.lock_failed'));
+    process.exit(1);
+  }
+  if (!evolveResult) {
+    error(t('cli.evolve.failed'));
+    return;
+  }
+
+  success(t('cli.evolve.success', { old: getPokemonName(evolveResult.oldPokemon), new: getPokemonName(evolveResult.newPokemon) }));
+  playCry(evolveResult.newPokemon);
+}
+
+function cmdNotifications(subcmd?: string): void {
+  const state = readState();
+
+  if (subcmd === 'clear') {
+    const clearResult = withLock(() => {
+      const freshState = readState();
+      dismissAll(freshState);
+      writeState(freshState);
+    });
+    if (clearResult === null) { error(t('cli.lock_failed')); process.exit(1); }
+    success(t('cli.notifications.cleared'));
+    return;
+  }
+
+  // List active notifications
+  const active = getActiveNotifications(state);
+  bold(t('cli.notifications.header'));
+  if (active.length === 0) {
+    info(t('cli.notifications.empty'));
+    return;
+  }
+
+  const icons: Record<string, string> = {
+    evolution_ready: '✨',
+    region_unlocked: '🗺️',
+    achievement_near: '🏆',
+  };
+  for (const n of active) {
+    const icon = icons[n.type] ?? '📢';
+    console.log(`  ${icon} ${n.message}`);
+  }
+  console.log('');
+  info(t('cli.notifications.clear_hint'));
+}
+
 function cmdGuide(topic?: string): void {
   if (!topic) {
     renderGuideIndex();
@@ -647,6 +812,10 @@ function cmdHelp(): void {
   console.log(t('cli.help.cmd_party_remove'));
   console.log(t('cli.help.cmd_unlock'));
   console.log(t('cli.help.cmd_achievements'));
+  console.log(t('cli.help.cmd_evolve'));
+  console.log(t('cli.help.cmd_evolve_pokemon'));
+  console.log(t('cli.help.cmd_notifications'));
+  console.log(t('cli.help.cmd_notifications_clear'));
   console.log(t('cli.help.cmd_items'));
   console.log(t('cli.help.cmd_region'));
   console.log(t('cli.help.cmd_region_list'));
@@ -700,6 +869,12 @@ switch (command) {
     break;
   case 'region':
     cmdRegion(args[1], args.slice(2).join(' ') || undefined);
+    break;
+  case 'evolve':
+    cmdEvolve(args[1], args[2]);
+    break;
+  case 'notifications':
+    cmdNotifications(args[1]);
     break;
   case 'guide':
     cmdGuide(args[1]);

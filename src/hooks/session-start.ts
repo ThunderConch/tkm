@@ -2,6 +2,7 @@ import { readFileSync } from 'fs';
 import { readState, writeState, writeSession } from '../core/state.js';
 import { readConfig } from '../core/config.js';
 import { checkAchievements, formatAchievementMessage } from '../core/achievements.js';
+import { refreshNotifications, getActiveNotifications, updateKnownRegions } from '../core/notifications.js';
 import { playCry } from '../audio/play-cry.js';
 import { initLocale } from '../i18n/index.js';
 import { withLock } from '../core/lock.js';
@@ -43,6 +44,22 @@ function main(): void {
     const achEvents = checkAchievements(state, config);
     for (const achEvent of achEvents) {
       messages.push(formatAchievementMessage(achEvent));
+    }
+
+    // Refresh notifications and include active ones in output
+    updateKnownRegions(state);
+    refreshNotifications(state, config);
+    const activeNotifs = getActiveNotifications(state);
+    if (activeNotifs.length > 0) {
+      const icons: Record<string, string> = {
+        evolution_ready: '✨',
+        region_unlocked: '🗺️',
+        achievement_near: '🏆',
+      };
+      for (const n of activeNotifs) {
+        const icon = icons[n.type] ?? '📢';
+        messages.push(`${icon} ${n.message}`);
+      }
     }
 
     writeState(state);

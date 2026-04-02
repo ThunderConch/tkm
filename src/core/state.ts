@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from 'fs';
 import { dirname, join } from 'path';
 import { STATE_PATH, SESSION_PATH, I18N_DATA_DIR } from './paths.js';
-import type { State, Session, PokemonState, PokedexEntry } from './types.js';
+import type { State, Session, PokemonState, PokedexEntry, Notification } from './types.js';
 
 const DEFAULT_STATE: State = {
   pokemon: {},
@@ -25,6 +25,9 @@ const DEFAULT_STATE: State = {
   cheat_log: [],
   last_battle: null,
   last_tip: null,
+  notifications: [],
+  dismissed_notifications: [],
+  last_known_regions: 1,
 };
 
 const DEFAULT_SESSION: Session = {
@@ -50,6 +53,9 @@ export function readState(): State {
     last_session_tokens: parsed.last_session_tokens ?? {},
     pokedex: parsed.pokedex ?? {},
     items: parsed.items ?? {},
+    notifications: parsed.notifications ?? [],
+    dismissed_notifications: parsed.dismissed_notifications ?? [],
+    last_known_regions: parsed.last_known_regions ?? 1,
   };
 
   // Migrate per-pokemon fields (friendship, ev)

@@ -27,6 +27,9 @@ export function makeState(overrides: Partial<State> = {}): State {
     cheat_log: [],
     last_battle: null,
     last_tip: null,
+    notifications: [],
+    dismissed_notifications: [],
+    last_known_regions: 1,
     ...overrides,
   };
 }
@@ -53,7 +56,9 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     sprite_mode: 'all',
     info_mode: 'ace_full',
     tips_enabled: true,
+    notifications_enabled: true,
     language: 'ko' as const,
+    renderer: 'braille' as const,
     ...overrides,
   };
 }

@@ -73,6 +73,16 @@ export interface PokemonState {
   evolution_options?: string[];
 }
 
+export type NotificationType = 'evolution_ready' | 'region_unlocked' | 'achievement_near';
+
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  message: string;
+  created: string;
+  data?: Record<string, unknown>;
+}
+
 export interface EvolutionContext {
   oldLevel: number;
   newLevel: number;
@@ -105,6 +115,9 @@ export interface State {
   cheat_log: Array<{ timestamp: string; command: string }>;
   last_battle: BattleResult | null;
   last_tip: { id: string; text: string } | null;
+  notifications: Notification[];
+  dismissed_notifications: string[];
+  last_known_regions: number;
 }
 
 export interface Config {
@@ -125,6 +138,7 @@ export interface Config {
   renderer: SpriteRenderer;
   info_mode: 'ace_full' | 'name_level' | 'all_full' | 'ace_level';
   tips_enabled: boolean;
+  notifications_enabled: boolean;
   language: 'ko' | 'en';
 }
 
