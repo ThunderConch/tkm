@@ -26,7 +26,9 @@ export function checkEvolution(
   const data = db.pokemon[pokemonName];
   if (!data) return null;
 
-  // Branching evolution: block auto-evolve, set flags on state
+  // Branching evolution: block auto-evolve, set flags on state.
+  // Note: checkEvolution is only called for party pokemon (stop.ts),
+  // so zombie state entries (old forms kept for pokedex) are never re-processed.
   if (Array.isArray(data.evolves_to)) {
     if (state) {
       const eligible = getEligibleBranches(pokemonName, context);

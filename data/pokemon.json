@@ -24,7 +24,8 @@
         "defense": 25,
         "speed": 40
       },
-      "catch_rate": 235
+      "catch_rate": 235,
+      "evolves_to": "281"
     },
     "281": {
       "id": 281,
