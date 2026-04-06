@@ -130,23 +130,13 @@ Show any errors to the user.
 
 If the party already has a Pokémon, skip to Step 4.5.
 
-Otherwise, determine starters based on active generation:
+Otherwise, run this command and use its output **verbatim** for AskUserQuestion — do NOT use your own knowledge of Pokémon names:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/bin/tsx-resolve.sh" "${CLAUDE_PLUGIN_ROOT}/src/cli/tokenmon.ts" gen status
+"${CLAUDE_PLUGIN_ROOT}/bin/tsx-resolve.sh" "${CLAUDE_PLUGIN_ROOT}/src/cli/tokenmon.ts" starter
 ```
 
-Use AskUserQuestion with the appropriate starters:
-
-**Gen 1 starters:**
-1. Bulbasaur (Grass) — 이상해씨
-2. Charmander (Fire) — 파이리
-3. Squirtle (Water) — 꼬부기
-
-**Gen 4 starters:**
-1. Turtwig (Grass) — 모부기
-2. Chimchar (Fire) — 불꽃숭이
-3. Piplup (Water) — 팽도리
+The output lists starters with localized names (e.g. `1) 나오하 [#906] grass`). Present exactly those names to the user. Do not guess or substitute names from memory.
 
 ## Step 4: Initialize Starter
 
@@ -154,7 +144,7 @@ Use AskUserQuestion with the appropriate starters:
 "${CLAUDE_PLUGIN_ROOT}/bin/tsx-resolve.sh" "${CLAUDE_PLUGIN_ROOT}/src/cli/tokenmon.ts" starter <pokemon_id>
 ```
 
-Pass the Pokémon **ID** (Gen 1: `1`/`4`/`7`, Gen 4: `387`/`390`/`393`).
+Pass the Pokémon **ID number** shown in the `starter` command output (e.g. `906`, not the name).
 
 ## Step 4.5: Renderer Selection
 
