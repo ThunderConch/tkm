@@ -138,6 +138,12 @@ async function main(): Promise<void> {
     state.last_tip = null;
     state.last_codex_xp = null;
 
+    // Self-healing: register session in gen-map if SessionStart hook didn't fire
+    if (sessionId && !genMap[sessionId]) {
+      genMap[sessionId] = { generation: gen, created: new Date().toISOString(), last_seen: new Date().toISOString() };
+      writeSessionGenMap(genMap);
+    }
+
     // Read common state early (needed for last_turn_ts on all paths)
     const commonState = readCommonState();
 
