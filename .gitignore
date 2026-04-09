@@ -7,4 +7,5 @@ config.json
 .omc/
 .omx/
 .claude/
+.worktrees/
 TODO.txt
