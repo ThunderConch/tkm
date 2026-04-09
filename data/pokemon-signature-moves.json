@@ -1305,13 +1305,13 @@
     "damage_class": "special"
   },
   "146": {
-    "move": "sacred-fire",
-    "move_ko": "불사르기",
-    "move_en": "Sacred Fire",
-    "power": 100,
-    "pp": 5,
+    "move": "heat-wave",
+    "move_ko": "열풍",
+    "move_en": "Heat Wave",
+    "power": 95,
+    "pp": 10,
     "type": "fire",
-    "damage_class": "physical"
+    "damage_class": "special"
   },
   "147": {
     "move": "twister",
@@ -1341,10 +1341,10 @@
     "damage_class": "physical"
   },
   "150": {
-    "move": "psychic",
-    "move_ko": "사이코키네시스",
-    "move_en": "Psychic",
-    "power": 90,
+    "move": "psystrike",
+    "move_ko": "사이코브레이크",
+    "move_en": "Psystrike",
+    "power": 100,
     "pp": 10,
     "type": "psychic",
     "damage_class": "special"
@@ -4392,22 +4392,22 @@
     "damage_class": "status"
   },
   "489": {
-    "move": "brave-charge",
+    "move": "take-heart",
     "move_ko": "브레이브차지",
-    "move_en": "Brave Charge",
-    "power": 90,
+    "move_en": "Take Heart",
+    "power": null,
     "pp": 10,
-    "type": "water",
-    "damage_class": "physical"
+    "type": "psychic",
+    "damage_class": "status"
   },
   "490": {
-    "move": "brave-charge",
+    "move": "take-heart",
     "move_ko": "브레이브차지",
-    "move_en": "Brave Charge",
-    "power": 90,
+    "move_en": "Take Heart",
+    "power": null,
     "pp": 10,
-    "type": "water",
-    "damage_class": "physical"
+    "type": "psychic",
+    "damage_class": "status"
   },
   "491": {
     "move": "dark-void",
@@ -5815,7 +5815,7 @@
   },
   "647": {
     "move": "secret-sword",
-    "move_ko": "산비의칼",
+    "move_ko": "신비의칼",
     "move_en": "Secret Sword",
     "power": 85,
     "pp": 10,
@@ -6471,13 +6471,13 @@
     "damage_class": "physical"
   },
   "720": {
-    "move": "hyperspace-fury",
-    "move_ko": "이차원러시",
-    "move_en": "Hyperspace Fury",
-    "power": 100,
+    "move": "hyperspace-hole",
+    "move_ko": "다른차원홀",
+    "move_en": "Hyperspace Hole",
+    "power": 80,
     "pp": 5,
-    "type": "dark",
-    "damage_class": "physical"
+    "type": "psychic",
+    "damage_class": "special"
   },
   "721": {
     "move": "steam-eruption",
@@ -7056,39 +7056,39 @@
     "damage_class": "physical"
   },
   "785": {
-    "move": "thunderbolt",
-    "move_ko": "10만볼트",
-    "move_en": "Thunderbolt",
-    "power": 90,
-    "pp": 15,
-    "type": "electric",
+    "move": "natures-madness",
+    "move_ko": "자연의분노",
+    "move_en": "Nature's Madness",
+    "power": null,
+    "pp": 10,
+    "type": "fairy",
     "damage_class": "special"
   },
   "786": {
-    "move": "psychic",
-    "move_ko": "사이코키네시스",
-    "move_en": "Psychic",
-    "power": 90,
+    "move": "natures-madness",
+    "move_ko": "자연의분노",
+    "move_en": "Nature's Madness",
+    "power": null,
     "pp": 10,
-    "type": "psychic",
+    "type": "fairy",
     "damage_class": "special"
   },
   "787": {
-    "move": "energy-ball",
-    "move_ko": "에너지볼",
-    "move_en": "Energy Ball",
-    "power": 90,
+    "move": "natures-madness",
+    "move_ko": "자연의분노",
+    "move_en": "Nature's Madness",
+    "power": null,
     "pp": 10,
-    "type": "grass",
+    "type": "fairy",
     "damage_class": "special"
   },
   "788": {
-    "move": "hydro-pump",
-    "move_ko": "하이드로펌프",
-    "move_en": "Hydro Pump",
-    "power": 110,
-    "pp": 5,
-    "type": "water",
+    "move": "natures-madness",
+    "move_ko": "자연의분노",
+    "move_en": "Nature's Madness",
+    "power": null,
+    "pp": 10,
+    "type": "fairy",
     "damage_class": "special"
   },
   "789": {
@@ -7200,12 +7200,12 @@
     "damage_class": "special"
   },
   "801": {
-    "move": "flash-cannon",
-    "move_ko": "플래시캐논",
-    "move_en": "Flash Cannon",
-    "power": 80,
-    "pp": 10,
-    "type": "steel",
+    "move": "fleur-cannon",
+    "move_ko": "플뢰르캐논",
+    "move_en": "Fleur Cannon",
+    "power": 130,
+    "pp": 5,
+    "type": "fairy",
     "damage_class": "special"
   },
   "802": {
@@ -8136,9 +8136,9 @@
     "damage_class": "physical"
   },
   "905": {
-    "move": "spring-storm",
+    "move": "springtide-storm",
     "move_ko": "봄의폭풍",
-    "move_en": "Spring Storm",
+    "move_en": "Springtide Storm",
     "power": 100,
     "pp": 5,
     "type": "fairy",
@@ -9004,7 +9004,7 @@
     "move_ko": "카타스트로피",
     "move_en": "Ruination",
     "power": null,
-    "pp": 5,
+    "pp": 10,
     "type": "dark",
     "damage_class": "special"
   },
@@ -9013,7 +9013,7 @@
     "move_ko": "카타스트로피",
     "move_en": "Ruination",
     "power": null,
-    "pp": 5,
+    "pp": 10,
     "type": "dark",
     "damage_class": "special"
   },
@@ -9022,7 +9022,7 @@
     "move_ko": "카타스트로피",
     "move_en": "Ruination",
     "power": null,
-    "pp": 5,
+    "pp": 10,
     "type": "dark",
     "damage_class": "special"
   },
@@ -9031,7 +9031,7 @@
     "move_ko": "카타스트로피",
     "move_en": "Ruination",
     "power": null,
-    "pp": 5,
+    "pp": 10,
     "type": "dark",
     "damage_class": "special"
   },
@@ -9174,10 +9174,10 @@
     "move": "burning-bulwark",
     "move_ko": "화염의수호",
     "move_en": "Burning Bulwark",
-    "power": 130,
-    "pp": 5,
+    "power": null,
+    "pp": 10,
     "type": "fire",
-    "damage_class": "physical"
+    "damage_class": "status"
   },
   "1021": {
     "move": "thunderclap",
@@ -9189,10 +9189,10 @@
     "damage_class": "special"
   },
   "1022": {
-    "move": "power-gem",
+    "move": "mighty-cleave",
     "move_ko": "파워풀에지",
-    "move_en": "Power Gem",
-    "power": 100,
+    "move_en": "Mighty Cleave",
+    "power": 95,
     "pp": 5,
     "type": "rock",
     "damage_class": "physical"
@@ -9210,18 +9210,18 @@
     "move": "tera-starstorm",
     "move_ko": "테라클러스터",
     "move_en": "Tera Starstorm",
-    "power": 100,
+    "power": 120,
     "pp": 5,
     "type": "normal",
     "damage_class": "special"
   },
   "1025": {
-    "move": "malevolent-chain",
-    "move_ko": "악동사슬",
-    "move_en": "Malevolent Chain",
+    "move": "malignant-chain",
+    "move_ko": "악독사슬",
+    "move_en": "Malignant Chain",
     "power": 100,
     "pp": 5,
     "type": "poison",
-    "damage_class": "physical"
+    "damage_class": "special"
   }
 }
