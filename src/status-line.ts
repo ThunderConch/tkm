@@ -426,7 +426,7 @@ function main(): void {
         if (weatherCondition) {
           rowStr = scatterWeatherParticles(rowStr, weatherCondition);
         }
-        console.log(rowStr);
+        console.log(rowStr.replace(/\u2800/g, ' '));
       }
     }
   }
