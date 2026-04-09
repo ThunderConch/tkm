@@ -115,9 +115,6 @@ async function main(): Promise<void> {
     lastCacheTokens = parsed.lastCacheTokens;
   }
 
-  // Pre-lock: read Codex total tokens (read-only SQLite query, no race)
-  const codexTotalTokens = readCodexTotalTokens();
-
   // Pre-lock: load guide module (read-only module load)
   let getRandomTip: ((state: any, config: any) => { id: string; text: string } | null) | null = null;
   try {
@@ -160,7 +157,11 @@ async function main(): Promise<void> {
       return 'first_stop';
     }
 
-    if (deltaTokens <= 0) {
+    // Check for Codex-only turns: if Claude delta is 0 but Codex has new tokens,
+    // still award Codex XP instead of returning early.
+    const codexPreCheck = readCodexTotalTokens();
+    const codexHasNewTokens = codexPreCheck > (commonState.last_codex_tokens_total ?? 0);
+    if (deltaTokens <= 0 && !codexHasNewTokens) {
       commonState.last_turn_ts = Date.now();
       writeCommonState(commonState);
       return 'no_delta';
@@ -198,7 +199,8 @@ async function main(): Promise<void> {
     const xpBonus = config.xp_bonus_multiplier + Math.max(0, state.xp_bonus_multiplier - 1.0) + commonState.xp_bonus_multiplier;
     const xpTotal = Math.max(0, Math.floor((deltaTokens / tokensPerXp) * xpBonus * appliedTier.xpMultiplier));
     // All party members receive the full XP (not divided)
-    const xpPerPokemon = Math.max(1, xpTotal);
+    // On Codex-only turns (deltaTokens <= 0), Claude XP is 0 — skip Claude XP award loop
+    const xpPerPokemon = deltaTokens > 0 ? Math.max(1, xpTotal) : 0;
 
     const pokemonDB = getPokemonDB();
     let totalXpGranted = 0;
@@ -236,7 +238,7 @@ async function main(): Promise<void> {
       const currentXp = state.pokemon[pokemonName].xp;
       const currentLevel = state.pokemon[pokemonName].level;
       const floor = getTurnFloor(currentLevel);
-      const finalXp = Math.floor(Math.max(floor, xpPerPokemon) * restMult);
+      const finalXp = xpPerPokemon > 0 ? Math.floor(Math.max(floor, xpPerPokemon) * restMult) : 0;
       totalXpGranted += finalXp;
       const newXp = currentXp + finalXp;
       const newLevel = xpToLevel(newXp, expGroup);
@@ -281,6 +283,8 @@ async function main(): Promise<void> {
     }
 
     // ── Codex flat XP (no volume tier / rest bonus) ──
+    // codexPreCheck was already read inside lock (above, at no_delta guard)
+    const codexTotalTokens = codexPreCheck;
     // First-stop and no-delta early exits above intentionally skip this block;
     // any Codex tokens consumed during those turns are deferred to the next qualifying stop.
     const codexPrev = commonState.last_codex_tokens_total ?? 0;
@@ -309,9 +313,9 @@ async function main(): Promise<void> {
 
         totalXpGranted += codexXpTotal * config.party.filter(Boolean).length;
 
-        // Update Codex checkpoint only when XP was actually awarded.
-        // Sub-threshold deltas (< tokens_per_xp) are retained for the next stop.
-        commonState.last_codex_tokens_total = codexTotalTokens;
+        // Advance checkpoint by consumed tokens only; remainder is retained.
+        // E.g., delta=15000, tokensPerXp=10000 → 1 XP, checkpoint advances by 10000, 5000 retained.
+        commonState.last_codex_tokens_total = codexPrev + codexXpTotal * tokensPerXp;
 
         // Track in stats
         state.stats.codex_tokens_consumed = (state.stats.codex_tokens_consumed ?? 0) + codexDelta;

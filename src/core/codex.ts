@@ -10,8 +10,9 @@ let DatabaseSync: (new (path: string, opts?: { readOnly?: boolean }) => any) | n
 try {
   const esmRequire = createRequire(import.meta.url);
   DatabaseSync = esmRequire('node:sqlite').DatabaseSync;
-} catch {
-  // node:sqlite unavailable — readCodexTotalTokens will return 0
+} catch (e: unknown) {
+  // node:sqlite unavailable — readCodexTotalTokens will always return 0
+  process.stderr.write(`tokenmon: node:sqlite unavailable, Codex XP disabled: ${e instanceof Error ? e.message : e}\n`);
 }
 
 /**
