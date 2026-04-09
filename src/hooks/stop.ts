@@ -146,6 +146,7 @@ async function main(): Promise<void> {
     const prevSessionTokens = state.last_session_tokens[sessionId] ?? 0;
     const deltaTokens = totalTokens - prevSessionTokens;
 
+
     if (isFirstStop) {
       // First stop in this session: record baseline, no XP yet
       state.last_session_tokens[sessionId] = totalTokens;
