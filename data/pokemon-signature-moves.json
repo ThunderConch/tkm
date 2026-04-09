@@ -5778,22 +5778,22 @@
     "damage_class": "special"
   },
   "643": {
-    "move": "cross-flame",
-    "move_ko": "크로스플레임",
-    "move_en": "Cross Flame",
-    "power": 100,
+    "move": "blue-flare",
+    "move_ko": "블루플레어",
+    "move_en": "Blue Flare",
+    "power": 130,
     "pp": 5,
     "type": "fire",
     "damage_class": "special"
   },
   "644": {
-    "move": "cross-thunder",
-    "move_ko": "크로스썬더",
-    "move_en": "Cross Thunder",
-    "power": 100,
+    "move": "bolt-strike",
+    "move_ko": "볼트어택",
+    "move_en": "Bolt Strike",
+    "power": 130,
     "pp": 5,
     "type": "electric",
-    "damage_class": "special"
+    "damage_class": "physical"
   },
   "645": {
     "move": "sandsear-storm",
