@@ -164,14 +164,39 @@ async function main(): Promise<void> {
       return 'first_stop';
     }
 
-    // Check for Codex-only turns: if Claude delta is 0 but Codex has new tokens,
-    // still award Codex XP instead of returning early.
-    const codexPreCheck = readCodexTotalTokens();
-    const codexHasNewTokens = codexPreCheck > (commonState.last_codex_tokens_total ?? 0);
-    if (deltaTokens <= 0 && !codexHasNewTokens) {
+    if (deltaTokens <= 0) {
+      // Codex-only path: award Codex XP if available, but skip ALL gameplay side effects
+      // (no encounters, drops, rest bonus, tier updates, friendship, evolution checks)
+      const codexPreCheck = readCodexTotalTokens();
+      const codexPrev = commonState.last_codex_tokens_total ?? 0;
+      const codexDelta = Math.max(0, codexPreCheck - codexPrev);
+      const tokensPerXpEarly = Math.max(1, config.tokens_per_xp);
+      const codexXpOnly = Math.floor(codexDelta / tokensPerXpEarly);
+
+      if (codexXpOnly > 0) {
+        const pokemonDB = getPokemonDB();
+        for (const pokemonName of config.party) {
+          if (!pokemonName || !state.pokemon[pokemonName]) continue;
+          const expGroup: ExpGroup = pokemonDB.pokemon[toBaseId(pokemonName)]?.exp_group ?? 'medium_fast';
+          const prevLevel = state.pokemon[pokemonName].level;
+          state.pokemon[pokemonName].xp += codexXpOnly;
+          state.pokemon[pokemonName].level = xpToLevel(state.pokemon[pokemonName].xp, expGroup);
+          if (state.pokemon[pokemonName].level > prevLevel) {
+            messages.push(t('hook.levelup', { pokemon: getPokemonName(pokemonName), from: prevLevel, to: state.pokemon[pokemonName].level, xp: codexXpOnly }));
+          }
+        }
+        const codexConsumed = codexXpOnly * tokensPerXpEarly;
+        commonState.last_codex_tokens_total = codexPrev + codexConsumed;
+        state.stats.codex_tokens_consumed = (state.stats.codex_tokens_consumed ?? 0) + codexConsumed;
+        state.stats.codex_xp_earned = (state.stats.codex_xp_earned ?? 0) + codexXpOnly;
+        state.last_codex_xp = codexXpOnly;
+        recordXp(state, codexXpOnly * config.party.filter(Boolean).length);
+      }
+
       commonState.last_turn_ts = Date.now();
       writeCommonState(commonState);
-      return 'no_delta';
+      writeState(state, gen);
+      return codexXpOnly > 0 ? 'codex_only' : 'no_delta';
     }
 
     // Rest bonus activation (before XP calc)
@@ -207,7 +232,8 @@ async function main(): Promise<void> {
     const xpTotal = Math.max(0, Math.floor((deltaTokens / tokensPerXp) * xpBonus * appliedTier.xpMultiplier));
     // All party members receive the full XP (not divided)
     // On Codex-only turns (deltaTokens <= 0), Claude XP is 0 — skip Claude XP award loop
-    const xpPerPokemon = deltaTokens > 0 ? Math.max(1, xpTotal) : 0;
+    // deltaTokens is always > 0 here (<=0 handled by early return above)
+    const xpPerPokemon = Math.max(1, xpTotal);
 
     const pokemonDB = getPokemonDB();
     let totalXpGranted = 0;
@@ -245,7 +271,7 @@ async function main(): Promise<void> {
       const currentXp = state.pokemon[pokemonName].xp;
       const currentLevel = state.pokemon[pokemonName].level;
       const floor = getTurnFloor(currentLevel);
-      const finalXp = xpPerPokemon > 0 ? Math.floor(Math.max(floor, xpPerPokemon) * restMult) : 0;
+      const finalXp = Math.floor(Math.max(floor, xpPerPokemon) * restMult);
       totalXpGranted += finalXp;
       const newXp = currentXp + finalXp;
       const newLevel = xpToLevel(newXp, expGroup);
@@ -289,9 +315,8 @@ async function main(): Promise<void> {
       }
     }
 
-    // ── Codex flat XP (no volume tier / rest bonus) ──
-    // codexPreCheck was already read inside lock (above, at no_delta guard)
-    const codexTotalTokens = codexPreCheck;
+    // ── Codex flat XP (no volume tier / rest bonus, normal turn) ──
+    const codexTotalTokens = readCodexTotalTokens();
     // First-stop and no-delta early exits above intentionally skip this block;
     // any Codex tokens consumed during those turns are deferred to the next qualifying stop.
     const codexPrev = commonState.last_codex_tokens_total ?? 0;
@@ -324,8 +349,9 @@ async function main(): Promise<void> {
         // E.g., delta=15000, tokensPerXp=10000 → 1 XP, checkpoint advances by 10000, 5000 retained.
         commonState.last_codex_tokens_total = codexPrev + codexXpTotal * tokensPerXp;
 
-        // Track in stats
-        state.stats.codex_tokens_consumed = (state.stats.codex_tokens_consumed ?? 0) + codexDelta;
+        // Track in stats (count only consumed tokens, not full delta — remainder is re-counted next turn)
+        const codexConsumedNormal = codexXpTotal * tokensPerXp;
+        state.stats.codex_tokens_consumed = (state.stats.codex_tokens_consumed ?? 0) + codexConsumedNormal;
         state.stats.codex_xp_earned = (state.stats.codex_xp_earned ?? 0) + codexXpTotal;
       }
     }
