@@ -136,6 +136,8 @@ export interface Stats {
   total_battles_lost: number;
   total_catches: number;
   total_encounters: number;
+  codex_tokens_consumed: number;
+  codex_xp_earned: number;
   last_reset_week: string;
 }
 
@@ -232,6 +234,7 @@ export interface State {
   };
   pending_tier?: string | null;
   context_tokens_used?: number;
+  last_codex_xp?: number | null;
 }
 
 export interface Config {
@@ -423,6 +426,7 @@ export interface CommonState {
   evolution_count: number;
   error_count: number;
   permission_count: number;
+  last_codex_tokens_total: number;
   last_turn_ts?: number;
 }
 

@@ -20,6 +20,8 @@ const DEFAULT_STATS: Stats = {
   total_battles_lost: 0,
   total_catches: 0,
   total_encounters: 0,
+  codex_tokens_consumed: 0,
+  codex_xp_earned: 0,
   last_reset_week: '',
 };
 
@@ -87,6 +89,7 @@ const DEFAULT_COMMON_STATE: CommonState = {
   evolution_count: 0,
   error_count: 0,
   permission_count: 0,
+  last_codex_tokens_total: 0,
 };
 
 export function readCommonState(): CommonState {

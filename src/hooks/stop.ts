@@ -20,6 +20,7 @@ import { withLock, withLockRetry } from '../core/lock.js';
 import { setActiveGenerationCache, getActiveGeneration } from '../core/paths.js';
 import { isShinyKey, toBaseId, toShinyKey } from '../core/shiny-utils.js';
 import { recordXp, recordBattle, recordCatch, recordEncounter, recordShinyEncounter, recordShinyCatch, recordShinyEscaped } from '../core/stats.js';
+import { readCodexTotalTokens } from '../core/codex.js';
 
 function getTurnFloor(level: number): number {
   if (level <= 10) return 3;
@@ -114,6 +115,9 @@ async function main(): Promise<void> {
     lastCacheTokens = parsed.lastCacheTokens;
   }
 
+  // Pre-lock: read Codex total tokens (read-only SQLite query, no race)
+  const codexTotalTokens = readCodexTotalTokens();
+
   // Pre-lock: load guide module (read-only module load)
   let getRandomTip: ((state: any, config: any) => { id: string; text: string } | null) | null = null;
   try {
@@ -132,9 +136,10 @@ async function main(): Promise<void> {
     const state = readState(gen);
     const genMap = readSessionGenMap();
 
-    // Clear previous battle/tip result (only show for one turn)
+    // Clear previous battle/tip/codex result (only show for one turn)
     state.last_battle = null;
     state.last_tip = null;
+    state.last_codex_xp = null;
 
     // Read common state early (needed for last_turn_ts on all paths)
     const commonState = readCommonState();
@@ -275,7 +280,46 @@ async function main(): Promise<void> {
       }
     }
 
-    // Record XP in stats (total XP earned across all party members)
+    // ── Codex flat XP (no volume tier / rest bonus) ──
+    // First-stop and no-delta early exits above intentionally skip this block;
+    // any Codex tokens consumed during those turns are deferred to the next qualifying stop.
+    const codexPrev = commonState.last_codex_tokens_total ?? 0;
+    const codexDelta = Math.max(0, codexTotalTokens - codexPrev);
+    let codexXpTotal = 0;
+
+    if (codexDelta > 0) {
+      codexXpTotal = Math.max(0, Math.floor(codexDelta / tokensPerXp));
+
+      if (codexXpTotal > 0) {
+        for (const pokemonName of config.party) {
+          if (!pokemonName) continue;
+          if (!state.pokemon[pokemonName]) continue;
+
+          const expGroup: ExpGroup = pokemonDB.pokemon[toBaseId(pokemonName)]?.exp_group ?? 'medium_fast';
+          const prevLevel = state.pokemon[pokemonName].level;
+          state.pokemon[pokemonName].xp += codexXpTotal;
+          state.pokemon[pokemonName].level = xpToLevel(state.pokemon[pokemonName].xp, expGroup);
+
+          if (state.pokemon[pokemonName].level > prevLevel) {
+            messages.push(t('hook.levelup', { pokemon: getPokemonName(pokemonName), from: prevLevel, to: state.pokemon[pokemonName].level, xp: codexXpTotal }));
+            addFriendship(state, pokemonName, FRIENDSHIP_PER_LEVELUP);
+            playSfx('levelup');
+          }
+        }
+
+        totalXpGranted += codexXpTotal * config.party.filter(Boolean).length;
+
+        // Update Codex checkpoint only when XP was actually awarded.
+        // Sub-threshold deltas (< tokens_per_xp) are retained for the next stop.
+        commonState.last_codex_tokens_total = codexTotalTokens;
+
+        // Track in stats
+        state.stats.codex_tokens_consumed = (state.stats.codex_tokens_consumed ?? 0) + codexDelta;
+        state.stats.codex_xp_earned = (state.stats.codex_xp_earned ?? 0) + codexXpTotal;
+      }
+    }
+
+    // Record XP in stats (total XP earned across all party members, including Codex)
     recordXp(state, totalXpGranted);
 
     // Update session tokens tracking & total
@@ -291,6 +335,9 @@ async function main(): Promise<void> {
     // Store new tier for next turn's application (status bar reads this)
     // Note: appliedTier (from previous pending_tier) controls this turn's XP, encounter rate, AND rarity weights
     state.pending_tier = currentTier.name === 'normal' ? null : currentTier.name;
+
+    // Store Codex XP for status-line display (persisted, cleared next turn)
+    state.last_codex_xp = codexXpTotal > 0 ? codexXpTotal : null;
 
     // Check gen-specific achievements (pass commonState for cross-state encounter_rate_bonus writes)
     const achEvents2 = checkAchievements(state, config, commonState);

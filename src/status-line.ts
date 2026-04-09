@@ -341,12 +341,16 @@ function main(): void {
       }
     }
   } catch { /* ignore */ }
+  // Codex XP indicator (shown for one turn when Codex tokens contributed XP)
+  const codexXp = state.last_codex_xp ?? null;
+  const codexInfo = codexXp ? ` 🤖+${codexXp}xp` : '';
+
   // Footer adapts to tier (computed later, using a function)
   const buildFooter = (t: number) => {
     if (t >= 4) return '';                                                     // tier 4: no footer
-    if (t === 3) return `📍${regionName}${itemInfo}`;                          // tier 3: region + balls only
-    if (t === 2) return `🎮${genRegion} 📍${regionName}${itemInfo}${restInfo}`; // tier 2: drop gen suffix
-    return `🎮${genRegion} ${genSuffix} 📍${regionName}${weatherInfo}${itemInfo}${restInfo}`; // tier 1: full
+    if (t === 3) return `📍${regionName}${itemInfo}${codexInfo}`;              // tier 3: region + balls + codex
+    if (t === 2) return `🎮${genRegion} 📍${regionName}${itemInfo}${restInfo}${codexInfo}`; // tier 2
+    return `🎮${genRegion} ${genSuffix} 📍${regionName}${weatherInfo}${itemInfo}${restInfo}${codexInfo}`; // tier 1
   };
 
   // Build per-pokemon data
