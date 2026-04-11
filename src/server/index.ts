@@ -1,4 +1,5 @@
 export { createPvpPartyRoutes } from './http/pvp-party-routes.js';
+export { createPvpOpsRoutes } from './http/pvp-ops-routes.js';
 export { createPvpRulesRoutes } from './http/pvp-rules-routes.js';
 export { createPvpRoomRoutes } from './http/pvp-room-routes.js';
 export type { ErrorEnvelope, HttpRequest, HttpResponse } from './http/http-types.js';

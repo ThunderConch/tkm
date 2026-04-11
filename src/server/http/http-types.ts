@@ -1,5 +1,6 @@
 export interface HttpAuthContext {
   playerId?: string;
+  operator?: boolean;
 }
 
 export interface HttpRequest<TBody = unknown> {
