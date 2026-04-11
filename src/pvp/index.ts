@@ -153,6 +153,25 @@ export {
   type PvpSessionTerminalCliState,
 } from './session-terminal-cli.js';
 export {
+  PvpSessionTerminalStdioAdapter,
+  createPvpSessionTerminalStdioAdapter,
+  type CreatePvpSessionTerminalStdioAdapterOptions,
+  type PvpSessionTerminalStdioAbortEvent,
+  type PvpSessionTerminalStdioAbortReason,
+  type PvpSessionTerminalStdioAbortHandlerTarget,
+  type PvpSessionTerminalStdioInput,
+  type PvpSessionTerminalStdioOutput,
+  type PvpSessionTerminalStdioReadlineLike,
+  type PvpSessionTerminalStdioSignalTarget,
+} from './session-terminal-stdio.js';
+export {
+  startPvpLiveSessionCli,
+  type PvpLiveSessionCliAdapter,
+  type PvpLiveSessionCliHandle,
+  type PvpLiveSessionCliSessionClientLike,
+  type StartPvpLiveSessionCliOptions,
+} from './live-session-cli.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,
