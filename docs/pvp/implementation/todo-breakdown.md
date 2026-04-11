@@ -118,6 +118,8 @@
 - [ ] move/switch/replacement 입력 UX 구현
 - [ ] command accepted 상태 반영
 - [ ] turn resolved 이벤트 렌더링
+- [ ] 클라이언트 세션 스토어(`src/pvp/session-store.ts`) 구현
+- [ ] 클라이언트 프로토콜 어댑터(`src/pvp/client-protocol.ts`) 구현
 
 ### 주의사항
 - 클라이언트는 결과 계산 금지
