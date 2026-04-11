@@ -47,6 +47,34 @@ export {
   type SendPvpSessionBattleCommandResult,
 } from './session-client.js';
 export {
+  PvpRoomHttpClientError,
+  createPvpRoomHttpClient,
+  type CreatePvpRoomHttpClientOptions,
+  type CreatePvpRoomInput,
+  type GetPvpRoomInput,
+  type JoinPvpRoomInput,
+  type PvpFetchLikeResponse,
+  type PvpRoomAuthInput,
+  type PvpRoomHttpClient,
+  type PvpRoomHttpErrorKind,
+  type PvpRoomHttpFetch,
+  type PvpRoomHttpOperation,
+  type PvpRoomHttpRequestInit,
+  type PvpRoomHttpResponseLike,
+} from './room-http-client.js';
+export {
+  PvpSessionBootstrap,
+  PvpSessionBootstrapError,
+  createPvpSessionBootstrap,
+  type CreatePvpSessionBootstrapOptions,
+  type CreateRoomSessionInput,
+  type CreateSessionFromRoomViewInput,
+  type JoinRoomSessionInput,
+  type PvpSessionBootstrapResult,
+  type PvpSessionBootstrapSessionClientLike,
+  type ResumeRoomSessionInput,
+} from './session-bootstrap.js';
+export {
   createPvpActionRequestView,
   createPvpActionRequestViewFromPendingRequest,
   type CreatePvpActionRequestViewOptions,

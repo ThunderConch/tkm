@@ -163,6 +163,8 @@
 - ISSUE-19 이후 battle-tui/cli는 controller contract 위에 stdin loop, room join flow, 화면 refresh 정책만 얹으면 된다.
 - ISSUE-20은 controller 위에 live session subscribe/start-stop/submit orchestration을 얹는 runner 슬라이스로 진행하며, 이후 실제 CLI는 stdin loop와 bootstrap만 추가로 붙인다.
 - ISSUE-21은 runner 위에 testable CLI bootstrap/start-stop/input-output abstraction을 얹는 슬라이스로 진행하며, room create/join UX나 websocket transport 생성은 아직 포함하지 않는다.
+- ISSUE-22는 room create/join HTTP contract와 websocket session bootstrap domain을 추가해, 실제 live PvP 진입에 필요한 room/session wiring을 고정한다.
+- ISSUE-23은 ISSUE-22 bootstrap 위에 raw stdin/readline/stdout adapter와 실제 CLI entrypoint를 얹는 슬라이스로 진행한다.
 
 ---
 

@@ -36,6 +36,8 @@
 19. [ISSUE-19 · PvP session terminal controller / input token bridge](./ISSUE-19-session-terminal-controller.md)
 20. [ISSUE-20 · live PvP session terminal runner](./ISSUE-20-session-terminal-runner.md)
 21. [ISSUE-21 · session terminal CLI bootstrap](./ISSUE-21-session-terminal-cli.md)
+22. [ISSUE-22 · room create/join + session bootstrap](./ISSUE-22-room-session-bootstrap.md)
+23. [ISSUE-23 · session terminal stdio adapters](./ISSUE-23-session-terminal-stdio-adapters.md)
 
 ## 왜 이 순서인가
 
@@ -74,6 +76,8 @@ ruleset, restricted 목록, 레벨 압축, 치트 오염 판정이 먼저 고정
 | L. battle-tui/CLI 연결 전 terminal controller + deterministic token submit contract 정리 상태 | ISSUE-19 |
 | M. live session 구독 + submit orchestration runner 정리 상태 | ISSUE-20 |
 | N. 테스트 가능한 live CLI bootstrap/start-stop 경계 정리 상태 | ISSUE-21 |
+| O. room create/join + websocket session bootstrap 도메인 정리 상태 | ISSUE-22 |
+| P. 실제 stdin/stdout adapter + live entrypoint 정리 상태 | ISSUE-23 |
 
 ## 공통 실행 규칙
 
