@@ -104,6 +104,16 @@ export {
   type PvpSessionTerminalSubmitSuccessResult,
 } from './session-terminal-controller.js';
 export {
+  PvpSessionTerminalRunner,
+  createPvpSessionTerminalRunner,
+  type CreatePvpSessionTerminalRunnerOptions,
+  type PvpSessionTerminalRunnerCommand,
+  type PvpSessionTerminalRunnerLike,
+  type PvpSessionTerminalRunnerSessionClientLike,
+  type PvpSessionTerminalRunnerState,
+  type PvpSessionTerminalRunnerStateListener,
+} from './session-terminal-runner.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,

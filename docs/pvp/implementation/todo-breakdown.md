@@ -161,6 +161,7 @@
 - ISSUE-17 이후 상위 consumer는 session snapshot 하나로 transport/session/request/command/result를 함께 소비할 수 있으며, ISSUE-18은 이를 plain-text terminal layout으로 고정한다.
 - ISSUE-18 이후 다음 슬라이스는 battle-tui/cli에 이 deterministic renderer를 직접 붙이기 전에, input token bridge를 가진 terminal controller layer를 먼저 고정한다.
 - ISSUE-19 이후 battle-tui/cli는 controller contract 위에 stdin loop, room join flow, 화면 refresh 정책만 얹으면 된다.
+- ISSUE-20은 controller 위에 live session subscribe/start-stop/submit orchestration을 얹는 runner 슬라이스로 진행하며, 이후 실제 CLI는 stdin loop와 bootstrap만 추가로 붙인다.
 
 ---
 
