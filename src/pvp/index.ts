@@ -75,6 +75,13 @@ export {
   type PvpTurnResultView,
 } from './turn-result-view.js';
 export {
+  createPvpSessionScreenView,
+  type PvpSessionScreenSessionSummary,
+  type PvpSessionScreenStatus,
+  type PvpSessionScreenTransportSummary,
+  type PvpSessionScreenView,
+} from './session-screen-view.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,
