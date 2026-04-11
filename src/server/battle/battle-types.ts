@@ -23,6 +23,7 @@ export type BattleSessionPhase = 'awaiting_actions' | 'awaiting_replacement' | '
 export type BattleCommandPhase = Extract<BattleSessionPhase, 'awaiting_actions' | 'awaiting_replacement'>;
 export type BattleRequestKind = 'choose_move_or_switch' | 'choose_replacement';
 export type BattleFinishReason = 'all_opponent_pokemon_fainted' | 'forfeit' | 'timeout_forfeit' | 'abandoned';
+export type BattleCommandSource = 'client' | 'timeout_auto';
 
 export interface ChooseMoveCommand {
   type: 'choose_move';
@@ -314,10 +315,12 @@ export type RoomSnapshotPayload = {
     | {
         kind: 'choose_move_or_switch';
         deadlineMs: number;
+        commandSubmitted: boolean;
       }
     | {
         kind: 'choose_replacement';
         deadlineMs: number;
+        commandSubmitted: boolean;
       }
     | null;
 };
@@ -351,6 +354,10 @@ export interface BattleSessionRecord {
   pendingCommands: Partial<Record<RoomSeat, BattleCommandEnvelope['payload']>>;
   pendingReplacementSeats: RoomSeat[];
   pendingReplacementCommands: Partial<Record<RoomSeat, BattleCommandEnvelope['payload']>>;
+  requestState: BattleRequestState | null;
+  timeoutState: Record<RoomSeat, BattleSeatTimeoutState>;
+  commandLog: BattleCommandLogEntry[];
+  eventLog: BattleDebugEventEntry[];
   seenClientCommandIds: string[];
   nextSeq: number;
   result: BattleSessionResult | null;
@@ -368,9 +375,57 @@ export interface BattleSessionSubmitInput {
   session: BattleSessionRecord;
   seat: RoomSeat;
   envelope: BattleCommandEnvelope;
+  source?: BattleCommandSource;
 }
 
 export interface BattleSessionMutationResult {
   session: BattleSessionRecord;
   eventsBySeat: Record<RoomSeat, BattleServerEventEnvelope[]>;
+}
+
+
+export interface BattleRequestState {
+  kind: BattleRequestKind;
+  phase: BattleCommandPhase;
+  turn: number;
+  issuedAt: string;
+  deadlineAt: string;
+  requiredSeats: RoomSeat[];
+}
+
+export interface BattleSeatTimeoutState {
+  consecutive: number;
+  total: number;
+  lastTimeoutAt: string | null;
+}
+
+export interface BattleCommandLogEntry {
+  clientCommandId: string;
+  seat: RoomSeat;
+  turn: number;
+  phase: BattleCommandPhase;
+  command: BattleCommand;
+  source: BattleCommandSource;
+  accepted: boolean;
+  code: BattleCommandRejectionCode | null;
+  recordedAt: string;
+}
+
+export interface BattleDebugEventEntry {
+  seat: RoomSeat;
+  type: BattleServerEventEnvelope['type'];
+  seq: number;
+  sentAt: string;
+}
+
+export interface BattleDebugView {
+  roomId: string;
+  battleId: string;
+  phase: BattleSessionPhase;
+  turn: number;
+  requestState: BattleRequestState | null;
+  commands: BattleCommandLogEntry[];
+  events: BattleDebugEventEntry[];
+  timeouts: Record<RoomSeat, BattleSeatTimeoutState>;
+  result: BattleSessionResult | null;
 }

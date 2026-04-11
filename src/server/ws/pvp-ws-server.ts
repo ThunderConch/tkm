@@ -1,8 +1,13 @@
 import {
   BattleSessionService,
+  createTimeoutCommandEnvelope,
+  getTimedOutSeats,
+  isBattleRequestTimedOut,
   type BattleCommandEnvelope,
+  type BattleDebugView,
   type BattleSessionRecord,
 } from '../battle/index.js';
+import { buildBattleDebugView, buildRoomSnapshotPayload } from '../projection/battle-projection.js';
 import type { ActivePartySnapshot } from '../parties/index.js';
 import type { BattleRoomRecord, RoomPresence, RoomRepository, RoomSeat } from '../rooms/index.js';
 import {
@@ -27,12 +32,17 @@ export interface PvpWsConnectInput {
   token: string;
   connectionId: string;
   transport: PvpWsTransport;
+  resume?: boolean;
 }
 
 export interface PvpWsConnectionSummary {
   connectionId: string;
   seat: RoomSeat;
   battleId: string | null;
+}
+
+export interface BattleTimeoutSweepResult {
+  processedBattles: number;
 }
 
 function cloneRoom(room: BattleRoomRecord): BattleRoomRecord {
@@ -103,10 +113,16 @@ export class PvpWsServer {
 
     const room = this.getRoomOrThrow(input.roomId);
     const seat = resolveSeat(room, auth.userId);
+    const hadExistingSession = this.sessionsByRoomId.has(input.roomId);
     const duplicate = this.registry.getBySeat(input.roomId, seat);
     if (duplicate) {
-      input.transport.close(4001, 'PVP_WS_DUPLICATE_CONNECTION');
-      throw createError('PVP_WS_DUPLICATE_CONNECTION');
+      if (!input.resume) {
+        input.transport.close(4001, 'PVP_WS_DUPLICATE_CONNECTION');
+        throw createError('PVP_WS_DUPLICATE_CONNECTION');
+      }
+
+      this.registry.remove(duplicate.connectionId);
+      duplicate.transport.close(4001, 'PVP_WS_CONNECTION_REPLACED');
     }
 
     const existingSession = this.sessionsByRoomId.get(input.roomId);
@@ -122,11 +138,17 @@ export class PvpWsServer {
 
     const roomWithPresence = this.persistPresence(input.roomId, seat, 'connected');
     const startedSession = this.ensureSessionStarted(roomWithPresence);
+    const activeSession = this.sessionsByRoomId.get(input.roomId) ?? startedSession ?? existingSession;
+
+    if (hadExistingSession && activeSession) {
+      const resumedSession = cloneSession(activeSession);
+      this.sendCurrentSnapshot(resumedSession, seat, input.transport);
+    }
 
     return {
       connectionId: connection.connectionId,
       seat,
-      battleId: startedSession?.battleId ?? existingSession?.battleId ?? null,
+      battleId: activeSession?.battleId ?? null,
     };
   }
 
@@ -147,10 +169,7 @@ export class PvpWsServer {
       envelope: routed.envelope,
     });
 
-    this.sessionsByRoomId.set(result.session.roomId, cloneSession(result.session));
-    this.dispatchEvents(result.session.roomId, 'host', result.eventsBySeat.host);
-    this.dispatchEvents(result.session.roomId, 'guest', result.eventsBySeat.guest);
-    this.syncFinishedRoom(result.session);
+    this.persistMutationResult(result);
   }
 
   disconnectClient(
@@ -178,9 +197,67 @@ export class PvpWsServer {
     });
   }
 
+  sweepBattleTimeouts(): BattleTimeoutSweepResult {
+    const now = this.now();
+    let processedBattles = 0;
+
+    for (const [roomId, storedSession] of this.sessionsByRoomId.entries()) {
+      if (!storedSession.requestState || !isBattleRequestTimedOut(storedSession, now)) {
+        continue;
+      }
+
+      let session = cloneSession(storedSession);
+      const timedOutSeats = getTimedOutSeats(session, now);
+      if (timedOutSeats.length === 0) {
+        continue;
+      }
+
+      processedBattles += 1;
+      for (const seat of timedOutSeats) {
+        session.timeoutState[seat].consecutive += 1;
+        session.timeoutState[seat].total += 1;
+        session.timeoutState[seat].lastTimeoutAt = now.toISOString();
+      }
+
+      const forfeitingSeat = timedOutSeats.find((seat) => session.timeoutState[seat].consecutive >= 2);
+      if (forfeitingSeat) {
+        const result = this.battleSessionService.submitTimeoutForfeit({
+          session,
+          loserSeat: forfeitingSeat,
+        });
+        this.persistMutationResult(result);
+        continue;
+      }
+
+      for (const seat of timedOutSeats) {
+        const envelope = createTimeoutCommandEnvelope({ session, seat, now });
+        const result = this.battleSessionService.submitCommand({
+          session,
+          seat,
+          envelope,
+          source: 'timeout_auto',
+        });
+        session = result.session;
+        this.persistMutationResult(result);
+      }
+
+      const current = this.sessionsByRoomId.get(roomId);
+      if (current && (current.phase === 'finished' || current.phase === 'abandoned')) {
+        this.syncFinishedRoom(current);
+      }
+    }
+
+    return { processedBattles };
+  }
+
   getBattleSession(roomId: string): BattleSessionRecord | undefined {
     const session = this.sessionsByRoomId.get(roomId);
     return session ? cloneSession(session) : undefined;
+  }
+
+  getBattleDebugView(roomId: string): BattleDebugView | undefined {
+    const session = this.sessionsByRoomId.get(roomId);
+    return session ? buildBattleDebugView(session) : undefined;
   }
 
   private ensureSessionStarted(room: BattleRoomRecord): BattleSessionRecord | undefined {
@@ -218,12 +295,10 @@ export class PvpWsServer {
       hostParty,
       guestParty,
     });
-    this.sessionsByRoomId.set(result.session.roomId, cloneSession(result.session));
-    this.registry.updateBattleIdForRoom(result.session.roomId, result.session.battleId);
-    this.dispatchEvents(result.session.roomId, 'host', result.eventsBySeat.host);
-    this.dispatchEvents(result.session.roomId, 'guest', result.eventsBySeat.guest);
+    this.persistMutationResult(result);
 
-    return cloneSession(result.session);
+    const session = this.sessionsByRoomId.get(result.session.roomId);
+    return session ? cloneSession(session) : cloneSession(result.session);
   }
 
   private syncFinishedRoom(session: BattleSessionRecord): void {
@@ -318,6 +393,39 @@ export class PvpWsServer {
 
     this.roomRepository.saveRoom(nextRoom);
     return nextRoom;
+  }
+
+  private persistMutationResult(result: { session: BattleSessionRecord; eventsBySeat: Record<RoomSeat, PvpWsOutboundEnvelope[]> }): void {
+    this.sessionsByRoomId.set(result.session.roomId, cloneSession(result.session));
+    this.dispatchEvents(result.session.roomId, 'host', result.eventsBySeat.host);
+    this.dispatchEvents(result.session.roomId, 'guest', result.eventsBySeat.guest);
+    this.syncFinishedRoom(result.session);
+  }
+
+  private sendCurrentSnapshot(
+    session: BattleSessionRecord,
+    seat: RoomSeat,
+    transport: PvpWsTransport,
+  ): void {
+    const sentAt = this.now().toISOString();
+    const snapshot: PvpWsOutboundEnvelope = {
+      type: 'room.snapshot',
+      roomId: session.roomId,
+      battleId: session.battleId,
+      seq: session.nextSeq,
+      sentAt,
+      payload: buildRoomSnapshotPayload(session, seat, new Date(sentAt)),
+    };
+    session.nextSeq += 1;
+    session.updatedAt = sentAt;
+    session.eventLog.push({
+      seat,
+      type: 'room.snapshot',
+      seq: snapshot.seq,
+      sentAt,
+    });
+    this.sessionsByRoomId.set(session.roomId, cloneSession(session));
+    transport.send(snapshot);
   }
 
   private dispatchEvents(

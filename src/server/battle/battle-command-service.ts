@@ -6,6 +6,7 @@ import {
 import type {
   BattleCommandEnvelope,
   BattleCommandRejectionCode,
+  BattleCommandSource,
   BattleSessionRecord,
 } from './battle-types.js';
 import { BATTLE_COMMAND_REJECTION_CODES } from './battle-types.js';
@@ -56,8 +57,10 @@ export function validateBattleCommand(args: {
   session: BattleSessionRecord;
   seat: RoomSeat;
   envelope: BattleCommandEnvelope;
+  now: Date;
+  source: BattleCommandSource;
 }): BattleCommandValidationResult {
-  const { session, seat, envelope } = args;
+  const { session, seat, envelope, now, source } = args;
   const { battleId, roomId } = envelope;
   const { clientCommandId, phase, turn, command } = envelope.payload;
 
@@ -89,6 +92,19 @@ export function validateBattleCommand(args: {
     return reject(
       BATTLE_COMMAND_REJECTION_CODES.PVP_COMMAND_DUPLICATE,
       'This clientCommandId was already accepted for the battle.',
+      false,
+    );
+  }
+
+  if (
+    source !== 'timeout_auto'
+    && session.requestState
+    && session.requestState.requiredSeats.includes(seat)
+    && now.getTime() > new Date(session.requestState.deadlineAt).getTime()
+  ) {
+    return reject(
+      BATTLE_COMMAND_REJECTION_CODES.PVP_COMMAND_TIMEOUT,
+      'The current battle request deadline has already elapsed.',
       false,
     );
   }

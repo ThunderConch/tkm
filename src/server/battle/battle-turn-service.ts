@@ -48,6 +48,7 @@ export function resolveSubmittedActions(args: {
   const result = maybeBuildResultFromBattleState(session, recordedAt);
   if (result) {
     session.phase = 'finished';
+    session.pendingReplacementSeats = [];
     session.result = result;
     return {
       nextPhase: 'finished',
@@ -67,6 +68,7 @@ export function resolveSubmittedActions(args: {
     };
   }
 
+  session.pendingReplacementSeats = [];
   session.phase = 'awaiting_actions';
   session.turn += 1;
   return {
@@ -93,6 +95,7 @@ export function resolveSubmittedReplacements(args: {
   const result = maybeBuildResultFromBattleState(session, recordedAt);
   if (result) {
     session.phase = 'finished';
+    session.pendingReplacementSeats = [];
     session.result = result;
     return {
       nextPhase: 'finished',
@@ -117,15 +120,33 @@ export function resolveForfeit(args: {
   forfeitingSeat: RoomSeat;
   recordedAt: string;
 }): BattleTurnResolution {
-  const { session, forfeitingSeat, recordedAt } = args;
+  return resolveForfeitWithReason({ ...args, reason: 'forfeit' });
+}
+
+export function resolveTimeoutForfeit(args: {
+  session: BattleSessionRecord;
+  forfeitingSeat: RoomSeat;
+  recordedAt: string;
+}): BattleTurnResolution {
+  return resolveForfeitWithReason({ ...args, reason: 'timeout_forfeit' });
+}
+
+function resolveForfeitWithReason(args: {
+  session: BattleSessionRecord;
+  forfeitingSeat: RoomSeat;
+  recordedAt: string;
+  reason: Extract<BattleFinishReason, 'forfeit' | 'timeout_forfeit'>;
+}): BattleTurnResolution {
+  const { session, forfeitingSeat, recordedAt, reason } = args;
   const winnerSeat: RoomSeat = forfeitingSeat === 'host' ? 'guest' : 'host';
   const result: BattleSessionResult = {
     winnerSeat,
     loserSeat: forfeitingSeat,
-    reason: 'forfeit',
+    reason,
     recordedAt,
   };
   session.phase = 'finished';
+  session.pendingReplacementSeats = [];
   session.result = result;
   return {
     nextPhase: 'finished',
@@ -164,9 +185,7 @@ function maybeBuildResultFromBattleState(
 
   const winnerSeat: RoomSeat = hostAlive ? 'host' : 'guest';
   const loserSeat: RoomSeat = winnerSeat === 'host' ? 'guest' : 'host';
-  const reason: BattleFinishReason = winnerSeat === 'host'
-    ? 'all_opponent_pokemon_fainted'
-    : 'all_opponent_pokemon_fainted';
+  const reason: BattleFinishReason = 'all_opponent_pokemon_fainted';
 
   return {
     winnerSeat,
