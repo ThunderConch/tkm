@@ -28,6 +28,7 @@
 11. [ISSUE-11 · WebSocket 클라이언트 커넥터](./ISSUE-11-websocket-client-connector.md)
 12. [ISSUE-12 · 클라이언트 재접속 / backoff 컨트롤러](./ISSUE-12-client-reconnect-controller.md)
 13. [ISSUE-13 · 상위 PvP session client orchestration 레이어](./ISSUE-13-session-client-orchestrator.md)
+14. [ISSUE-14 · PvP action request rendering / input UX adapter](./ISSUE-14-action-request-view.md)
 
 ## 왜 이 순서인가
 

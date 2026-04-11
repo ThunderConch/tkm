@@ -47,6 +47,14 @@ export {
   type SendPvpSessionBattleCommandResult,
 } from './session-client.js';
 export {
+  createPvpActionRequestView,
+  createPvpActionRequestViewFromPendingRequest,
+  type CreatePvpActionRequestViewOptions,
+  type PvpActionRequestMenuEntry,
+  type PvpActionRequestMenuSection,
+  type PvpActionRequestView,
+} from './action-request-view.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,

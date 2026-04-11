@@ -114,8 +114,8 @@
 - [ ] public / private payload 분리 저장 규칙 추가
 
 ### 클라이언트 작업
-- [ ] action request 렌더링
-- [ ] move/switch/replacement 입력 UX 구현
+- [x] action request 렌더링
+- [x] move/switch/replacement 입력 UX adapter 구현
 - [ ] command accepted 상태 반영
 - [ ] turn resolved 이벤트 렌더링
 - [x] 클라이언트 세션 스토어(`src/pvp/session-store.ts`) 구현
@@ -149,7 +149,8 @@
 - Phase 3 클라이언트 기초는 ISSUE-09 ~ ISSUE-11로 완료
 - Phase 4 재접속 controller는 ISSUE-12로 완료
 - 상위 PvP session client facade는 ISSUE-13으로 완료
-- 다음 구현 단위는 PvP action request 렌더링 / 입력 UX adapter 이슈로 분리 예정
+- PvP action request 렌더링 / 입력 UX adapter는 ISSUE-14로 진행
+- 다음 구현 단위는 turn resolved 이벤트 렌더링 이슈로 분리 예정
 
 ---
 
