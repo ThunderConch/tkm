@@ -139,28 +139,28 @@
       "description": "A quiet town where adventures begin"
     },
     "2": {
-      "name": "Eterna Forest",
-      "description": "A vast, ancient forest shrouded in mystery where Bug-type Pokémon thrive"
-    },
-    "3": {
-      "name": "Pastoria City",
-      "description": "A wetland city bordering the Great Marsh, home to Water-type Pokémon"
-    },
-    "4": {
       "name": "Oreburgh City",
       "description": "A coal-mining city where fossil Pokémon are excavated from deep underground"
     },
-    "5": {
+    "3": {
+      "name": "Eterna Forest",
+      "description": "A vast, ancient forest shrouded in mystery where Bug-type Pokémon thrive"
+    },
+    "4": {
       "name": "Valley Windworks",
       "description": "A wind-powered facility crackling with Electric-type energy on the valley breeze"
     },
+    "5": {
+      "name": "Pastoria City",
+      "description": "A wetland city bordering the Great Marsh, home to Water-type Pokémon"
+    },
     "6": {
-      "name": "Snowpoint City",
-      "description": "A remote northern city buried in perpetual snow and blizzards"
+      "name": "Canalave City",
+      "description": "A port city with a grand library, connected by drawbridge to the mining heartland"
     },
     "7": {
-      "name": "Stark Mountain",
-      "description": "A scorching volcanic mountain where Heatran slumbers amid flowing lava"
+      "name": "Snowpoint City",
+      "description": "A remote northern city buried in perpetual snow and blizzards"
     },
     "8": {
       "name": "Solaceon Ruins",

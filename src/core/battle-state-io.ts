@@ -15,35 +15,13 @@ export const BATTLE_STATE_PATH = join(STATE_DIR, 'battle-state.json');
 
 // ── Types ──
 
-export interface LastHit {
-  target: 'player' | 'opponent';
-  damage: number;
-  effectiveness: 'super' | 'normal' | 'not_very' | 'immune';
-  timestamp: number;
-  prevHp: number;
-}
-
-export interface AnimationFrame {
-  kind: 'hit' | 'drain' | 'flash' | 'collapse';
-  durationMs: number;
-  playerHp?: number;
-  opponentHp?: number;
-  target?: 'player' | 'opponent';
-  effectiveness?: 'super' | 'normal' | 'not_very' | 'immune';
-  flashColor?: string;
-}
-
 export interface BattleStateFile {
   battleState: BattleState;
   gym: GymData;
   generation: string;
   stateDir: string;
   playerPartyNames: string[];
-  lastHit?: LastHit | null;
-  animationFrames?: AnimationFrame[];
-  currentFrameIndex?: number | null;
   sessionId?: string;
-  defeatTimestamp?: number;
 }
 
 // ── File Operations ──
@@ -129,10 +107,12 @@ export function readBattleState(): BattleStateFile | null {
     // Migrate pre-status saves so they can be resumed safely.
     if (parsed?.battleState?.player) normalizeBattleTeam(parsed.battleState.player);
     if (parsed?.battleState?.opponent) normalizeBattleTeam(parsed.battleState.opponent);
+    // Migrate animating phase: if battle was stuck in animation, reset to select_action
+    if ((parsed?.battleState?.phase as string) === 'animating') {
+      parsed.battleState.phase = 'select_action';
+    }
     return {
       ...parsed,
-      animationFrames: parsed.animationFrames ?? undefined,
-      currentFrameIndex: parsed.currentFrameIndex === null ? null : parsed.currentFrameIndex ?? undefined,
       sessionId: parsed.sessionId ?? undefined,
     };
   } catch {

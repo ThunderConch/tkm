@@ -110,8 +110,8 @@ describe('events', () => {
           streak_days: 7,
         },
       });
-      // Region 5 has rare pokemon (405, 462, 466, 474)
-      const config = makeConfig({ party: ['387'], current_region: '5' });
+      // Region 4 has rare pokemon (405, 462, 466, 474) — was region 5 before gen4 reorder
+      const config = makeConfig({ party: ['387'], current_region: '4' });
       const pokemonDB = JSON.parse(readFileSync(join(PROJECT_ROOT, 'data', 'pokemon.json'), 'utf-8'));
 
       // With 7-day streak, should get rare or legendary from region with rare pool

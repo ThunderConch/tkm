@@ -8,8 +8,6 @@
  *   npx tsx src/cli/battle-turn.ts --action 5        # switch menu
  *   npx tsx src/cli/battle-turn.ts --action switch:2 # switch to index 2
  *   npx tsx src/cli/battle-turn.ts --action 6        # surrender
- *   npx tsx src/cli/battle-turn.ts --refresh --frame 0 --session <id>
- *   npx tsx src/cli/battle-turn.ts --refresh --finalize --session <id>
  *   npx tsx src/cli/battle-turn.ts --end             # clean up
  */
 import { randomUUID } from 'node:crypto';
@@ -33,7 +31,7 @@ import {
   deleteBattleState,
 } from '../core/battle-state-io.js';
 import { fallbackMoves, loadMovesData, getLoadedMovesDB, getMovesForPokemon, getDisplayName } from '../core/battle-setup.js';
-import type { AnimationFrame, BattleStateFile, LastHit } from '../core/battle-state-io.js';
+import type { BattleStateFile } from '../core/battle-state-io.js';
 import type { State, Config, MoveData, GymData, BattleState, BattlePokemon, TurnAction } from '../core/types.js';
 
 // ── CLI Arg Parsing ──
@@ -70,9 +68,6 @@ function pokemonInfo(p: BattlePokemon): PokemonInfo {
   };
 }
 
-type PersistedBattlePhase = BattleState['phase'] | 'animating';
-type PersistedBattleState = Omit<BattleState, 'phase'> & { phase: PersistedBattlePhase };
-
 function buildMenu(player: BattlePokemon): string {
   const moveNames = player.moves
     .map((m, i) => `${i + 1}.${m.data.nameKo}`)
@@ -95,18 +90,6 @@ function output(data: Record<string, unknown>): void {
 
 function buildQuestionContext(player: BattlePokemon, opponent: BattlePokemon): string {
   return `⚔️ vs ${opponent.displayName} Lv.${opponent.level} HP:${opponent.currentHp}/${opponent.maxHp} | ${player.displayName} Lv.${player.level} HP:${player.currentHp}/${player.maxHp}`;
-}
-
-function asPersistedBattleState(battleState: BattleState): PersistedBattleState {
-  return battleState as unknown as PersistedBattleState;
-}
-
-function getPersistedPhase(battleState: BattleState): PersistedBattlePhase {
-  return asPersistedBattleState(battleState).phase;
-}
-
-function setPersistedPhase(battleState: BattleState, phase: PersistedBattlePhase): void {
-  asPersistedBattleState(battleState).phase = phase;
 }
 
 function buildMoveOptions(player: BattlePokemon): Array<{
@@ -158,16 +141,6 @@ function buildSwitchOptions(
     .map(({ index, name, level, hp, maxHp }) => ({ index, name, level, hp, maxHp }));
 }
 
-function inferResumePhase(battleState: BattleState): BattleState['phase'] {
-  if (battleState.winner || !hasAlivePokemon(battleState.player) || !hasAlivePokemon(battleState.opponent)) {
-    return 'battle_end';
-  }
-  if (getActivePokemon(battleState.player).fainted) {
-    return 'fainted_switch';
-  }
-  return 'select_action';
-}
-
 function autoSwitchIfForced(battleState: BattleState, messages?: string[]): boolean {
   if (!getActivePokemon(battleState.player).fainted) return false;
   const switchOptions = buildSwitchOptions(battleState, { includeFainted: false });
@@ -179,13 +152,6 @@ function autoSwitchIfForced(battleState: BattleState, messages?: string[]): bool
     messages.push(t('battle.go', { pokemon: getActivePokemon(battleState.player).displayName }));
   }
   return true;
-}
-
-function outputPhaseForStatus(battleState: BattleState, status?: string): string {
-  const phase = getPersistedPhase(battleState);
-  if (phase === 'animating') return phase;
-  if (status === 'switch_menu' || status === 'fainted_switch') return 'switch_select';
-  return phase;
 }
 
 function withBattleMetadata(
@@ -200,127 +166,12 @@ function withBattleMetadata(
     };
   }
   const status = typeof data.status === 'string' ? data.status : undefined;
+  const phase = (status === 'switch_menu' || status === 'fainted_switch') ? 'switch_select' : bsf.battleState.phase;
   return {
     ...data,
     sessionId: bsf.sessionId ?? null,
-    phase: outputPhaseForStatus(bsf.battleState, status),
-    animationFrames: bsf.animationFrames ?? undefined,
-    currentFrameIndex: bsf.currentFrameIndex ?? null,
+    phase,
   };
-}
-
-function flashColorFor(effectiveness: LastHit['effectiveness'] | undefined): string | undefined {
-  switch (effectiveness) {
-    case 'super':
-      return '#ef4444';
-    case 'not_very':
-      return '#f59e0b';
-    case 'immune':
-      return '#9ca3af';
-    default:
-      return undefined;
-  }
-}
-
-function buildAnimationFrames(
-  lastHit: LastHit | null,
-  playerHpBefore: number,
-  opponentHpBefore: number,
-  playerHpAfter: number,
-  opponentHpAfter: number,
-  turnResult: { playerFainted: boolean; opponentFainted: boolean },
-): AnimationFrame[] | undefined {
-  if (!lastHit) return undefined;
-
-  const playerMidHp = Math.max(0, Math.round((playerHpBefore + playerHpAfter) / 2));
-  const opponentMidHp = Math.max(0, Math.round((opponentHpBefore + opponentHpAfter) / 2));
-  const frames: AnimationFrame[] = [
-    {
-      kind: 'hit',
-      durationMs: 150,
-      target: lastHit.target,
-      effectiveness: lastHit.effectiveness,
-      playerHp: playerHpBefore,
-      opponentHp: opponentHpBefore,
-    },
-    {
-      kind: 'flash',
-      durationMs: 200,
-      target: lastHit.target,
-      effectiveness: lastHit.effectiveness,
-      playerHp: playerHpBefore,
-      opponentHp: opponentHpBefore,
-      flashColor: flashColorFor(lastHit.effectiveness),
-    },
-    {
-      kind: 'drain',
-      durationMs: 800,
-      playerHp: playerMidHp,
-      opponentHp: opponentMidHp,
-      target: lastHit.target,
-      effectiveness: lastHit.effectiveness,
-    },
-    {
-      kind: 'drain',
-      durationMs: 600,
-      playerHp: playerHpAfter,
-      opponentHp: opponentHpAfter,
-      target: lastHit.target,
-      effectiveness: lastHit.effectiveness,
-    },
-  ];
-
-  const causedKo =
-    (lastHit.target === 'player' && turnResult.playerFainted) ||
-    (lastHit.target === 'opponent' && turnResult.opponentFainted);
-  if (causedKo) {
-    frames.push({
-      kind: 'collapse',
-      durationMs: 900,
-      target: lastHit.target,
-      playerHp: playerHpAfter,
-      opponentHp: opponentHpAfter,
-      effectiveness: lastHit.effectiveness,
-    });
-  }
-
-  return frames;
-}
-
-function detectLastHit(
-  messages: string[],
-  playerHpBefore: number,
-  opponentHpBefore: number,
-  playerHpAfter: number,
-  opponentHpAfter: number,
-): LastHit | null {
-  const opponentDamage = opponentHpBefore - opponentHpAfter;
-  const playerDamage = playerHpBefore - playerHpAfter;
-  const now = Date.now();
-
-  // When both sides deal damage, effectiveness is ambiguous — the message list
-  // contains results from both attacks and we can't reliably attribute which
-  // effectiveness belongs to which hit without structured per-hit data from
-  // resolveTurn. Default to 'normal' to avoid showing wrong color flash.
-  if (opponentDamage > 0 && playerDamage > 0) {
-    return { target: 'opponent', damage: opponentDamage, effectiveness: 'normal', timestamp: now, prevHp: opponentHpBefore };
-  }
-
-  // Single-hit turn: effectiveness is unambiguous
-  let effectiveness: LastHit['effectiveness'] = 'normal';
-  for (const msg of messages) {
-    if (msg.includes('효과가 굉장했다')) { effectiveness = 'super'; break; }
-    if (msg.includes('효과가 별로인')) { effectiveness = 'not_very'; break; }
-    if (msg.includes('효과가 없는')) { effectiveness = 'immune'; break; }
-  }
-
-  if (opponentDamage > 0) {
-    return { target: 'opponent', damage: opponentDamage, effectiveness, timestamp: now, prevHp: opponentHpBefore };
-  }
-  if (playerDamage > 0) {
-    return { target: 'player', damage: playerDamage, effectiveness, timestamp: now, prevHp: playerHpBefore };
-  }
-  return null;
 }
 
 // ── Init Flow ──
@@ -498,7 +349,6 @@ function handleInit(): void {
   const existingBsf = readBattleState();
   const currentSessionId = process.env.CLAUDE_SESSION_ID;
   const isExistingBattleLive = !!existingBsf
-    && !existingBsf.defeatTimestamp
     && existingBsf.battleState.phase !== 'battle_end';
   if (isExistingBattleLive) {
     if (existingBsf.sessionId && currentSessionId && existingBsf.sessionId !== currentSessionId) {
@@ -569,15 +419,11 @@ function handleAction(): void {
     process.exit(1);
   }
 
-  // Guard: reject actions on battles that have already ended (defeat animation state)
-  if (bsf.defeatTimestamp || bsf.battleState.phase === 'battle_end') {
+  // Guard: reject actions on battles that have already ended
+  if (bsf.battleState.phase === 'battle_end') {
     deleteBattleState();
     output({ status: 'error', messages: ['Battle has already ended. State cleaned up.'] });
     process.exit(1);
-  }
-  if (getPersistedPhase(bsf.battleState) === 'animating') {
-    output(withBattleMetadata(bsf, { status: 'rejected', reason: 'animation_in_progress' }));
-    process.exit(0);
   }
 
   const { battleState, gym, generation, stateDir, playerPartyNames } = bsf;
@@ -625,10 +471,6 @@ function handleAction(): void {
   const playerActive = getActivePokemon(battleState.player);
   const opponentActive = getActivePokemon(battleState.opponent);
 
-  // Record HP before turn for lastHit detection
-  const playerHpBefore = playerActive.currentHp;
-  const opponentHpBefore = opponentActive.currentHp;
-
   let aiAction: TurnAction;
   if (playerAction.type === 'surrender') {
     aiAction = { type: 'move', moveIndex: 0 };
@@ -640,24 +482,6 @@ function handleAction(): void {
   const turnResult = resolveTurn(battleState, playerAction, aiAction);
   const messages = [...turnResult.messages];
 
-  // Detect lastHit from HP changes
-  const lastHit = detectLastHit(
-    messages,
-    playerHpBefore,
-    opponentHpBefore,
-    playerActive.currentHp,
-    opponentActive.currentHp,
-  );
-  bsf.lastHit = lastHit;
-  const animationFrames = buildAnimationFrames(
-    lastHit,
-    playerHpBefore,
-    opponentHpBefore,
-    playerActive.currentHp,
-    opponentActive.currentHp,
-    turnResult,
-  );
-
   // Post-turn handling
   // Opponent fainted but has more — auto-switch AI
   if (turnResult.opponentFainted && hasAlivePokemon(battleState.opponent)) {
@@ -665,20 +489,10 @@ function handleAction(): void {
       (p, i) => i !== battleState.opponent.activeIndex && !p.fainted,
     );
     if (nextIdx !== -1) {
-      const oldName = getActivePokemon(battleState.opponent).displayName;
       battleState.opponent.activeIndex = nextIdx;
       const newActive = getActivePokemon(battleState.opponent);
       messages.push(t('battle.send_out', { leader: gym.leaderKo, pokemon: newActive.displayName }));
     }
-  }
-
-  if (animationFrames && animationFrames.length > 0) {
-    bsf.animationFrames = animationFrames;
-    bsf.currentFrameIndex = null;
-    setPersistedPhase(battleState, 'animating');
-  } else {
-    bsf.animationFrames = undefined;
-    bsf.currentFrameIndex = null;
   }
 
   if (battleState.winner === 'player') {
@@ -709,7 +523,6 @@ function handleAction(): void {
     opponent: pokemonInfo(currentOpponent),
     player: pokemonInfo(currentPlayer),
     badge: null,
-    lastHit: lastHit ?? undefined,
     questionContext: buildQuestionContext(currentPlayer, currentOpponent),
   }));
 }
@@ -764,7 +577,7 @@ function handleFaintedSwitch(bsf: BattleStateFile, messages: string[]): void {
   }
 
   // Auto-switch if only 1 option
-  if (switchOptions.length === 1 && getPersistedPhase(battleState) !== 'animating') {
+  if (switchOptions.length === 1) {
     autoSwitchIfForced(battleState, messages);
     const newActive = getActivePokemon(battleState.player);
 
@@ -869,11 +682,7 @@ function handleVictory(bsf: BattleStateFile, messages: string[]): void {
     }
   }
 
-  if (getPersistedPhase(battleState) !== 'animating') {
-    deleteBattleState();
-  } else {
-    writeBattleState(bsf);
-  }
+  deleteBattleState();
 
   output(withBattleMetadata(bsf, {
     status: 'victory',
@@ -894,23 +703,11 @@ function handleVictory(bsf: BattleStateFile, messages: string[]): void {
 // ── Defeat ──
 
 function handleDefeat(bsf: BattleStateFile, messages: string[]): void {
-  const { battleState, gym, generation, stateDir } = bsf;
-
-  // Load & save state (battle stats)
-  const genDir = join(stateDir, generation);
-  const statePath = join(genDir, 'state.json');
-  if (existsSync(statePath)) {
-    const state: State = JSON.parse(readFileSync(statePath, 'utf-8'));
-    writeFileSync(statePath, JSON.stringify(state, null, 2), 'utf-8');
-  }
+  const { battleState, gym } = bsf;
 
   messages.push(t('battle.defeat', { leader: gym.leaderKo }));
 
-  // Record terminal-state time for both KO and surrender.
-  // Collapse animation still only shows for actual KO, because the renderer
-  // separately checks whether the player's active Pokémon actually fainted.
-  bsf.defeatTimestamp = Date.now();
-  writeBattleState(bsf);
+  deleteBattleState();
 
   output(withBattleMetadata(bsf, {
     status: 'defeat',
@@ -927,114 +724,6 @@ function handleEnd(): void {
   const bsf = readBattleState();
   deleteBattleState();
   output(withBattleMetadata(bsf, { status: 'ended', messages: ['Battle state cleared.'] }));
-}
-
-// ── Refresh Flow ──
-
-function handleRefresh(): void {
-  const frameStr = getArg('frame');
-  const finalize = hasFlag('finalize');
-  const sessionId = getArg('session');
-
-  if (!sessionId) {
-    output({ status: 'error', messages: ['--session <id> is required'], sessionId: null, phase: null });
-    process.exit(1);
-  }
-
-  const bsf = readBattleState();
-  if (!bsf) {
-    output({ status: 'error', messages: ['No active battle. Use --init to start one.'], sessionId, phase: null });
-    process.exit(1);
-  }
-
-  const reject = (reason: string): never => {
-    output(withBattleMetadata(bsf, { status: 'rejected', reason }));
-    process.exit(0);
-  };
-
-  if (bsf.sessionId !== sessionId) {
-    reject('session_mismatch');
-  }
-  if (getPersistedPhase(bsf.battleState) !== 'animating') {
-    reject('not_animating');
-  }
-
-  if (finalize) {
-    bsf.animationFrames = undefined;
-    bsf.currentFrameIndex = null;
-    const forcedSwitchApplied = autoSwitchIfForced(bsf.battleState);
-    setPersistedPhase(bsf.battleState, forcedSwitchApplied ? 'select_action' : inferResumePhase(bsf.battleState));
-    bsf.lastHit = null;
-    writeBattleState(bsf);
-    const player = getActivePokemon(bsf.battleState.player);
-    const opponent = getActivePokemon(bsf.battleState.opponent);
-    const settledPhase = getPersistedPhase(bsf.battleState);
-
-    if (bsf.battleState.winner === 'player') {
-      output(withBattleMetadata(bsf, {
-        status: 'victory',
-        messages: [],
-        badge: null,
-        opponent: pokemonInfo(opponent),
-        player: pokemonInfo(player),
-        questionContext: buildQuestionContext(player, opponent),
-      }));
-      return;
-    }
-    if (bsf.battleState.winner === 'opponent') {
-      output(withBattleMetadata(bsf, {
-        status: 'defeat',
-        messages: [],
-        badge: null,
-        opponent: pokemonInfo(opponent),
-        player: pokemonInfo(player),
-        questionContext: buildQuestionContext(player, opponent),
-      }));
-      return;
-    }
-    if (settledPhase === 'fainted_switch') {
-      output(withBattleMetadata(bsf, {
-        status: 'fainted_switch',
-        messages: [],
-        switchOptions: buildSwitchOptions(bsf.battleState, { excludeActive: true, includeFainted: false }),
-        partyOptions: buildPartyOptions(bsf.battleState, { excludeActive: true, includeFainted: true }),
-        opponent: pokemonInfo(opponent),
-        player: pokemonInfo(player),
-        badge: null,
-        questionContext: `⚔️ vs ${opponent.displayName} — ${t('battle.select_next')}`,
-      }));
-      return;
-    }
-
-    output(withBattleMetadata(bsf, {
-      status: 'ongoing',
-      messages: [],
-      menu: buildMenu(player),
-      moveOptions: buildMoveOptions(player),
-      opponent: pokemonInfo(opponent),
-      player: pokemonInfo(player),
-      badge: null,
-      questionContext: buildQuestionContext(player, opponent),
-    }));
-    return;
-  }
-
-  const frames = bsf.animationFrames ?? [];
-  const requestedFrame = Number.parseInt(frameStr ?? '', 10);
-  if (!Number.isFinite(requestedFrame)) {
-    output({ status: 'error', messages: ['--frame <N> is required for refresh'], sessionId: bsf.sessionId ?? null, phase: outputPhaseForStatus(bsf.battleState) });
-    process.exit(1);
-  }
-  if (requestedFrame < 0 || requestedFrame >= frames.length) {
-    reject('frame_out_of_range');
-  }
-  if (requestedFrame < (bsf.currentFrameIndex ?? -1)) {
-    reject('frame_rewind_forbidden');
-  }
-
-  bsf.currentFrameIndex = requestedFrame;
-  writeBattleState(bsf);
-  output(withBattleMetadata(bsf, { status: 'ongoing' }));
 }
 
 // ── Signal Handlers ──
@@ -1060,19 +749,6 @@ function main(): void {
   try {
     if (hasFlag('init')) {
       handleInit();
-    } else if (hasFlag('refresh')) {
-      const hasFrame = getArg('frame') !== undefined;
-      const finalize = hasFlag('finalize');
-      if (hasFrame === finalize) {
-        output({
-          status: 'error',
-          messages: ['Use exactly one of --frame <N> or --finalize with --refresh.'],
-          sessionId: null,
-          phase: null,
-        });
-        process.exit(1);
-      }
-      handleRefresh();
     } else if (hasFlag('end')) {
       handleEnd();
     } else if (getArg('action') !== undefined) {
@@ -1084,8 +760,6 @@ function main(): void {
           'Usage:',
           '  --init --gym <id> --gen <gen>   Start battle',
           '  --action <1-4|5|6|switch:N>     Take action',
-          '  --refresh --frame <N> --session <id>',
-          '  --refresh --finalize --session <id>',
           '  --end                            Clean up',
         ],
       });
