@@ -1,7 +1,7 @@
 # PvP 서버 패키지 / 모듈 구조 제안
 
 상위 문서: [PvP 구현 계획 문서](./README.md)  
-관련 문서: [서버 아키텍처](../server/architecture.md), [서버 DB 스키마 초안](../server/database-schema.md), [HTTP / WebSocket API 계약 초안](../server/api-contract.md), [PvP 작업 분해 / TODO](./todo-breakdown.md)
+관련 문서: [서버 아키텍처](../server/architecture.md), [서버 DB 스키마 초안](../server/storage/database-schema.md), [HTTP / WebSocket API 계약 초안](../server/api-contract.md), [PvP 작업 분해 / TODO](./todo-breakdown.md)
 
 ## 목적
 
@@ -506,5 +506,5 @@ test/
 ## 다음 문서
 
 - [PvP 작업 분해 / TODO](./todo-breakdown.md)
-- [서버 DB 스키마 초안](../server/database-schema.md)
+- [서버 DB 스키마 초안](../server/storage/database-schema.md)
 - [HTTP / WebSocket API 계약 초안](../server/api-contract.md)

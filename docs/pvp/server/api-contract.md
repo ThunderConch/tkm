@@ -1,7 +1,7 @@
 # PvP HTTP / WebSocket API 계약 초안
 
 상위 문서: [PvP 문서 인덱스](../README.md)  
-관련 문서: [서버 아키텍처](./architecture.md), [서버 데이터 모델](./data-model.md), [온라인 파티 등록 상세 계약](./party-registration-contract.md), [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md), [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md), [실시간 배틀 흐름](./battle-flow.md), [치트 대응 정책](../security/anti-cheat.md)
+관련 문서: [서버 아키텍처](./architecture.md), [서버 데이터 모델](./storage/data-model.md), [온라인 파티 등록 상세 계약](./contracts/party-registration.md), [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md), [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md), [실시간 배틀 흐름](./battle-flow.md), [치트 대응 정책](../security/anti-cheat.md)
 
 ## 목표
 
@@ -40,7 +40,7 @@
 
 `PUT /api/pvp/parties/{generation}/active`
 
-상세 계약은 [온라인 파티 등록 상세 계약](./party-registration-contract.md)을 따른다.
+상세 계약은 [온라인 파티 등록 상세 계약](./contracts/party-registration.md)을 따른다.
 
 요청 예시:
 
@@ -72,7 +72,7 @@
 
 `POST /api/pvp/rooms`
 
-상세 계약은 [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md)을 따른다.
+상세 계약은 [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md)을 따른다.
 
 요청 예시:
 
@@ -98,7 +98,7 @@
 
 `POST /api/pvp/rooms/{roomId}/join`
 
-상세 계약은 [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md)을 따른다.
+상세 계약은 [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md)을 따른다.
 
 요청 예시:
 
@@ -113,7 +113,7 @@
 
 `GET /api/pvp/rooms/{roomId}`
 
-상세 계약은 [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md)을 따른다.
+상세 계약은 [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md)을 따른다.
 
 재접속 시 초기 동기화에 사용한다.
 
@@ -125,7 +125,7 @@
 
 `GET /ws/pvp?roomId=<roomId>&token=<token>`
 
-상세 계약은 [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md)을 따른다.
+상세 계약은 [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md)을 따른다.
 
 클라이언트는 룸 입장 완료 후 WebSocket을 연결한다.
 
@@ -227,8 +227,8 @@ HTTP와 WebSocket 모두 다음 종류의 에러를 분리하는 것이 좋다.
 
 ## 다음 문서
 
-- [온라인 파티 등록 상세 계약](./party-registration-contract.md)
-- [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md)
-- [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md)
+- [온라인 파티 등록 상세 계약](./contracts/party-registration.md)
+- [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md)
+- [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md)
 - [실시간 배틀 흐름](./battle-flow.md)
 - [치트 대응 정책](../security/anti-cheat.md)

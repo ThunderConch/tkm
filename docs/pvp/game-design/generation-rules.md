@@ -1,7 +1,7 @@
 # 세대별 ruleset 설계
 
 상위 문서: [PvP 문서 인덱스](../README.md)  
-관련 문서: [성장 및 파티 등록](./progression-and-party-registration.md), [특수 포켓몬 정책](./special-pokemon-policy.md), [서버 데이터 모델](../server/data-model.md)
+관련 문서: [성장 및 파티 등록](./progression-and-party-registration.md), [특수 포켓몬 정책](./special-pokemon-policy.md), [서버 데이터 모델](../server/storage/data-model.md)
 
 ## 왜 세대별 ruleset이 필요한가
 
@@ -122,5 +122,5 @@ Tokénmon은 이미 세대별 데이터와 진행 구조를 갖고 있다.
 
 ## 다음 문서
 
-- [서버 데이터 모델](../server/data-model.md)
+- [서버 데이터 모델](../server/storage/data-model.md)
 - [API 계약](../server/api-contract.md)

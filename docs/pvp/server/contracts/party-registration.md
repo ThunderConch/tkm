@@ -1,7 +1,7 @@
 # 온라인 파티 등록 상세 계약
 
-상위 문서: [PvP 서버 설계 문서](./README.md)  
-관련 문서: [API 계약 초안](./api-contract.md), [서버 데이터 모델](./data-model.md), [DB 스키마 초안](./database-schema.md), [성장 및 파티 등록](../game-design/progression-and-party-registration.md), [치트 대응 정책](../security/anti-cheat.md)
+상위 문서: [PvP 서버 Contracts 문서](./README.md)  
+관련 문서: [API 계약 초안](../api-contract.md), [서버 데이터 모델](../storage/data-model.md), [DB 스키마 초안](../storage/database-schema.md), [성장 및 파티 등록](../../game-design/progression-and-party-registration.md), [치트 대응 정책](../../security/anti-cheat.md)
 
 ## 목적
 
@@ -627,7 +627,7 @@
 
 ## 다음 문서
 
-- [API 계약 초안](./api-contract.md)
-- [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md)
-- [실시간 배틀 흐름](./battle-flow.md)
-- [PvP 작업 분해 / TODO](../implementation/todo-breakdown.md)
+- [API 계약 초안](../api-contract.md)
+- [친구전 룸 / 매치 성립 상세 계약](./room-and-match.md)
+- [실시간 배틀 흐름](../battle-flow.md)
+- [PvP 작업 분해 / TODO](../../implementation/todo-breakdown.md)

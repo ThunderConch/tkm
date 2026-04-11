@@ -19,6 +19,6 @@
 
 ## 구현 시 먼저 볼 상세 계약
 
-- Phase 1 등록 작업 전에는 [온라인 파티 등록 상세 계약](../server/party-registration-contract.md)을 먼저 읽는다.
-- Phase 2 룸 작업 전에는 [친구전 룸 / 매치 성립 상세 계약](../server/room-and-match-contract.md)을 먼저 읽는다.
-- Phase 3 배틀 세션 작업 전에는 [실시간 배틀 세션 상세 계약](../server/realtime-battle-session-contract.md)을 먼저 읽는다.
+- Phase 1 등록 작업 전에는 [온라인 파티 등록 상세 계약](../server/contracts/party-registration.md)을 먼저 읽는다.
+- Phase 2 룸 작업 전에는 [친구전 룸 / 매치 성립 상세 계약](../server/contracts/room-and-match.md)을 먼저 읽는다.
+- Phase 3 배틀 세션 작업 전에는 [실시간 배틀 세션 상세 계약](../server/contracts/realtime-battle-session.md)을 먼저 읽는다.

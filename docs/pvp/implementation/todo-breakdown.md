@@ -1,7 +1,7 @@
 # PvP 작업 분해 / TODO
 
 상위 문서: [PvP 구현 계획 문서](./README.md)  
-기반 설계 문서: [PvP 초기 구현 PRD](./prd.md), [구현 로드맵](../roadmap/rollout-plan.md), [서버 DB 스키마 초안](../server/database-schema.md), [서버 패키지 / 모듈 구조 제안](./server-package-layout.md)
+기반 설계 문서: [PvP 초기 구현 PRD](./prd.md), [구현 로드맵](../roadmap/rollout-plan.md), [서버 DB 스키마 초안](../server/storage/database-schema.md), [서버 패키지 / 모듈 구조 제안](./server-package-layout.md)
 
 ## 목적
 
@@ -27,7 +27,7 @@
 
 ## Phase 1. 온라인 파티 등록
 
-상세 기준 문서: [온라인 파티 등록 상세 계약](../server/party-registration-contract.md)
+상세 기준 문서: [온라인 파티 등록 상세 계약](../server/contracts/party-registration.md)
 
 ### 서버 작업
 - [ ] generation ruleset 조회 endpoint 추가
@@ -61,7 +61,7 @@
 
 ## Phase 2. 친구전 룸 시스템
 
-상세 기준 문서: [친구전 룸 / 매치 성립 상세 계약](../server/room-and-match-contract.md)
+상세 기준 문서: [친구전 룸 / 매치 성립 상세 계약](../server/contracts/room-and-match.md)
 
 ### 서버 작업
 - [ ] 룸 생성 endpoint 추가
@@ -91,7 +91,7 @@
 
 ## Phase 3. 서버 권한 배틀 코어
 
-상세 기준 문서: [실시간 배틀 세션 상세 계약](../server/realtime-battle-session-contract.md)
+상세 기준 문서: [실시간 배틀 세션 상세 계약](../server/contracts/realtime-battle-session.md)
 
 ### 서버 작업
 - [ ] WebSocket 연결 진입점 추가

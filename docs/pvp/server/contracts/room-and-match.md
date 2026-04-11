@@ -1,7 +1,7 @@
 # 친구전 룸 / 매치 성립 상세 계약
 
-상위 문서: [PvP 서버 설계 문서](./README.md)  
-관련 문서: [API 계약 초안](./api-contract.md), [온라인 파티 등록 상세 계약](./party-registration-contract.md), [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md), [실시간 배틀 흐름](./battle-flow.md), [치트 대응 정책](../security/anti-cheat.md)
+상위 문서: [PvP 서버 Contracts 문서](./README.md)  
+관련 문서: [API 계약 초안](../api-contract.md), [온라인 파티 등록 상세 계약](./party-registration.md), [실시간 배틀 세션 상세 계약](./realtime-battle-session.md), [실시간 배틀 흐름](../battle-flow.md), [치트 대응 정책](../../security/anti-cheat.md)
 
 ## 목적
 
@@ -483,6 +483,6 @@ Body 없음.
 
 ## 다음 문서
 
-- [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md)
-- [실시간 배틀 흐름](./battle-flow.md)
-- [치트 대응 정책](../security/anti-cheat.md)
+- [실시간 배틀 세션 상세 계약](./realtime-battle-session.md)
+- [실시간 배틀 흐름](../battle-flow.md)
+- [치트 대응 정책](../../security/anti-cheat.md)

@@ -1,7 +1,7 @@
 # 성장 및 파티 등록 구조
 
 상위 문서: [PvP 문서 인덱스](../README.md)  
-관련 문서: [배틀 포맷](./battle-format.md), [세대별 ruleset 설계](./generation-rules.md), [치트 대응 정책](../security/anti-cheat.md), [서버 데이터 모델](../server/data-model.md)
+관련 문서: [배틀 포맷](./battle-format.md), [세대별 ruleset 설계](./generation-rules.md), [치트 대응 정책](../security/anti-cheat.md), [서버 데이터 모델](../server/storage/data-model.md)
 
 ## 핵심 원칙
 
@@ -114,5 +114,5 @@ Tokénmon의 온라인 PvP는 **로컬 스토리/성장을 유지**하면서도,
 ## 다음에 읽을 문서
 
 - [세대별 ruleset 설계](./generation-rules.md)
-- [서버 데이터 모델](../server/data-model.md)
+- [서버 데이터 모델](../server/storage/data-model.md)
 - [치트 대응 정책](../security/anti-cheat.md)

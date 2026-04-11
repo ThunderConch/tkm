@@ -1,12 +1,12 @@
 # 실시간 배틀 흐름
 
 상위 문서: [PvP 문서 인덱스](../README.md)  
-관련 문서: [배틀 포맷](../game-design/battle-format.md), [서버 아키텍처](./architecture.md), [API 계약](./api-contract.md), [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md), [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md)
+관련 문서: [배틀 포맷](../game-design/battle-format.md), [서버 아키텍처](./architecture.md), [API 계약](./api-contract.md), [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md), [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md)
 
 ## 목표
 
 이 문서는 실제 플레이어 경험 기준으로, 온라인 친선 PvP가 어떤 순서로 진행되는지 정의한다.
-필드별 payload와 오류 코드는 [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md) 및 [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md)을 따른다.
+필드별 payload와 오류 코드는 [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md) 및 [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md)을 따른다.
 
 ## 전체 흐름
 
@@ -134,6 +134,6 @@ waiting_for_opponent
 ## 다음 문서
 
 - [API 계약](./api-contract.md)
-- [친구전 룸 / 매치 성립 상세 계약](./room-and-match-contract.md)
-- [실시간 배틀 세션 상세 계약](./realtime-battle-session-contract.md)
+- [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md)
+- [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md)
 - [치트 대응 정책](../security/anti-cheat.md)
