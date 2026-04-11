@@ -10,6 +10,22 @@ export {
   type PvpClientState,
 } from './client-protocol.js';
 export {
+  PvpWebSocketClient,
+  createPvpWebSocketClient,
+  createPvpWebSocketUrl,
+  type CreatePvpWebSocket,
+  type CreatePvpWebSocketClientOptions,
+  type PvpWebSocketClientState,
+  type PvpWebSocketCloseEvent,
+  type PvpWebSocketCloseInfo,
+  type PvpWebSocketErrorEvent,
+  type PvpWebSocketLike,
+  type PvpWebSocketMessageEvent,
+  type PvpWebSocketStateListener,
+  type PvpWebSocketTransportStatus,
+  type SendBattleCommandResult,
+} from './websocket-client.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,
