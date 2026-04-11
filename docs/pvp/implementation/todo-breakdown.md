@@ -120,6 +120,7 @@
 - [ ] turn resolved 이벤트 렌더링
 - [ ] 클라이언트 세션 스토어(`src/pvp/session-store.ts`) 구현
 - [ ] 클라이언트 프로토콜 어댑터(`src/pvp/client-protocol.ts`) 구현
+- [ ] WebSocket 클라이언트 커넥터(`src/pvp/websocket-client.ts`) 구현
 
 ### 주의사항
 - 클라이언트는 결과 계산 금지
@@ -140,6 +141,7 @@
 - [ ] 끊김 후 재접속 UX 추가
 - [ ] 이미 제출한 명령 표시 처리
 - [ ] 진행 중 턴 상태 복원 처리
+- [ ] WebSocket connector 위에서 reconnect/backoff 정책 정리
 
 ---
 

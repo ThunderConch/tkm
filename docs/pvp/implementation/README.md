@@ -25,3 +25,4 @@
 - Phase 2 룸 작업 전에는 [친구전 룸 / 매치 성립 상세 계약](../server/contracts/room-and-match.md)을 먼저 읽는다.
 - Phase 3 배틀 세션 작업 전에는 [실시간 배틀 세션 상세 계약](../server/contracts/realtime-battle-session.md)을 먼저 읽는다.
 - 실제 구현 착수 전에는 [PvP 구현 이슈 분해](./issues/README.md)에서 현재 이슈의 범위와 완료 조건을 먼저 확인한다.
+- Phase 3 클라이언트 통합은 `session-store` → `client-protocol` → `websocket-client` 순서로 올라간다.
