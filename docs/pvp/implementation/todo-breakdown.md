@@ -156,9 +156,11 @@
 - submitted-command / acceptance-status adapter는 ISSUE-16으로 완료
 - session-level screen view model adapter는 ISSUE-17로 완료
 - deterministic session terminal renderer는 ISSUE-18로 완료
+- ISSUE-19는 renderer/action-request/session-client를 묶고, plain-text screen + input token submit/result contract를 고정하는 terminal controller 슬라이스로 진행
 - session-store에 last resolved payload를 보존하면 향후 reconnect 뒤 full log 재생 UX까지 확장 가능
 - ISSUE-17 이후 상위 consumer는 session snapshot 하나로 transport/session/request/command/result를 함께 소비할 수 있으며, ISSUE-18은 이를 plain-text terminal layout으로 고정한다.
-- ISSUE-18 이후 다음 슬라이스는 battle-tui/cli에 이 deterministic renderer 또는 동일 contract를 붙이는 작업으로 바로 이어진다.
+- ISSUE-18 이후 다음 슬라이스는 battle-tui/cli에 이 deterministic renderer를 직접 붙이기 전에, input token bridge를 가진 terminal controller layer를 먼저 고정한다.
+- ISSUE-19 이후 battle-tui/cli는 controller contract 위에 stdin loop, room join flow, 화면 refresh 정책만 얹으면 된다.
 
 ---
 

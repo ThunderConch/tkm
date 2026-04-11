@@ -86,6 +86,24 @@ export {
   renderPvpSessionScreen,
 } from './session-screen-renderer.js';
 export {
+  PvpSessionTerminalController,
+  createPvpSessionTerminalController,
+  createPvpSessionTerminalSnapshot,
+  resolvePvpSessionTerminalInputToken,
+  type CreatePvpSessionTerminalControllerOptions,
+  type PvpSessionTerminalClient,
+  type PvpSessionTerminalClientLike,
+  type PvpSessionTerminalControllerLike,
+  type PvpSessionTerminalInputEntry,
+  type PvpSessionTerminalInputTokenFailureResult,
+  type PvpSessionTerminalInputTokenResult,
+  type PvpSessionTerminalResolvedInputTokenResult,
+  type PvpSessionTerminalSnapshot,
+  type PvpSessionTerminalSubmitFailureResult,
+  type PvpSessionTerminalSubmitResult,
+  type PvpSessionTerminalSubmitSuccessResult,
+} from './session-terminal-controller.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,
