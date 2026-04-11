@@ -1,11 +1,11 @@
 # 실시간 배틀 세션 상세 계약
 
-상위 문서: [PvP 서버 Contracts 문서](./README.md)  
+상위 문서: [PvP 서버 Contracts 문서](./README.md)
 관련 문서: [API 계약 초안](../api-contract.md), [친구전 룸 / 매치 성립 상세 계약](./room-and-match.md), [실시간 배틀 흐름](../battle-flow.md), [치트 대응 정책](../../security/anti-cheat.md)
 
 ## 목적
 
-이 문서는 초기 PvP의 **Phase 3 계약**을 상세화한다.  
+이 문서는 초기 PvP의 **Phase 3 계약**을 상세화한다.
 범위는 다음 두 가지다.
 
 1. `GET /ws/pvp?roomId=<roomId>&token=<token>` 연결 규칙
@@ -30,11 +30,11 @@
 ## 계약 원칙
 
 ### 1. 클라이언트는 명령만 보내고 결과는 계산하지 않는다
-클라이언트는 `choose_move`, `choose_switch`, `choose_replacement`, `forfeit` 같은 **의도(intent)** 만 보낸다.  
+클라이언트는 `choose_move`, `choose_switch`, `choose_replacement`, `forfeit` 같은 **의도(intent)** 만 보낸다.
 명중, 우선순위, 속도, 대미지, 상태 변화, 승패는 모두 서버가 계산한다.
 
 ### 2. 서버 이벤트는 플레이어별 투영 결과다
-동일 턴이라도 각 플레이어가 보는 payload는 달라질 수 있다.  
+동일 턴이라도 각 플레이어가 보는 payload는 달라질 수 있다.
 특히 상대 백라인, 숨은 기술 세부, 비공개 상태는 조기 공개하지 않는다.
 
 ### 3. 배틀 시작 시 선발은 자동 고정이다
@@ -626,7 +626,7 @@ awaiting_presence
 
 ## Phase 3 결론
 
-초기 PvP의 실시간성은 “액션 게임식 프레임 동기화”가 아니라, **턴 요청과 authoritative 이벤트 스트림을 주고받는 실시간 세션**으로 구현하는 것이 맞다.  
+초기 PvP의 실시간성은 “액션 게임식 프레임 동기화”가 아니라, **턴 요청과 authoritative 이벤트 스트림을 주고받는 실시간 세션**으로 구현하는 것이 맞다.
 서버는 명령 수집과 결과 계산을 전부 책임지고, 클라이언트는 오직 현재 자신에게 공개된 상태와 입력 가능 행동만 처리해야 한다.
 
 ---

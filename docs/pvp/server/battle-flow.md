@@ -1,6 +1,6 @@
 # 실시간 배틀 흐름
 
-상위 문서: [PvP 문서 인덱스](../README.md)  
+상위 문서: [PvP 문서 인덱스](../README.md)
 관련 문서: [배틀 포맷](../game-design/battle-format.md), [서버 아키텍처](./architecture.md), [API 계약](./api-contract.md), [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md), [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md)
 
 ## 목표
@@ -128,7 +128,7 @@ waiting_for_opponent
 
 ## 설계 결론
 
-실시간 PvP는 턴제이지만, 네트워크 구조는 **이벤트 기반 실시간 시스템**으로 봐야 한다.  
+실시간 PvP는 턴제이지만, 네트워크 구조는 **이벤트 기반 실시간 시스템**으로 봐야 한다.
 즉, “한 턴 입력 → 서버 계산 → 이벤트 스트림 반영”이 기본 루프다.
 
 ## 다음 문서

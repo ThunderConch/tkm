@@ -1,11 +1,11 @@
 # 친구전 룸 / 매치 성립 상세 계약
 
-상위 문서: [PvP 서버 Contracts 문서](./README.md)  
+상위 문서: [PvP 서버 Contracts 문서](./README.md)
 관련 문서: [API 계약 초안](../api-contract.md), [온라인 파티 등록 상세 계약](./party-registration.md), [실시간 배틀 세션 상세 계약](./realtime-battle-session.md), [실시간 배틀 흐름](../battle-flow.md), [치트 대응 정책](../../security/anti-cheat.md)
 
 ## 목적
 
-이 문서는 초기 PvP의 **Phase 2 계약**을 상세화한다.  
+이 문서는 초기 PvP의 **Phase 2 계약**을 상세화한다.
 범위는 다음 세 가지다.
 
 1. `POST /api/pvp/rooms`
@@ -40,7 +40,7 @@
 활성 파티는 재등록될 수 있지만, **이미 성립한 룸/배틀이 참조하는 snapshot**은 바뀌지 않는다.
 
 ### 4. 친선전 초기 버전에는 별도 ready 버튼 없이 곧바로 시작 준비로 넘어간다
-사용자 경험은 “친구 코드 입력 → 붙으면 바로 배틀 진입”에 가깝게 간다.  
+사용자 경험은 “친구 코드 입력 → 붙으면 바로 배틀 진입”에 가깝게 간다.
 따라서 별도 `ready` API는 두지 않고, 서버가 참가 성공 시 **match readiness**를 계산한다.
 
 ### 5. 상대 백라인 공개는 룸 단계에서도 금지한다
@@ -476,7 +476,7 @@ Body 없음.
 
 ## Phase 2 결론
 
-초기 친선 PvP에서 룸은 단순 입장 절차가 아니라, **배틀 직전의 server-authoritative 고정 지점**이다.  
+초기 친선 PvP에서 룸은 단순 입장 절차가 아니라, **배틀 직전의 server-authoritative 고정 지점**이다.
 등록된 활성 파티와 ruleset을 룸에서 한 번 더 맞추고, 여기서 battle freeze를 만들어야 이후 실시간 배틀이 흔들리지 않는다.
 
 ---

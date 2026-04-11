@@ -1,11 +1,11 @@
 # PvP HTTP / WebSocket API 계약 초안
 
-상위 문서: [PvP 문서 인덱스](../README.md)  
+상위 문서: [PvP 문서 인덱스](../README.md)
 관련 문서: [서버 아키텍처](./architecture.md), [서버 데이터 모델](./storage/data-model.md), [온라인 파티 등록 상세 계약](./contracts/party-registration.md), [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md), [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md), [실시간 배틀 흐름](./battle-flow.md), [치트 대응 정책](../security/anti-cheat.md)
 
 ## 목표
 
-이 문서는 초기 친선 PvP 구현을 위한 **최소 API 계약**을 정의한다.  
+이 문서는 초기 친선 PvP 구현을 위한 **최소 API 계약**을 정의한다.
 핵심 원칙은 “REST로 준비하고, WebSocket으로 싸운다”이다.
 
 ---
@@ -215,7 +215,7 @@ HTTP와 WebSocket 모두 다음 종류의 에러를 분리하는 것이 좋다.
 
 ## 숨은 정보 원칙
 
-상대 백라인, 상대의 비공개 상세 상태 등은 서버가 보내지 않는다.  
+상대 백라인, 상대의 비공개 상세 상태 등은 서버가 보내지 않는다.
 따라서 `room.snapshot`과 `battle.turn_resolved`는 **플레이어별 투영 결과**여야 한다.
 
 ## 초기 API 결론

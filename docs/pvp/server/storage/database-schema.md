@@ -1,11 +1,11 @@
 # PvP 서버 DB 스키마 초안
 
-상위 문서: [PvP 서버 Storage 문서](./README.md)  
+상위 문서: [PvP 서버 Storage 문서](./README.md)
 관련 문서: [서버 데이터 모델](./data-model.md), [서버 아키텍처](../architecture.md), [API 계약](../api-contract.md), [친구전 룸 / 매치 성립 상세 계약](../contracts/room-and-match.md), [실시간 배틀 세션 상세 계약](../contracts/realtime-battle-session.md), [치트 대응 정책](../../security/anti-cheat.md), [PvP 작업 분해 / TODO](../../implementation/todo-breakdown.md)
 
 ## 목적
 
-이 문서는 `data-model.md`의 high-level 엔티티를 **실제 구현 직전 수준의 DB 스키마 초안**으로 구체화한다.  
+이 문서는 `data-model.md`의 high-level 엔티티를 **실제 구현 직전 수준의 DB 스키마 초안**으로 구체화한다.
 즉, “어떤 테이블이 필요하다”에서 한 단계 더 들어가서 아래를 고정한다.
 
 1. 각 테이블의 책임
@@ -30,7 +30,7 @@
 
 ### 플레이어 테이블은 외부 시스템으로 둔다
 
-현재 Tokénmon repo에는 온라인 계정 canonical table이 아직 없다.  
+현재 Tokénmon repo에는 온라인 계정 canonical table이 아직 없다.
 따라서 이 문서에서는 `player_id`를 **인증 레이어가 보장하는 안정적인 opaque identifier** 로 취급한다.
 
 예:
@@ -43,12 +43,12 @@
 
 ### 온라인 등록은 accepted snapshot만 저장한다
 
-초기 버전에서는 `online_party_snapshots`에 **서버 검증을 통과한 스냅샷만** 저장하는 쪽을 권장한다.  
+초기 버전에서는 `online_party_snapshots`에 **서버 검증을 통과한 스냅샷만** 저장하는 쪽을 권장한다.
 거부된 등록 시도 로그는 운영 테이블로 분리하는 것이 낫다.
 
 ### 온라인 배틀은 등록 시점의 정규화 결과를 사용한다
 
-배틀 직전 로컬 저장을 다시 읽지 않는다.  
+배틀 직전 로컬 저장을 다시 읽지 않는다.
 배틀은 반드시 다음 두 가지를 기준으로 시작한다.
 
 - 서버가 승인한 `online_party_snapshots`
@@ -107,7 +107,7 @@ generation_rulesets
 
 ### 메모
 
-세대별 현재 활성 ruleset은 1개만 두는 편이 운영이 단순하다.  
+세대별 현재 활성 ruleset은 1개만 두는 편이 운영이 단순하다.
 단, 과거 배틀 재현을 위해 old ruleset row는 soft-delete 하지 말고 남겨두는 것을 권장한다.
 
 ---
@@ -132,7 +132,7 @@ generation_rulesets
 
 ### 메모
 
-`legendary`, `mythical`은 종 메타데이터에서 오고, `restricted`는 **온라인 밸런스 정책 레이어**에서 온다.  
+`legendary`, `mythical`은 종 메타데이터에서 오고, `restricted`는 **온라인 밸런스 정책 레이어**에서 온다.
 따라서 `restricted`는 별도 테이블로 두는 것이 맞다.
 
 ---
@@ -249,7 +249,7 @@ generation_rulesets
 
 ### 설계 포인트
 
-가장 중요한 컬럼은 `ruleset_snapshot_json`이다.  
+가장 중요한 컬럼은 `ruleset_snapshot_json`이다.
 이 값을 저장해야, 나중에 restricted 목록이나 레벨 정책이 바뀌더라도 **과거 배틀은 당시 기준 그대로 재현**할 수 있다.
 
 ---
@@ -278,7 +278,7 @@ generation_rulesets
 
 ### 설계 포인트
 
-온라인 배틀 시작 이후에는 이 row가 **어떤 snapshot으로 싸웠는지**를 고정한다.  
+온라인 배틀 시작 이후에는 이 row가 **어떤 snapshot으로 싸웠는지**를 고정한다.
 중간에 active party를 재등록해도 이미 시작된 배틀에는 영향을 주지 않는다.
 
 ---
@@ -441,17 +441,17 @@ generation_rulesets
 
 ### 로컬 저장 전문(raw save blob)
 
-초기 버전에는 과하다.  
+초기 버전에는 과하다.
 해시와 정규화된 성장 결과, 그리고 `growth_proof_json` 정도면 친선전 수준의 초기 보호에는 충분하다.
 
 ### spectator / replay / ladder 전용 테이블
 
-지금 넣으면 설계가 빨리 커진다.  
+지금 넣으면 설계가 빨리 커진다.
 친선 PvP v1 범위를 넘는 기능은 후속 migration으로 분리하는 편이 낫다.
 
 ### multiple active party slots
 
-초기에는 generation별 active slot 1개가 운영/UX/검증 모두 가장 단순하다.  
+초기에는 generation별 active slot 1개가 운영/UX/검증 모두 가장 단순하다.
 이후 확장 시 `slot_name` 또는 `slot_index` 개념을 `online_party_snapshots`에 추가하면 된다.
 
 ---

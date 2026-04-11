@@ -1,6 +1,6 @@
 # PvP 서버 아키텍처
 
-상위 문서: [PvP 문서 인덱스](../README.md)  
+상위 문서: [PvP 문서 인덱스](../README.md)
 관련 문서: [서버 데이터 모델](./storage/data-model.md), [API 계약](./api-contract.md), [친구전 룸 / 매치 성립 상세 계약](./contracts/room-and-match.md), [실시간 배틀 세션 상세 계약](./contracts/realtime-battle-session.md), [실시간 배틀 흐름](./battle-flow.md), [치트 대응 정책](../security/anti-cheat.md)
 
 ## 핵심 결정

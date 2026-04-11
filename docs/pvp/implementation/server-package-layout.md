@@ -1,11 +1,11 @@
 # PvP 서버 패키지 / 모듈 구조 제안
 
-상위 문서: [PvP 구현 계획 문서](./README.md)  
+상위 문서: [PvP 구현 계획 문서](./README.md)
 관련 문서: [서버 아키텍처](../server/architecture.md), [서버 DB 스키마 초안](../server/storage/database-schema.md), [HTTP / WebSocket API 계약 초안](../server/api-contract.md), [PvP 작업 분해 / TODO](./todo-breakdown.md)
 
 ## 목적
 
-이 문서는 PvP 서버를 실제로 구현할 때 **repo 안에 어떤 디렉터리와 모듈 경계를 두는 게 좋은지**를 정리한다.  
+이 문서는 PvP 서버를 실제로 구현할 때 **repo 안에 어떤 디렉터리와 모듈 경계를 두는 게 좋은지**를 정리한다.
 즉, 앞선 문서들이 “무슨 기능이 필요한가”를 정의했다면, 이 문서는 “그 기능을 코드베이스 어디에 어떻게 놓을 것인가”를 정리하는 문서다.
 
 초기 목표는 다음 세 가지다.
@@ -25,7 +25,7 @@
 - `src/battle-tui/`: 로컬 전투 렌더링/UI
 - `src/hooks/`, `src/setup/`, `src/audio/`, `src/sprites/`: 부가 기능
 
-즉, **게임 규칙 엔진은 이미 `src/core`에 있고**, 아직 온라인 서버 전용 계층은 없다.  
+즉, **게임 규칙 엔진은 이미 `src/core`에 있고**, 아직 온라인 서버 전용 계층은 없다.
 그래서 초기 PvP 구현은 아래 원칙으로 가는 것이 좋다.
 
 - **게임 규칙은 `src/core` 중심 재사용**
@@ -302,7 +302,7 @@ DB 접근 계층.
 - 트랜잭션 경계 제공
 - repository 인터페이스 제공
 
-중요한 점은 business rule을 repository 안에 과하게 넣지 않는 것이다.  
+중요한 점은 business rule을 repository 안에 과하게 넣지 않는 것이다.
 검증/정책은 service 계층, 저장은 repository 계층으로 나눈다.
 
 ---
@@ -385,7 +385,7 @@ DB 접근 계층.
 - `src/core/status-effects.ts`
 - `src/core/pokemon-data.ts`
 
-같은 파일들은 **규칙 엔진 / 도메인 데이터 계층**으로 계속 남기고,  
+같은 파일들은 **규칙 엔진 / 도메인 데이터 계층**으로 계속 남기고,
 `src/server/battle/battle-engine-adapter.ts`가 이들을 감싸서 온라인 배틀에서 사용하도록 만드는 것이 좋다.
 
 ### 추천 어댑터 책임

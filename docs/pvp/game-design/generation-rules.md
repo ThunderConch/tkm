@@ -1,11 +1,11 @@
 # 세대별 ruleset 설계
 
-상위 문서: [PvP 문서 인덱스](../README.md)  
+상위 문서: [PvP 문서 인덱스](../README.md)
 관련 문서: [성장 및 파티 등록](./progression-and-party-registration.md), [특수 포켓몬 정책](./special-pokemon-policy.md), [서버 데이터 모델](../server/storage/data-model.md)
 
 ## 왜 세대별 ruleset이 필요한가
 
-Tokénmon은 이미 세대별 데이터와 진행 구조를 갖고 있다.  
+Tokénmon은 이미 세대별 데이터와 진행 구조를 갖고 있다.
 따라서 온라인 PvP도 하나의 통합 규칙으로 뭉개기보다, **세대별 포켓몬 풀과 ruleset을 별도로 운영**하는 것이 자연스럽다.
 
 이 구조를 선택하면 다음이 가능하다.
@@ -60,7 +60,7 @@ Tokénmon은 이미 세대별 데이터와 진행 구조를 갖고 있다.
 
 ## restricted 시드 리스트 v0
 
-아래 목록은 초기 밸런싱 시작점이다.  
+아래 목록은 초기 밸런싱 시작점이다.
 확정 영구 규칙이라기보다, **첫 친선 PvP 운영을 위한 시드 목록**으로 본다.
 
 | 세대 | restricted 시드 후보 |

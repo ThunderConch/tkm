@@ -1,11 +1,11 @@
 # PvP 초기 구현 PRD
 
-상위 문서: [PvP 구현 계획 문서](./README.md)  
+상위 문서: [PvP 구현 계획 문서](./README.md)
 기반 설계 문서: [PvP 문서 인덱스](../README.md), [배틀 포맷](../game-design/battle-format.md), [서버 아키텍처](../server/architecture.md), [치트 대응 정책](../security/anti-cheat.md)
 
 ## 1. 문제 정의
 
-Tokénmon은 현재 로컬/스토리 중심 구조이기 때문에, 플레이어가 서로 직접 붙는 온라인 친선 PvP 경험이 없다.  
+Tokénmon은 현재 로컬/스토리 중심 구조이기 때문에, 플레이어가 서로 직접 붙는 온라인 친선 PvP 경험이 없다.
 하지만 사용자는 다음을 동시에 원한다.
 
 1. 로컬에서 키운 파티를 온라인에 가져오고 싶다.

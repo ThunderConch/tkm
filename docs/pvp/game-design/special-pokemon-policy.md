@@ -1,6 +1,6 @@
 # 전설 / 환상 / restricted 정책
 
-상위 문서: [PvP 문서 인덱스](../README.md)  
+상위 문서: [PvP 문서 인덱스](../README.md)
 관련 문서: [배틀 포맷](./battle-format.md), [세대별 ruleset 설계](./generation-rules.md), [치트 대응 정책](../security/anti-cheat.md)
 
 ## 목표
@@ -27,7 +27,7 @@ Tokénmon은 전설과 환상을 아예 금지하는 방향이 아니라, **쓸 
 
 - `restricted`
 
-이 분류는 온라인 PvP 밸런스를 위한 별도 개념이다.  
+이 분류는 온라인 PvP 밸런스를 위한 별도 개념이다.
 즉, 어떤 포켓몬이 `legendary`이면서 `restricted`일 수도 있고, `mythical`이지만 `restricted`가 아닐 수도 있다.
 
 ## 제한 규칙
@@ -79,7 +79,7 @@ Tokénmon은 전설과 환상을 아예 금지하는 방향이 아니라, **쓸 
 
 ## Regigigas 같은 예외
 
-원작에서는 특정 특성 때문에 약점이 있는 포켓몬도, Tokénmon 구현 상태에 따라 그 약점이 사라질 수 있다.  
+원작에서는 특정 특성 때문에 약점이 있는 포켓몬도, Tokénmon 구현 상태에 따라 그 약점이 사라질 수 있다.
 이 경우 원작 평가와 달리 Tokénmon에서는 restricted로 올려야 할 수 있다.
 
 즉 restricted는 “포켓몬 본가 메타의 명성”이 아니라, **현재 Tokénmon 엔진 기준 실전 영향력**으로 결정한다.

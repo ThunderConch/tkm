@@ -1,6 +1,6 @@
 # PvP 서버 데이터 모델
 
-상위 문서: [PvP 서버 Storage 문서](./README.md)  
+상위 문서: [PvP 서버 Storage 문서](./README.md)
 관련 문서: [서버 아키텍처](../architecture.md), [DB 스키마 초안](./database-schema.md), [API 계약](../api-contract.md), [친구전 룸 / 매치 성립 상세 계약](../contracts/room-and-match.md), [실시간 배틀 세션 상세 계약](../contracts/realtime-battle-session.md), [성장 및 파티 등록](../../game-design/progression-and-party-registration.md), [세대별 ruleset 설계](../../game-design/generation-rules.md)
 
 ## 목표
