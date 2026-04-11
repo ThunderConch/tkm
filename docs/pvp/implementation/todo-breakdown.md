@@ -141,12 +141,15 @@
 - [ ] 끊김 후 재접속 UX 추가
 - [ ] 이미 제출한 명령 표시 처리
 - [ ] 진행 중 턴 상태 복원 처리
-- [ ] WebSocket connector 위에서 reconnect/backoff 정책 정리
+- [x] WebSocket connector 위에서 reconnect/backoff 정책 정리
+- [x] 상위 PvP session client orchestration 레이어 추가
 
 ### 실행 이슈 메모
 
 - Phase 3 클라이언트 기초는 ISSUE-09 ~ ISSUE-11로 완료
-- 다음 구현 단위는 [ISSUE-12 · 클라이언트 재접속 / backoff 컨트롤러](./issues/ISSUE-12-client-reconnect-controller.md)
+- Phase 4 재접속 controller는 ISSUE-12로 완료
+- 상위 PvP session client facade는 ISSUE-13으로 완료
+- 다음 구현 단위는 PvP action request 렌더링 / 입력 UX adapter 이슈로 분리 예정
 
 ---
 

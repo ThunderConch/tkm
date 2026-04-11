@@ -27,6 +27,7 @@
 10. [ISSUE-10 · 클라이언트 프로토콜 어댑터](./ISSUE-10-client-protocol-adapter.md)
 11. [ISSUE-11 · WebSocket 클라이언트 커넥터](./ISSUE-11-websocket-client-connector.md)
 12. [ISSUE-12 · 클라이언트 재접속 / backoff 컨트롤러](./ISSUE-12-client-reconnect-controller.md)
+13. [ISSUE-13 · 상위 PvP session client orchestration 레이어](./ISSUE-13-session-client-orchestrator.md)
 
 ## 왜 이 순서인가
 
@@ -57,6 +58,7 @@ ruleset, restricted 목록, 레벨 압축, 치트 오염 판정이 먼저 고정
 | D. 실제 사용 가능한 상태 | ISSUE-08 |
 | E. 클라이언트 통합 시작 상태 | ISSUE-09, ISSUE-10, ISSUE-11 |
 | F. 실제 접속 안정화 시작 상태 | ISSUE-12 |
+| G. 상위 클라이언트 진입점 정리 상태 | ISSUE-13 |
 
 ## 공통 실행 규칙
 

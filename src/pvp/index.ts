@@ -38,6 +38,15 @@ export {
   type PvpReconnectTrigger,
 } from './reconnect-controller.js';
 export {
+  PvpSessionClient,
+  createPvpSessionClient,
+  type CreatePvpSessionClientOptions,
+  type PvpSessionClientReconnectState,
+  type PvpSessionClientState,
+  type PvpSessionClientStateListener,
+  type SendPvpSessionBattleCommandResult,
+} from './session-client.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,
