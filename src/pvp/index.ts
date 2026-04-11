@@ -82,6 +82,10 @@ export {
   type PvpSessionScreenView,
 } from './session-screen-view.js';
 export {
+  renderPvpSessionClientScreen,
+  renderPvpSessionScreen,
+} from './session-screen-renderer.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,

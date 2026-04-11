@@ -142,6 +142,7 @@
 - [ ] 이미 제출한 명령 표시 처리
 - [ ] 진행 중 턴 상태 복원 처리
 - [x] session-level PvP screen view model 정리
+- [x] deterministic session terminal renderer 추가
 - [x] WebSocket connector 위에서 reconnect/backoff 정책 정리
 - [x] 상위 PvP session client orchestration 레이어 추가
 
@@ -154,8 +155,10 @@
 - turn resolved 결과 로그 / summary adapter는 ISSUE-15로 완료
 - submitted-command / acceptance-status adapter는 ISSUE-16으로 완료
 - session-level screen view model adapter는 ISSUE-17로 완료
+- deterministic session terminal renderer는 ISSUE-18로 완료
 - session-store에 last resolved payload를 보존하면 향후 reconnect 뒤 full log 재생 UX까지 확장 가능
-- ISSUE-17 이후 상위 consumer는 session snapshot 하나로 transport/session/request/command/result를 함께 소비할 수 있으며, 다음 슬라이스는 battle-tui/cli에 이 read model을 붙이는 작업으로 바로 이어진다.
+- ISSUE-17 이후 상위 consumer는 session snapshot 하나로 transport/session/request/command/result를 함께 소비할 수 있으며, ISSUE-18은 이를 plain-text terminal layout으로 고정한다.
+- ISSUE-18 이후 다음 슬라이스는 battle-tui/cli에 이 deterministic renderer 또는 동일 contract를 붙이는 작업으로 바로 이어진다.
 
 ---
 

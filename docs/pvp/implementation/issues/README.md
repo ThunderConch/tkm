@@ -32,6 +32,7 @@
 15. [ISSUE-15 · PvP turn resolved rendering / 결과 로그 UX adapter](./ISSUE-15-turn-result-view.md)
 16. [ISSUE-16 · PvP submitted-command / acceptance-status 읽기 모델](./ISSUE-16-command-status-view.md)
 17. [ISSUE-17 · PvP session-level screen 읽기 모델](./ISSUE-17-session-screen-view.md)
+18. [ISSUE-18 · deterministic PvP session terminal renderer](./ISSUE-18-session-screen-renderer.md)
 
 ## 왜 이 순서인가
 
@@ -66,6 +67,7 @@ ruleset, restricted 목록, 레벨 압축, 치트 오염 판정이 먼저 고정
 | H. 턴 결과 렌더링 진입점 정리 상태 | ISSUE-14, ISSUE-15 |
 | I. 제출 상태/접수 상태 읽기 모델 정리 상태 | ISSUE-16 |
 | J. 세션 단위 상위 화면 view model 정리 상태 | ISSUE-17 |
+| K. 상위 consumer용 deterministic terminal renderer 정리 상태 | ISSUE-18 |
 
 ## 공통 실행 규칙
 
