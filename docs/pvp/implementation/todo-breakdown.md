@@ -116,7 +116,7 @@
 ### 클라이언트 작업
 - [x] action request 렌더링
 - [x] move/switch/replacement 입력 UX adapter 구현
-- [ ] command accepted 상태 반영
+- [x] command accepted 상태 반영
 - [x] turn resolved 이벤트 렌더링
 - [x] 클라이언트 세션 스토어(`src/pvp/session-store.ts`) 구현
 - [x] 클라이언트 프로토콜 어댑터(`src/pvp/client-protocol.ts`) 구현
@@ -151,6 +151,7 @@
 - 상위 PvP session client facade는 ISSUE-13으로 완료
 - PvP action request 렌더링 / 입력 UX adapter는 ISSUE-14로 완료
 - turn resolved 결과 로그 / summary adapter는 ISSUE-15로 완료
+- submitted-command / acceptance-status adapter는 ISSUE-16으로 완료
 - session-store에 last resolved payload를 보존하면 향후 reconnect 뒤 full log 재생 UX까지 확장 가능
 
 ---
