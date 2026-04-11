@@ -2,11 +2,14 @@
 
 상위 문서: [PvP 구현 계획 문서](./README.md)
 기반 설계 문서: [PvP 초기 구현 PRD](./prd.md), [구현 로드맵](../roadmap/rollout-plan.md), [서버 DB 스키마 초안](../server/storage/database-schema.md), [서버 패키지 / 모듈 구조 제안](./server-package-layout.md)
+실행 이슈 문서: [PvP 구현 이슈 분해](./issues/README.md)
 
 ## 목적
 
 이 문서는 초기 PvP를 실제 코드 작업 단위로 쪼갠다.
 순서는 **규칙 확정 → 등록 → 룸 → 서버 권한 배틀 → UX → 안정화** 기준으로 잡는다.
+
+실제 executor 작업은 이 문서를 다시 한 번 정리한 [구현 이슈 문서](./issues/README.md)를 기준으로 나눈다.
 
 ---
 

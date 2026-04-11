@@ -9,12 +9,14 @@
 1. [PvP 초기 구현 PRD](./prd.md)
 2. [PvP 작업 분해 / TODO](./todo-breakdown.md)
 3. [서버 패키지 / 모듈 구조 제안](./server-package-layout.md)
+4. [PvP 구현 이슈 분해](./issues/README.md)
 
 ## 읽는 순서
 
 - 먼저 [PvP 초기 구현 PRD](./prd.md)에서 목표, 비목표, 성공 기준을 본다.
 - 다음 [PvP 작업 분해 / TODO](./todo-breakdown.md)에서 실제 개발 순서와 작업 단위를 본다.
 - 그 다음 [서버 패키지 / 모듈 구조 제안](./server-package-layout.md)으로 실제 `src/server` 경계를 어떻게 나눌지 본다.
+- 마지막으로 [PvP 구현 이슈 분해](./issues/README.md)에서 executor에게 바로 넘길 수 있는 실제 구현 단위를 확인한다.
 
 
 ## 구현 시 먼저 볼 상세 계약
@@ -22,3 +24,4 @@
 - Phase 1 등록 작업 전에는 [온라인 파티 등록 상세 계약](../server/contracts/party-registration.md)을 먼저 읽는다.
 - Phase 2 룸 작업 전에는 [친구전 룸 / 매치 성립 상세 계약](../server/contracts/room-and-match.md)을 먼저 읽는다.
 - Phase 3 배틀 세션 작업 전에는 [실시간 배틀 세션 상세 계약](../server/contracts/realtime-battle-session.md)을 먼저 읽는다.
+- 실제 구현 착수 전에는 [PvP 구현 이슈 분해](./issues/README.md)에서 현재 이슈의 범위와 완료 조건을 먼저 확인한다.
