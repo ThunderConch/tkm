@@ -114,6 +114,17 @@ export {
   type PvpSessionTerminalRunnerStateListener,
 } from './session-terminal-runner.js';
 export {
+  PvpSessionTerminalCli,
+  createPvpSessionTerminalCli,
+  type CreatePvpSessionTerminalCliOptions,
+  type PvpSessionTerminalCliBootstrapHooks,
+  type PvpSessionTerminalCliInputListener,
+  type PvpSessionTerminalCliInputSource,
+  type PvpSessionTerminalCliMaybePromise,
+  type PvpSessionTerminalCliScreenOutput,
+  type PvpSessionTerminalCliState,
+} from './session-terminal-cli.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,
