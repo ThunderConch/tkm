@@ -105,3 +105,35 @@ export type PartyValidationResult =
       errorCodes: PartyValidationErrorCode[];
       issues: PartyValidationIssue[];
     };
+
+export interface ActivePartySnapshot extends OnlinePartySnapshotDraft {
+  snapshotId: string;
+  snapshotVersion: number;
+  playerId: string;
+  generation: PvpGeneration;
+  rulesetKey: RulesetKey;
+  status: 'active';
+  isActive: boolean;
+  registeredAt: string;
+  sourceStateHash: string;
+  sourceConfigHash: string;
+  clientBuild?: string;
+  growthProof: GrowthProofInput;
+}
+
+export interface RegisterActivePartyInput {
+  playerId: string;
+  generation: string;
+  sourceStateHash: string;
+  sourceConfigHash: string;
+  clientBuild?: string;
+  members: OnlinePartyMemberInput[];
+  growthProof: GrowthProofInput;
+}
+
+export interface RegisterActivePartyResult {
+  generation: PvpGeneration;
+  rulesetKey: RulesetKey;
+  changed: boolean;
+  party: ActivePartySnapshot;
+}
