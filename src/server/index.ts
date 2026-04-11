@@ -7,3 +7,4 @@ export * from './parties/index.js';
 export * from './rules/index.js';
 export * from './rooms/index.js';
 export * from './projection/index.js';
+export * from './ws/index.js';
