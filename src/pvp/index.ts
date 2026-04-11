@@ -55,6 +55,18 @@ export {
   type PvpActionRequestView,
 } from './action-request-view.js';
 export {
+  createPvpTurnResultView,
+  createPvpTurnResultViewFromPayload,
+  type PvpHealAppliedEvent,
+  type PvpTurnResolvedPayloadLike,
+  type PvpTurnResultBenchEntry,
+  type PvpTurnResultEvent,
+  type PvpTurnResultLogEntry,
+  type PvpTurnResultSideSummary,
+  type PvpTurnResultSummary,
+  type PvpTurnResultView,
+} from './turn-result-view.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,

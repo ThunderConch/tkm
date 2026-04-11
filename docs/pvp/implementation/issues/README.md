@@ -29,6 +29,7 @@
 12. [ISSUE-12 · 클라이언트 재접속 / backoff 컨트롤러](./ISSUE-12-client-reconnect-controller.md)
 13. [ISSUE-13 · 상위 PvP session client orchestration 레이어](./ISSUE-13-session-client-orchestrator.md)
 14. [ISSUE-14 · PvP action request rendering / input UX adapter](./ISSUE-14-action-request-view.md)
+15. [ISSUE-15 · PvP turn resolved rendering / 결과 로그 UX adapter](./ISSUE-15-turn-result-view.md)
 
 ## 왜 이 순서인가
 
@@ -60,6 +61,7 @@ ruleset, restricted 목록, 레벨 압축, 치트 오염 판정이 먼저 고정
 | E. 클라이언트 통합 시작 상태 | ISSUE-09, ISSUE-10, ISSUE-11 |
 | F. 실제 접속 안정화 시작 상태 | ISSUE-12 |
 | G. 상위 클라이언트 진입점 정리 상태 | ISSUE-13 |
+| H. 턴 결과 렌더링 진입점 정리 상태 | ISSUE-14, ISSUE-15 |
 
 ## 공통 실행 규칙
 
