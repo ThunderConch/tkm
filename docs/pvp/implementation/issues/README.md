@@ -26,6 +26,7 @@
 9. [ISSUE-09 · 클라이언트 배틀 세션 스토어](./ISSUE-09-client-session-store.md)
 10. [ISSUE-10 · 클라이언트 프로토콜 어댑터](./ISSUE-10-client-protocol-adapter.md)
 11. [ISSUE-11 · WebSocket 클라이언트 커넥터](./ISSUE-11-websocket-client-connector.md)
+12. [ISSUE-12 · 클라이언트 재접속 / backoff 컨트롤러](./ISSUE-12-client-reconnect-controller.md)
 
 ## 왜 이 순서인가
 
@@ -55,6 +56,7 @@ ruleset, restricted 목록, 레벨 압축, 치트 오염 판정이 먼저 고정
 | C. 배틀 되는 상태 | ISSUE-06, ISSUE-07 |
 | D. 실제 사용 가능한 상태 | ISSUE-08 |
 | E. 클라이언트 통합 시작 상태 | ISSUE-09, ISSUE-10, ISSUE-11 |
+| F. 실제 접속 안정화 시작 상태 | ISSUE-12 |
 
 ## 공통 실행 규칙
 

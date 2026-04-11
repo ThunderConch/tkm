@@ -118,9 +118,9 @@
 - [ ] move/switch/replacement 입력 UX 구현
 - [ ] command accepted 상태 반영
 - [ ] turn resolved 이벤트 렌더링
-- [ ] 클라이언트 세션 스토어(`src/pvp/session-store.ts`) 구현
-- [ ] 클라이언트 프로토콜 어댑터(`src/pvp/client-protocol.ts`) 구현
-- [ ] WebSocket 클라이언트 커넥터(`src/pvp/websocket-client.ts`) 구현
+- [x] 클라이언트 세션 스토어(`src/pvp/session-store.ts`) 구현
+- [x] 클라이언트 프로토콜 어댑터(`src/pvp/client-protocol.ts`) 구현
+- [x] WebSocket 클라이언트 커넥터(`src/pvp/websocket-client.ts`) 구현
 
 ### 주의사항
 - 클라이언트는 결과 계산 금지
@@ -142,6 +142,11 @@
 - [ ] 이미 제출한 명령 표시 처리
 - [ ] 진행 중 턴 상태 복원 처리
 - [ ] WebSocket connector 위에서 reconnect/backoff 정책 정리
+
+### 실행 이슈 메모
+
+- Phase 3 클라이언트 기초는 ISSUE-09 ~ ISSUE-11로 완료
+- 다음 구현 단위는 [ISSUE-12 · 클라이언트 재접속 / backoff 컨트롤러](./issues/ISSUE-12-client-reconnect-controller.md)
 
 ---
 

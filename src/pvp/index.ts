@@ -26,6 +26,18 @@ export {
   type SendBattleCommandResult,
 } from './websocket-client.js';
 export {
+  PvpReconnectController,
+  createPvpReconnectController,
+  type CreatePvpReconnectControllerOptions,
+  type PvpReconnectBackoffContext,
+  type PvpReconnectClient,
+  type PvpReconnectControllerState,
+  type PvpReconnectControllerStateListener,
+  type PvpReconnectDelayStrategy,
+  type PvpReconnectScheduler,
+  type PvpReconnectTrigger,
+} from './reconnect-controller.js';
+export {
   applyPvpServerEvent,
   createBattleCommandEnvelope,
   createPvpSessionState,
