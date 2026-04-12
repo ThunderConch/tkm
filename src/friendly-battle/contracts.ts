@@ -288,6 +288,10 @@ export function createFriendlyBattleBattleRef(): FriendlyBattleBattleRef {
 export function createFriendlyBattleSessionState(
   input: CreateFriendlyBattleSessionStateInput,
 ): FriendlyBattleSessionState {
+  if (input.generation !== input.hostProgression.generation) {
+    throw new Error('Friendly battle session generation must match host progression generation');
+  }
+
   const createdAt = input.createdAt ?? new Date().toISOString();
   return {
     layer: 'session',

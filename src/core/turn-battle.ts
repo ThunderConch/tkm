@@ -219,7 +219,7 @@ function executeSwitch(
   messages: string[],
   opposingTeam?: BattleTeam,
   ownSide?: 'player' | 'opponent',
-): void {
+): boolean {
   // Reject invalid switch targets — including no-op same-slot switches.
   // A same-slot switch must not reach the reset path below, otherwise it would
   // act as a free, priority cleanse for stat stages without leaving the field.
@@ -229,7 +229,7 @@ function executeSwitch(
     team.pokemon[targetIndex].fainted ||
     targetIndex === team.activeIndex
   ) {
-    return;
+    return false;
   }
   const old = getActivePokemon(team);
   const departingSlot = team.activeIndex;
@@ -259,6 +259,17 @@ function executeSwitch(
   active.toxicCounter = active.statusCondition === 'badly_poisoned' ? active.toxicCounter : 0;
   resetStatStages(active);
   messages.push(t('battle.switch', { name: active.displayName }));
+  return true;
+}
+
+export function applyBattleSwitch(
+  team: BattleTeam,
+  targetIndex: number,
+  messages: string[],
+  opposingTeam?: BattleTeam,
+  ownSide?: 'player' | 'opponent',
+): boolean {
+  return executeSwitch(team, targetIndex, messages, opposingTeam, ownSide);
 }
 
 const STRUGGLE_MOVE: BattleMove = {
