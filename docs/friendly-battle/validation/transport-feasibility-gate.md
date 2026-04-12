@@ -29,6 +29,8 @@ PR2는 아래 산출물을 **반드시** 남겨야 한다.
 5. 최종 판정 메모: `A 유지` 또는 `B 전환`
 
 `pr2-transport-gate-report.md`가 없으면 gate는 완료되지 않은 것으로 본다.
+또한 파일이 존재하더라도 **Template / TBD 상태 그대로면 gate는 여전히 incomplete** 다.
+즉, canonical report는 실제 실행 결과와 판정 근거로 채워져 있어야 한다.
 
 ## 통과 조건
 
