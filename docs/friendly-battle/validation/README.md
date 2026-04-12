@@ -3,6 +3,7 @@
 ## 문서 목록
 
 1. [Transport feasibility gate](./transport-feasibility-gate.md)
+2. [PR2 Transport Gate Report](./pr2-transport-gate-report.md)
 
 ## 읽는 순서
 

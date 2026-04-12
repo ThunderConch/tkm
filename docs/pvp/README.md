@@ -1,5 +1,10 @@
 # Tokénmon PvP 문서 인덱스
 
+> [!WARNING]
+> 이 문서 세트는 **legacy / reference track** 입니다.
+> `feat/serverless-friendly-battle` 구현선과 PR2 이후 작업의 **current source of truth는 [`../friendly-battle/README.md`](../friendly-battle/README.md)** 입니다.
+> server-authoritative 축을 다시 진행하기로 명시적으로 결정하지 않는 한, 새 구현 판단은 이 문서가 아니라 `docs/friendly-battle/` 기준으로 내려야 합니다.
+
 상태: Draft v1
 범위: 온라인 친선 PvP 초기 설계
 기준 방향: **세대별 온라인 파티 등록 + 서버 권한 전투 + 인게임 감성 6v6 싱글**
@@ -13,7 +18,7 @@
 2. **파티 성장 상태 위조를 최대한 막는다.**
 3. **공식 대회 느낌보다 인게임에서 NPC 트레이너를 조우한 감성에 가깝게 만든다.**
 
-이 문서 세트는 아직 구현 문서가 아니라 **설계 기준 문서**다. 이후 서버/API/클라이언트 구현은 이 문서를 기준으로 분해한다.
+이 문서 세트는 아직 구현 문서가 아니라 **legacy/reference 설계 문서**다. 기존 server-authoritative 축의 컨텍스트 보존이 목적이며, 현재 serverless friendly battle 구현선의 후속 PR은 [`../friendly-battle/README.md`](../friendly-battle/README.md)를 기준으로 분해한다.
 
 ---
 
