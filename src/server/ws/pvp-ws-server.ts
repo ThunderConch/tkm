@@ -416,15 +416,16 @@ export class PvpWsServer {
       sentAt,
       payload: buildRoomSnapshotPayload(session, seat, new Date(sentAt)),
     };
-    session.nextSeq += 1;
-    session.updatedAt = sentAt;
-    session.eventLog.push({
+    const nextSession = cloneSession(session);
+    nextSession.nextSeq += 1;
+    nextSession.updatedAt = sentAt;
+    nextSession.eventLog.push({
       seat,
       type: 'room.snapshot',
       seq: snapshot.seq,
       sentAt,
     });
-    this.sessionsByRoomId.set(session.roomId, cloneSession(session));
+    this.sessionsByRoomId.set(nextSession.roomId, nextSession);
     transport.send(snapshot);
   }
 
