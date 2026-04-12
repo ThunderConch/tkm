@@ -88,8 +88,6 @@ export function validateBattleCommand(args: {
     );
   }
 
-  // seenClientCommandIds is bounded by (turns × seats + timeout auto-commands) and
-  // is cleared when the battle ends, so the linear scan is acceptable here.
   if (session.seenClientCommandIds.includes(clientCommandId)) {
     return reject(
       BATTLE_COMMAND_REJECTION_CODES.PVP_COMMAND_DUPLICATE,
