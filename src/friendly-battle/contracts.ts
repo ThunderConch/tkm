@@ -1,5 +1,8 @@
+import type { BaseStats, MoveData } from '../core/types.js';
+
 export const FRIENDLY_BATTLE_NAMESPACE = 'friendly-battle' as const;
 export const FRIENDLY_BATTLE_PROTOCOL_VERSION = 1 as const;
+export const FRIENDLY_BATTLE_SNAPSHOT_SCHEMA_VERSION = 1 as const;
 
 export const FRIENDLY_BATTLE_LAYERS = ['progression', 'snapshot', 'session', 'battle'] as const;
 export type FriendlyBattleLayer = (typeof FRIENDLY_BATTLE_LAYERS)[number];
@@ -92,6 +95,32 @@ export interface FriendlyBattleSnapshotRef {
   partySource: FriendlyBattlePartySource;
   partySize: number;
   createdAt: string;
+}
+
+export interface FriendlyBattleSnapshotPokemon {
+  slot: number;
+  progressionKey: string;
+  speciesId: number;
+  speciesDisplayName: string;
+  displayName: string;
+  nickname: string | null;
+  shiny: boolean;
+  level: number;
+  types: string[];
+  baseStats: BaseStats;
+  moves: MoveData[];
+  nativeGeneration: string;
+}
+
+export interface FriendlyBattlePartySnapshot {
+  layer: 'snapshot';
+  schemaVersion: number;
+  snapshotId: string;
+  generation: string;
+  partySource: FriendlyBattlePartySource;
+  partySize: number;
+  createdAt: string;
+  pokemon: FriendlyBattleSnapshotPokemon[];
 }
 
 export interface FriendlyBattleParticipant {
