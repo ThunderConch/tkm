@@ -65,8 +65,8 @@ Commands:
   resume    Resume an existing room session.
 
 Required flags:
-  --server-url   Base HTTP(S) URL for the PvP server.
-  --auth-token   Viewer auth token issued by the room/session server.
+  --server-url   Base HTTP(S) URL for the PvP server (or set PVP_SERVER_URL).
+  --auth-token   Auth token issued by the server (or set PVP_AUTH_TOKEN to avoid shell history exposure).
 
 Shared flags:
   --generation   Battle generation key (for example: gen1, gen2, gen3, gen4).
@@ -116,10 +116,17 @@ function parseArgs(argv: string[]): ParsedArgs {
   return { command, flags };
 }
 
+const FLAG_ENV_FALLBACKS: Record<string, string> = {
+  'auth-token': 'PVP_AUTH_TOKEN',
+  'server-url': 'PVP_SERVER_URL',
+};
+
 function requireFlag(flags: Record<string, string>, name: string): string {
-  const value = flags[name]?.trim();
+  const envKey = FLAG_ENV_FALLBACKS[name];
+  const value = (flags[name] ?? (envKey ? process.env[envKey] : undefined))?.trim();
   if (!value) {
-    throw new Error(`--${name} is required`);
+    const envHint = envKey ? ` (or set ${envKey})` : '';
+    throw new Error(`--${name} is required${envHint}`);
   }
 
   return value;
