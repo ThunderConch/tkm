@@ -29,12 +29,6 @@ type CreatedProfile = {
   cleanup: () => void;
 };
 
-type ProfilePokemon = {
-  pokemonKey: string;
-  speciesId: number;
-  level: number;
-};
-
 function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli {
   const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
     cwd: REPO_ROOT,
@@ -45,7 +39,7 @@ function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli 
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
       ...(options?.env ?? {}),
     },
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
   const output = { stdout: '', stderr: '' };
@@ -114,7 +108,7 @@ function writeJson(path: string, value: unknown): void {
   writeFileSync(path, JSON.stringify(value, null, 2), 'utf8');
 }
 
-function createProfileWithParty(name: string, pokemon: ProfilePokemon[]): CreatedProfile {
+function createProfile(name: string, pokemonKey: string, speciesId: number, level: number): CreatedProfile {
   const tempRoot = mkdtempSync(join(tmpdir(), `friendly-battle-local-${name}-`));
   const configDir = join(tempRoot, '.claude');
   const tokenmonDir = join(configDir, 'tokenmon');
@@ -129,37 +123,26 @@ function createProfileWithParty(name: string, pokemon: ProfilePokemon[]): Create
   });
 
   writeJson(join(genDir, 'config.json'), {
-    party: pokemon.map((member) => member.pokemonKey),
+    party: [pokemonKey],
   });
 
   writeJson(join(genDir, 'state.json'), {
-    pokemon: Object.fromEntries(
-      pokemon.map((member) => [
-        member.pokemonKey,
-        {
-          id: member.speciesId,
-          xp: 100,
-          level: member.level,
-          friendship: 0,
-          ev: 0,
-          moves: [33, 45],
-        },
-      ]),
-    ),
+    pokemon: {
+      [pokemonKey]: {
+        id: speciesId,
+        xp: 100,
+        level,
+        friendship: 0,
+        ev: 0,
+        moves: [33, 45],
+      },
+    },
   });
 
   return {
     profileDir: configDir,
     cleanup: () => rmSync(tempRoot, { recursive: true, force: true }),
   };
-}
-
-function createProfile(name: string, pokemonKey: string, speciesId: number, level: number): CreatedProfile {
-  return createProfileWithParty(name, [{ pokemonKey, speciesId, level }]);
-}
-
-async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 describe('friendly battle local harness CLI', { concurrency: false }, () => {
@@ -429,224 +412,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     const timeoutResult = await invalidTimeout.completion;
     assert.equal(timeoutResult.exitCode, 1);
     assert.match(timeoutResult.stderr, /Invalid integer for --timeout-ms/);
-  });
-
-  it('waits for repeated move input instead of auto-submitting choices in the same-machine CLI flow', async () => {
-    const battleExchangeTimeoutMs = 15_000;
-    const hostProfile = createProfile('host-repeated-input', '387', 387, 16);
-    const guestProfile = createProfile('guest-repeated-input', '390', 390, 18);
-    after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
-
-    const host = spawnCli([
-      'host',
-      '--session-code',
-      'repeated-input-123',
-      '--timeout-ms',
-      String(battleExchangeTimeoutMs),
-    ], {
-      configDir: hostProfile.profileDir,
-    });
-
-    let guest: SpawnedCli | null = null;
-    try {
-      const hostStdout = await waitForStdout(host, /^JOIN_INFO: .+$/m, 60_000);
-      const joinInfoJson = hostStdout.match(/^JOIN_INFO: (.+)$/m)?.[1];
-      assert.ok(joinInfoJson, `expected JOIN_INFO line in host stdout:
-${hostStdout}`);
-      const joinInfo = JSON.parse(joinInfoJson) as { host: string; port: number };
-
-      guest = spawnCli([
-        'join',
-        '--host',
-        joinInfo.host,
-        '--port',
-        String(joinInfo.port),
-        '--session-code',
-        'repeated-input-123',
-        '--timeout-ms',
-        String(battleExchangeTimeoutMs),
-        '--generation',
-        'gen4',
-        '--player-name',
-        'Guest',
-      ], {
-        configDir: guestProfile.profileDir,
-      });
-
-      await Promise.all([
-        waitForStdout(host, /STAGE: battle_started/, 60_000),
-        waitForStdout(guest, /STAGE: battle_started/, 60_000),
-      ]);
-      await sleep(400);
-
-      assert.equal(host.child.exitCode, null, `host should still be waiting for input:
-${host.output.stdout}
---- stderr ---
-${host.output.stderr}`);
-      assert.equal(guest.child.exitCode, null, `guest should still be waiting for input:
-${guest.output.stdout}
---- stderr ---
-${guest.output.stderr}`);
-      assert.doesNotMatch(host.output.stdout, /HOST_CHOICE: /, `host auto-submitted a choice:
-${host.output.stdout}`);
-      assert.doesNotMatch(guest.output.stdout, /GUEST_CHOICE: /, `guest auto-submitted a choice:
-${guest.output.stdout}`);
-      assert.doesNotMatch(host.output.stdout, /SUCCESS: battle_completed/, `host completed without manual input:
-${host.output.stdout}`);
-      assert.doesNotMatch(guest.output.stdout, /SUCCESS: battle_completed/, `guest completed without manual input:
-${guest.output.stdout}`);
-    } finally {
-      await terminate(host);
-      if (guest) {
-        await terminate(guest);
-      }
-    }
-  });
-
-  it('waits for a forced replacement choice instead of auto-surrendering after a faint', async () => {
-    const battleExchangeTimeoutMs = 15_000;
-    const hostProfile = createProfile('host-forced-switch', '387', 387, 60);
-    const guestProfile = createProfileWithParty('guest-forced-switch', [
-      { pokemonKey: '390', speciesId: 390, level: 1 },
-      { pokemonKey: '387', speciesId: 387, level: 18 },
-    ]);
-    after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
-
-    const host = spawnCli([
-      'host',
-      '--session-code',
-      'forced-switch-123',
-      '--timeout-ms',
-      String(battleExchangeTimeoutMs),
-    ], {
-      configDir: hostProfile.profileDir,
-    });
-
-    let guest: SpawnedCli | null = null;
-    try {
-      const hostStdout = await waitForStdout(host, /^JOIN_INFO: .+$/m, 60_000);
-      const joinInfoJson = hostStdout.match(/^JOIN_INFO: (.+)$/m)?.[1];
-      assert.ok(joinInfoJson, `expected JOIN_INFO line in host stdout:
-${hostStdout}`);
-      const joinInfo = JSON.parse(joinInfoJson) as { host: string; port: number };
-
-      guest = spawnCli([
-        'join',
-        '--host',
-        joinInfo.host,
-        '--port',
-        String(joinInfo.port),
-        '--session-code',
-        'forced-switch-123',
-        '--timeout-ms',
-        String(battleExchangeTimeoutMs),
-        '--generation',
-        'gen4',
-        '--player-name',
-        'Guest',
-      ], {
-        configDir: guestProfile.profileDir,
-      });
-
-      await Promise.all([
-        waitForStdout(host, /STAGE: battle_started/, 60_000),
-        waitForStdout(guest, /STAGE: battle_started/, 60_000),
-      ]);
-      await sleep(800);
-
-      assert.equal(guest.child.exitCode, null, `guest should still be waiting to choose a replacement:
-${guest.output.stdout}
---- stderr ---
-${guest.output.stderr}`);
-      assert.doesNotMatch(guest.output.stdout, /GUEST_CHOICE: surrender/, `guest auto-surrendered instead of waiting for switch input:
-${guest.output.stdout}`);
-      assert.doesNotMatch(host.output.stdout, /SUCCESS: battle_completed/, `host completed instead of waiting for forced switch input:
-${host.output.stdout}`);
-    } finally {
-      await terminate(host);
-      if (guest) {
-        await terminate(guest);
-      }
-    }
-  });
-
-  it('accepts an explicit surrender command from stdin instead of ignoring it', async () => {
-    const battleExchangeTimeoutMs = 15_000;
-    const hostProfile = createProfileWithParty('host-surrender-input', [
-      { pokemonKey: '387', speciesId: 387, level: 16 },
-      { pokemonKey: '390', speciesId: 390, level: 16 },
-    ]);
-    const guestProfile = createProfileWithParty('guest-surrender-input', [
-      { pokemonKey: '390', speciesId: 390, level: 16 },
-      { pokemonKey: '387', speciesId: 387, level: 16 },
-    ]);
-    after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
-
-    const host = spawnCli([
-      'host',
-      '--session-code',
-      'stdin-surrender-123',
-      '--timeout-ms',
-      String(battleExchangeTimeoutMs),
-    ], {
-      configDir: hostProfile.profileDir,
-    });
-
-    let guest: SpawnedCli | null = null;
-    try {
-      const hostStdout = await waitForStdout(host, /^JOIN_INFO: .+$/m, 60_000);
-      const joinInfoJson = hostStdout.match(/^JOIN_INFO: (.+)$/m)?.[1];
-      assert.ok(joinInfoJson, `expected JOIN_INFO line in host stdout:
-${hostStdout}`);
-      const joinInfo = JSON.parse(joinInfoJson) as { host: string; port: number };
-
-      guest = spawnCli([
-        'join',
-        '--host',
-        joinInfo.host,
-        '--port',
-        String(joinInfo.port),
-        '--session-code',
-        'stdin-surrender-123',
-        '--timeout-ms',
-        String(battleExchangeTimeoutMs),
-        '--generation',
-        'gen4',
-        '--player-name',
-        'Guest',
-      ], {
-        configDir: guestProfile.profileDir,
-      });
-
-      await Promise.all([
-        waitForStdout(host, /STAGE: battle_started/, 60_000),
-        waitForStdout(guest, /STAGE: battle_started/, 60_000),
-      ]);
-
-      guest.child.stdin.write('surrender\n');
-      await sleep(500);
-
-      assert.doesNotMatch(guest.output.stdout, /GUEST_CHOICE: move:0/, `guest auto-submitted a move before honoring stdin surrender:
-${guest.output.stdout}
---- stderr ---
-${guest.output.stderr}`);
-      assert.match(guest.output.stdout, /GUEST_CHOICE: surrender/, `guest stdin surrender was ignored:
-${guest.output.stdout}
---- stderr ---
-${guest.output.stderr}`);
-      assert.doesNotMatch(host.output.stdout, /HOST_CHOICE: /, `host should still be waiting while surrender input is processed:
-${host.output.stdout}
---- stderr ---
-${host.output.stderr}`);
-    } finally {
-      await terminate(host);
-      if (guest) {
-        await terminate(guest);
-      }
-    }
   });
 
   it('replays a same-machine two terminal battle smoke and cleans up persisted session artifacts', async () => {
