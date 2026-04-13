@@ -181,6 +181,7 @@ async function promptForChoice(input: {
       });
       rl.question(`${input.actorLabel}> `, (value) => {
         rl.close();
+        process.stdin.pause();
         resolveAnswer(value.trim());
       });
     });
