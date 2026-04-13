@@ -14,7 +14,6 @@ import {
   startFriendlyBattleLocalBattle,
 } from '../src/friendly-battle/local-harness.js';
 import { buildFriendlyBattlePartySnapshot } from '../src/friendly-battle/snapshot.js';
-import { spawnPrintedCommand } from './helpers.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-local.ts');
@@ -675,7 +674,7 @@ ${host.output.stderr}`);
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
 
-    const guest = spawnPrintedCommand(joinCommand, {
+    const guest = spawn(joinCommand, {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
@@ -683,6 +682,8 @@ ${host.output.stderr}`);
         TSX_DISABLE_CACHE: '1',
         CLAUDE_CONFIG_DIR: guestProfile.profileDir,
       },
+      shell: true,
+      stdio: ['pipe', 'pipe', 'pipe'],
     });
 
     let guestStdout = '';
@@ -695,13 +696,24 @@ ${host.output.stderr}`);
     guest.stderr.on('data', (chunk: string) => {
       guestStderr += chunk;
     });
+    const guestCompletion = new Promise<{ stdout: string; stderr: string; exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
+      guest.once('error', rejectGuest);
+      guest.once('close', (exitCode, signal) => resolveGuest({ stdout: guestStdout, stderr: guestStderr, exitCode, signal }));
+    });
+    const guestSpawned: SpawnedCli = {
+      child: guest,
+      output: { get stdout() { return guestStdout; }, get stderr() { return guestStderr; } },
+      completion: guestCompletion,
+    };
+
+    await waitForStdout(host, /HOST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
+    await writeChoice(host, 'move:0');
+    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
+    guest.stdin.write('surrender\n');
 
     const [hostResult, guestResult] = await Promise.all([
       host.completion,
-      new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
-        guest.once('error', rejectGuest);
-        guest.once('close', (exitCode, signal) => resolveGuest({ exitCode, signal }));
-      }),
+      guestCompletion,
     ]);
 
     assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
@@ -764,7 +776,7 @@ ${host.output.stderr}`);
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
 
-    const guest = spawnPrintedCommand(joinCommand, {
+    const guest = spawn(joinCommand, {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
@@ -772,6 +784,7 @@ ${host.output.stderr}`);
         TSX_DISABLE_CACHE: '1',
         CLAUDE_CONFIG_DIR: guestProfile.profileDir,
       },
+      shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -785,29 +798,35 @@ ${host.output.stderr}`);
     guest.stderr.on('data', (chunk: string) => {
       guestStderr += chunk;
     });
+    const guestCompletion = new Promise<{ stdout: string; stderr: string; exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
+      guest.once('error', rejectGuest);
+      guest.once('close', (exitCode, signal) => resolveGuest({ stdout: guestStdout, stderr: guestStderr, exitCode, signal }));
+    });
+    const guestSpawned: SpawnedCli = {
+      child: guest,
+      output: { get stdout() { return guestStdout; }, get stderr() { return guestStderr; } },
+      completion: guestCompletion,
+    };
 
     await waitForStdout(host, /HOST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
     await writeChoice(host, 'move:0');
-    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('move:0\n');
 
-    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 1 .*switch:1.*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('switch:1\n');
-    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 2 .*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('surrender\n');
 
     const [hostResult, guestResult] = await Promise.all([
       host.completion,
-      new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
-        guest.once('error', rejectGuest);
-        guest.once('close', (exitCode, signal) => resolveGuest({ exitCode, signal }));
-      }),
+      guestCompletion,
     ]);
 
     assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
     assert.equal(hostResult.exitCode, 0, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
-    assert.equal(guestResult.signal, null, `guest stderr:\n${guestStderr}`);
-    assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestStdout}\n--- stderr ---\n${guestStderr}`);
+    assert.equal(guestResult.signal, null, `guest stderr:\n${guestResult.stderr}`);
+    assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestResult.stdout}\n--- stderr ---\n${guestResult.stderr}`);
 
     assert.match(hostResult.stdout, /HOST_PROMPT: turn 1 .*move:0.*surrender/);
     assert.match(hostResult.stdout, /HOST_CHOICE: move:0/);
