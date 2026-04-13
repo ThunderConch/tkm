@@ -1,4 +1,5 @@
 #!/usr/bin/env -S npx tsx
+import { join } from 'node:path';
 import {
   FriendlyBattleTransportError,
   connectFriendlyBattleSpikeGuest,
@@ -14,12 +15,17 @@ import {
   resolveFriendlyBattleLocalFirstTurn,
   startFriendlyBattleLocalBattle,
 } from '../friendly-battle/local-harness.js';
+import { PLUGIN_ROOT } from '../core/paths.js';
 
 type Command = 'host' | 'join';
 
 type ParsedArgs = {
   command: Command;
   values: Map<string, string>;
+};
+
+export type FriendlyBattleLocalCliOptions = {
+  joinCommandStyle?: 'local-script' | 'tokenmon-cli';
 };
 
 function usage(): never {
@@ -103,7 +109,10 @@ function printFailure(stage: string, message: string): void {
   console.error(message);
 }
 
-async function runHost(values: Map<string, string>): Promise<void> {
+async function runHost(
+  values: Map<string, string>,
+  options: FriendlyBattleLocalCliOptions = {},
+): Promise<void> {
   const hostAddress = values.get('host') ?? '127.0.0.1';
   const port = getNumberArg(values, 'port', 0, { min: 0, max: 65_535 });
   const timeoutMs = getNumberArg(values, 'timeout-ms', 4_000, { min: 1 });
@@ -139,25 +148,15 @@ async function runHost(values: Map<string, string>): Promise<void> {
     console.log(`GUEST_SNAPSHOT_PATH: ${artifacts.guestSnapshotPath}`);
     console.log(`BATTLE_PATH: ${artifacts.battlePath}`);
 
-    const joinCommand = [
-      'env',
-      `CLAUDE_CONFIG_DIR=${shellEscape(guestConfigDir)}`,
-      shellEscape(process.execPath),
-      '--import',
-      'tsx',
-      'src/cli/friendly-battle-local.ts',
-      'join',
-      '--host',
-      shellEscape(host.connectionInfo.host),
-      '--port',
-      shellEscape(String(host.connectionInfo.port)),
-      '--session-code',
-      shellEscape(sessionCode),
-      '--timeout-ms',
-      shellEscape(String(timeoutMs)),
-      '--player-name',
-      shellEscape(guestPlayerName),
-    ].join(' ');
+    const joinCommand = buildJoinCommand({
+      guestConfigDir,
+      host: host.connectionInfo.host,
+      port: host.connectionInfo.port,
+      guestPlayerName,
+      sessionCode,
+      timeoutMs,
+      style: options.joinCommandStyle ?? 'local-script',
+    });
 
     console.log(`JOIN_INFO: ${JSON.stringify(host.connectionInfo)}`);
     console.log(`JOIN_COMMAND: ${joinCommand}`);
@@ -240,22 +239,72 @@ async function runJoin(values: Map<string, string>): Promise<void> {
   }
 }
 
-async function main(): Promise<void> {
-  const { command, values } = parseArgs(process.argv.slice(2));
+function buildJoinCommand(params: {
+  guestConfigDir: string;
+  host: string;
+  port: number;
+  guestPlayerName: string;
+  sessionCode: string;
+  timeoutMs: number;
+  style: 'local-script' | 'tokenmon-cli';
+}): string {
+  const command =
+    params.style === 'tokenmon-cli'
+      ? [
+          shellEscape(process.execPath),
+          '--import',
+          'tsx',
+          shellEscape(join(PLUGIN_ROOT, 'src', 'cli', 'tokenmon.ts')),
+          'friendly-battle',
+          'join',
+        ]
+      : [
+          shellEscape(process.execPath),
+          '--import',
+          'tsx',
+          'src/cli/friendly-battle-local.ts',
+          'join',
+        ];
+
+  return [
+    'env',
+    `CLAUDE_CONFIG_DIR=${shellEscape(params.guestConfigDir)}`,
+    ...command,
+    '--host',
+    shellEscape(params.host),
+    '--port',
+    shellEscape(String(params.port)),
+    '--session-code',
+    shellEscape(params.sessionCode),
+    '--timeout-ms',
+    shellEscape(String(params.timeoutMs)),
+    '--player-name',
+    shellEscape(params.guestPlayerName),
+  ].join(' ');
+}
+
+export async function runFriendlyBattleLocalCli(
+  argv: string[],
+  options: FriendlyBattleLocalCliOptions = {},
+): Promise<void> {
+  const { command, values } = parseArgs(argv);
   if (command === 'host') {
-    await runHost(values);
+    await runHost(values, options);
     return;
   }
 
   await runJoin(values);
 }
 
-main().catch((error: unknown) => {
-  if (error instanceof FriendlyBattleTransportError) {
-    console.error(error.message);
-    process.exit(1);
-  }
+const isEntryScript = import.meta.url === `file://${process.argv[1]}`;
+if (isEntryScript) {
+  runFriendlyBattleLocalCli(process.argv.slice(2)).catch((error: unknown) => {
+    if (error instanceof FriendlyBattleTransportError) {
+      console.error(error.message);
+      process.exit(1);
+    }
 
-  console.error(error);
-  process.exit(1);
-});
+    console.error(error);
+    process.exit(1);
+  });
+}

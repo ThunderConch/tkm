@@ -167,6 +167,7 @@
   "cli.help.cmd_evolve_pokemon": "  evolve <이름>       포켓몬 진화 (분기 선택)",
   "cli.help.cmd_notifications": "  notifications       알림 보기",
   "cli.help.cmd_notifications_clear": "  notifications clear 알림 모두 삭제",
+  "cli.help.cmd_friendly_battle": "  friendly-battle     친선 배틀 명령 (local v1)",
 
   "notification.evolution_ready": "{pokemon:이/가} 진화 준비 완료! 실행: tokenmon evolve {pokemon}",
   "statusline.evolution_ready": "✨ {pokemon:이/가} 진화 준비 완료! /tkm evolve {pokemon}",

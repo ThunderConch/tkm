@@ -167,6 +167,7 @@
   "cli.help.cmd_evolve_pokemon": "  evolve <name>       Evolve a Pokemon (branch selection)",
   "cli.help.cmd_notifications": "  notifications       View notifications",
   "cli.help.cmd_notifications_clear": "  notifications clear Clear all notifications",
+  "cli.help.cmd_friendly_battle": "  friendly-battle     Friendly battle commands (local v1)",
 
   "notification.evolution_ready": "{pokemon} is ready to evolve! Run: tokenmon evolve {pokemon}",
   "statusline.evolution_ready": "✨ {pokemon} is ready to evolve! /tkm evolve {pokemon}",

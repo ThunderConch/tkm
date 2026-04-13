@@ -1868,6 +1868,7 @@ function cmdHelp(): void {
   console.log(t('cli.help.cmd_uninstall'));
   console.log(t('cli.help.cmd_uninstall_keep'));
   console.log(t('cli.help.cmd_reset'));
+  console.log(t('cli.help.cmd_friendly_battle'));
   console.log(t('cli.help.cmd_cheat'));
   console.log(t('cli.help.cmd_help'));
   console.log('');
@@ -1982,6 +1983,11 @@ switch (command) {
   case 'reset':
     cmdReset(args.includes('--confirm'));
     break;
+  case 'friendly-battle': {
+    const { runFriendlyBattleCli } = await import('./friendly-battle.js');
+    await runFriendlyBattleCli(args.slice(1));
+    break;
+  }
   case 'cheat':
     cmdCheat(args[1], args[2], args[3]);
     break;
