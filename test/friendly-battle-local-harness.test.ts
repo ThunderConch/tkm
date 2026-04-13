@@ -46,7 +46,7 @@ function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli 
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
       ...(options?.env ?? {}),
     },
-    stdio: ['pipe', 'pipe', 'pipe'],
+    stdio: ['ignore', 'pipe', 'pipe'],
   });
 
   const output = { stdout: '', stderr: '' };
