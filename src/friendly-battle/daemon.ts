@@ -380,9 +380,6 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   // ---------------------------------------------------------------------------
   const ipcServer = await createDaemonIpcServer(socketPath, ipcHandler);
 
-  // Signal to parent that we're ready
-  process.stdout.write(`DAEMON_READY ${sessionId} ${socketPath}\n`);
-
   // ---------------------------------------------------------------------------
   // Shutdown helper
   // ---------------------------------------------------------------------------
@@ -393,8 +390,19 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     record.phase = phase;
     record.status = phase === 'finished' ? (record.status) : 'aborted';
     writeRecord();
-    localEventQueue.fail(new Error('daemon shutting down'));
+    // Fail action queue to unblock any turn-loop waiter.
     localActionQueue.fail(new Error('daemon shutting down'));
+    if (exitCode !== 0) {
+      // On error/abort, also fail the event queue so callers get an error.
+      localEventQueue.fail(new Error('daemon shutting down'));
+    } else {
+      // On clean finish: wait for the event queue to drain (all events consumed
+      // by IPC clients) before closing, with a 10s safety timeout.
+      const drainDeadline = Date.now() + 10_000;
+      while (localEventQueue.size > 0 && Date.now() < drainDeadline) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 20));
+      }
+    }
     await ipcServer.close().catch(() => undefined);
     process.exit(exitCode);
   }
@@ -414,10 +422,14 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       generation,
     });
 
+    // Signal ready with actual bound port so parent/test can connect guest
+    process.stdout.write(`DAEMON_READY ${sessionId} ${socketPath} ${host_transport.connectionInfo.port}\n`);
+
     try {
       // Handshake
       record.phase = 'waiting_for_guest';
       record.status = 'waiting_for_guest';
+      record.transport = { host: host_transport.connectionInfo.host, port: host_transport.connectionInfo.port };
       writeRecord();
 
       const joined = await host_transport.waitForGuestJoin(timeoutMs);
@@ -522,6 +534,9 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     guestSnapshot,
     timeoutMs,
   });
+
+  // Signal ready to parent — guest doesn't emit a port
+  process.stdout.write(`DAEMON_READY ${sessionId} ${socketPath}\n`);
 
   try {
     await guest_transport.markReady();
