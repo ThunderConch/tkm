@@ -380,7 +380,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
       assert.deepEqual(guestChoices, [
         '1:waiting_for_choices:move:0',
-        '1:awaiting_fainted_switch:switch:1',
+        '2:awaiting_fainted_switch:switch:1',
         '2:waiting_for_choices:surrender',
       ]);
       assert.equal(runtime.state.opponent.activeIndex, 1);
