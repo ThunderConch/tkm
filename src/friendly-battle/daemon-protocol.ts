@@ -7,8 +7,9 @@ export type DaemonRequest =
   | { op: 'ping' };
 
 export type DaemonAction =
-  | { kind: 'move'; index: number };
-  // switch/surrender land in PR45 — add variants there, not here
+  | { kind: 'move'; index: number }
+  | { kind: 'switch'; pokemonIndex: number }
+  | { kind: 'surrender' };
 
 export type DaemonResponse =
   | { op: 'event'; envelope: FriendlyBattleTurnJson }

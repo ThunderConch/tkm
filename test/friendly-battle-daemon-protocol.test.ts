@@ -12,6 +12,8 @@ describe('friendly-battle daemon protocol', () => {
     const variants: DaemonRequest[] = [
       { op: 'wait_next_event', timeoutMs: 1000 },
       { op: 'submit_action', action: { kind: 'move', index: 2 } },
+      { op: 'submit_action', action: { kind: 'switch', pokemonIndex: 1 } },
+      { op: 'submit_action', action: { kind: 'surrender' } },
       { op: 'status' },
       { op: 'ping' },
     ];
