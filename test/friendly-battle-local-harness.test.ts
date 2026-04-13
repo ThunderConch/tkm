@@ -602,6 +602,8 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     await writeChoice(host, 'move:0');
     await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 2 .*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('surrender\n');
+    await waitForStdout(host, /SUCCESS: battle_completed/m, battleExchangeTimeoutMs);
+    await waitForStdout(guestSpawned, /SUCCESS: battle_completed/m, battleExchangeTimeoutMs);
 
     const [hostResult, guestResult] = await Promise.all([
       host.completion,
