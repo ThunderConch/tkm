@@ -359,7 +359,17 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         if (queueClosedEnvelope !== null) {
           return { op: 'event', envelope: queueClosedEnvelope };
         }
-        const event = await localEventQueue.shift(req.timeoutMs, 'wait_next_event');
+        let event: FriendlyBattleBattleEvent;
+        try {
+          event = await localEventQueue.shift(req.timeoutMs, 'wait_next_event');
+        } catch (err) {
+          // If shutdown armed the sentinel while we were blocked on shift(),
+          // fall through to the finished envelope. Otherwise propagate.
+          if (queueClosedEnvelope !== null) {
+            return { op: 'event', envelope: queueClosedEnvelope };
+          }
+          throw err;
+        }
         const fields = eventToEnvelopeFields(event, role, runtime, ownSnapshot);
         // Update record status based on the event
         record.status = eventStatus(event, role);
@@ -404,14 +414,17 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       // On error/abort, also fail the event queue so callers get an error.
       localEventQueue.fail(new Error('daemon shutting down'));
     } else {
-      // On clean finish: wait for the event queue to drain (all events consumed
-      // by IPC clients) before closing, with a 10s safety timeout.
+      // On clean finish: drain any already-buffered events first so legitimate
+      // wait_next_event callers can consume them, with a 10s safety timeout.
       const drainDeadline = Date.now() + 10_000;
       while (localEventQueue.size > 0 && Date.now() < drainDeadline) {
         await new Promise<void>((resolve) => setTimeout(resolve, 20));
       }
-      // Arm the sentinel so late wait_next_event callers get the finished
-      // envelope immediately instead of hanging until their own timeout fires.
+      // Arm the sentinel AFTER drain so new wait_next_event callers get the
+      // finished envelope immediately instead of blocking on the now-empty
+      // queue. Any waiter that was blocked on shift() during drain gets
+      // unblocked by the subsequent localEventQueue.fail(); the IPC handler
+      // catches that rejection and returns the sentinel.
       queueClosedEnvelope = formatFriendlyBattleTurnJson({
         record,
         questionContext: record.status === 'victory' ? 'You won!' : 'You lost!',
@@ -420,6 +433,9 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         animationFrames: [],
         currentFrameIndex: 0,
       });
+      // Unblock any shift() that's already in flight so it can fall through
+      // to the sentinel check in the IPC handler's catch branch.
+      localEventQueue.fail(new Error('daemon finished cleanly'));
     }
     await ipcServer.close().catch(() => undefined);
     process.exit(exitCode);
