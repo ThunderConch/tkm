@@ -68,6 +68,7 @@
 ### 4. 로드맵
 - [로드맵 인덱스](./roadmap/README.md)
   - [PR 로드맵](./roadmap/pr-roadmap.md)
+  - [현재 gap 정리](./roadmap/current-gap-after-remote-snapshot-handshake.md)
 
 ## 문서 간 관계
 
@@ -77,6 +78,7 @@
 - [상태 경계](./architecture/state-boundary.md)는 progression / snapshot / session / battle 사이의 책임 경계를 정의한다.
 - [Transport feasibility gate](./validation/transport-feasibility-gate.md)는 A안을 계속 밀지, B로 내려갈지 결정하는 kill-or-commit 문서다.
 - [PR 로드맵](./roadmap/pr-roadmap.md)은 실제 구현 순서와 각 PR의 acceptance criteria를 정의한다.
+- [현재 gap 정리](./roadmap/current-gap-after-remote-snapshot-handshake.md)는 현재 기준으로 이미 올라온 것과 남은 product gap을 분리해 보여준다.
 
 ## 빠른 요약
 
