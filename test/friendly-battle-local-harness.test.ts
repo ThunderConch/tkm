@@ -575,6 +575,8 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
     await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 1 .*switch:1.*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('switch:1\n');
+    await waitForStdout(host, /HOST_PROMPT: turn 2 .*move:0.*surrender/m, battleExchangeTimeoutMs);
+    await writeChoice(host, 'move:0');
     await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 2 .*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('surrender\n');
 
@@ -590,6 +592,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
     assert.match(hostResult.stdout, /HOST_PROMPT: turn 1 .*move:0.*surrender/);
     assert.match(hostResult.stdout, /HOST_CHOICE: move:0/);
+    assert.match(hostResult.stdout, /HOST_PROMPT: turn 2 .*move:0.*surrender/);
     assert.match(guestStdout, /GUEST_PROMPT: turn 1 .*move:0.*surrender/);
     assert.match(guestStdout, /GUEST_CHOICE: move:0/);
     assert.match(guestStdout, /GUEST_PROMPT: turn 1 .*switch:1.*surrender/);
