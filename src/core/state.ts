@@ -129,16 +129,20 @@ export function commonStateExists(): boolean {
 
 // ── Per-generation State ──
 
-export function readState(gen?: string): State {
-  const path = statePath(gen);
-  if (!existsSync(path)) {
-    return { ...DEFAULT_STATE, pokemon: {}, unlocked: [], achievements: {}, last_session_tokens: {} };
+export function getDefaultState(): State {
+  return structuredClone(DEFAULT_STATE);
+}
+
+export function hydrateState(
+  parsed: Partial<State> | null | undefined,
+  options: { gen?: string; stateFilePath?: string } = {},
+): State {
+  if (!parsed) {
+    return getDefaultState();
   }
-  const raw = readFileSync(path, 'utf-8');
-  const parsed = JSON.parse(raw) as Partial<State>;
-  // Merge with defaults to fill missing fields
+
   const result: State = {
-    ...DEFAULT_STATE,
+    ...getDefaultState(),
     ...parsed,
     pokemon: parsed.pokemon ?? {},
     unlocked: parsed.unlocked ?? [],
@@ -174,12 +178,21 @@ export function readState(gen?: string): State {
   }
 
   // Migrate Korean name keys -> ID keys
-  migrateNameToId(result, path, i18nDataDir(gen));
+  migrateNameToId(result, options.stateFilePath ?? statePath(options.gen), i18nDataDir(options.gen));
 
   // Version-gated migrations
   runMigrations(result);
 
   return result;
+}
+
+export function readState(gen?: string): State {
+  const path = statePath(gen);
+  if (!existsSync(path)) {
+    return getDefaultState();
+  }
+  const raw = readFileSync(path, 'utf-8');
+  return hydrateState(JSON.parse(raw) as Partial<State>, { gen, stateFilePath: path });
 }
 
 function migrateNameToId(state: State, stateFilePath: string, i18nDir: string): State {

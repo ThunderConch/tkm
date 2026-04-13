@@ -13,7 +13,17 @@ process.env.CLAUDE_CONFIG_DIR = TEST_DIR;
 process.env.CLAUDE_PLUGIN_ROOT = join(TEST_DIR, '.claude', 'plugins', 'cache', 'tokenmon');
 
 // Dynamic import after env setup
-const { readState, writeState, pruneSessionTokens, readSession, writeSession, readSessionGenMap, writeSessionGenMap, pruneSessionGenMap } = await import('../src/core/state.js');
+const {
+  getDefaultState,
+  readState,
+  writeState,
+  pruneSessionTokens,
+  readSession,
+  writeSession,
+  readSessionGenMap,
+  writeSessionGenMap,
+  pruneSessionGenMap,
+} = await import('../src/core/state.js');
 const { statePath, sessionPath, SESSION_GEN_MAP_PATH } = await import('../src/core/paths.js');
 
 function freshDir(): void {
@@ -32,6 +42,16 @@ await test('readState returns defaults when file missing', () => {
   assert.equal(state.total_tokens_consumed, 0);
   assert.equal(state.session_count, 0);
   assert.equal(state.xp_bonus_multiplier, 1.0);
+});
+
+await test('getDefaultState returns isolated mutable containers', () => {
+  const left = getDefaultState();
+  const right = getDefaultState();
+
+  left.cheat_log.push({ timestamp: '2026-04-13T00:00:00.000Z', command: 'tokenmon cheat xp 9999' });
+
+  assert.equal(left.cheat_log.length, 1);
+  assert.equal(right.cheat_log.length, 0);
 });
 
 await test('writeState + readState roundtrip persists all fields', () => {
