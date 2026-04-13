@@ -36,6 +36,8 @@ function makeRecord(overrides: Partial<FriendlyBattleSessionRecord> = {}): Frien
     transport: { host: '127.0.0.1', port: 52345 },
     opponent: null,
     pid: process.pid,
+    daemonPid: process.pid,
+    socketPath: '/tmp/fb-test.sock',
     createdAt: '2026-04-14T00:00:00.000Z',
     updatedAt: '2026-04-14T00:00:00.000Z',
     ...overrides,
@@ -114,6 +116,19 @@ describe('friendly-battle session store', () => {
       // Corrupt the file — overwrite with an object missing required keys.
       writeFileSync(path, JSON.stringify({ sessionId: 'corrupt', role: 'observer' }), 'utf8');
       const loaded = readFriendlyBattleSessionRecord('corrupt', 'gen4');
+      assert.equal(loaded, null);
+    });
+  });
+
+  it('returns null when daemonPid is missing from an on-disk record', () => {
+    withTempClaudeDir(() => {
+      const valid = makeRecord({ sessionId: 'no-daemon-pid' });
+      writeFriendlyBattleSessionRecord(valid);
+      const path = friendlyBattleSessionRecordPath('no-daemon-pid', 'gen4');
+      // Write a record with daemonPid removed (simulates a PR43 on-disk record).
+      const withoutDaemonPid = { ...valid, daemonPid: undefined as unknown as number };
+      writeFileSync(path, JSON.stringify(withoutDaemonPid), 'utf8');
+      const loaded = readFriendlyBattleSessionRecord('no-daemon-pid', 'gen4');
       assert.equal(loaded, null);
     });
   });

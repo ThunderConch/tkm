@@ -32,6 +32,8 @@ export interface FriendlyBattleSessionRecord {
   transport: { host: string; port: number };
   opponent: { playerName: string } | null;
   pid: number;
+  daemonPid?: number;
+  socketPath?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -51,6 +53,8 @@ function isValidRecord(value: unknown): value is FriendlyBattleSessionRecord {
   if (typeof r.generation !== 'string' || !SAFE_SEGMENT.test(r.generation)) return false;
   if (r.role !== 'host' && r.role !== 'guest') return false;
   if (typeof r.pid !== 'number' || !Number.isInteger(r.pid) || r.pid <= 0) return false;
+  if (typeof r.daemonPid !== 'number' || !Number.isInteger(r.daemonPid) || r.daemonPid <= 0) return false;
+  if (typeof r.socketPath !== 'string' || r.socketPath.length === 0) return false;
   if (typeof r.phase !== 'string') return false;
   if (typeof r.status !== 'string') return false;
   if (typeof r.sessionCode !== 'string') return false;
