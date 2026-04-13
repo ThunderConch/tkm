@@ -1002,7 +1002,32 @@ git commit -m "Implement friendly-battle-turn --init-join handshake"
 
 ---
 
-## Task 6 — `--action move:N` subcommand
+## Rescope notice (added after Task 5 landed)
+
+After Tasks 1–5 landed (commits `c6c562d` → `308a3dc`), the handshake driver
+is fully functional end-to-end across two spawned CLI processes. Tasks 6–9
+were originally scoped into PR43, but during execution the following became
+clear:
+
+- `--action move:N` (Task 6) and `--refresh --frame/--finalize` (Task 7) only
+  make sense when a skill drives them inside an AskUserQuestion turn loop.
+  Absent that loop, neither side knows when it is its turn to submit.
+- `--wait-next-event` was originally allocated to PR44 but is required for
+  Tasks 6/7 to be testable at all.
+- `--status` (Task 8) is cheap but has no caller until the SKILL.md exists.
+- Gating the deterministic local-harness path (Task 9) is only needed when
+  the real turn loop runs — the deterministic path is still exercised by the
+  existing #42 spike CLI tests and must not be touched until then.
+
+**New PR43 scope**: Tasks 1 → 5 (done) plus Task 10 (CI sanity + draft PR).
+**Moved to PR44**: Tasks 6 → 9 plus `--wait-next-event` plus `skills/friendly-battle/SKILL.md`.
+
+The task sections below are preserved as historical design notes and will
+be expanded / revised when the PR44 plan is written.
+
+---
+
+## Task 6 — `--action move:N` subcommand (MOVED TO PR44)
 
 **Files:**
 - Modify: `src/cli/friendly-battle-turn.ts`
@@ -1059,7 +1084,7 @@ git commit -m "Implement friendly-battle-turn --action move:N"
 
 ---
 
-## Task 7 — `--refresh --frame / --finalize` subcommands
+## Task 7 — `--refresh --frame / --finalize` subcommands (MOVED TO PR44)
 
 **Files:**
 - Modify: `src/cli/friendly-battle-turn.ts`
@@ -1079,7 +1104,7 @@ git commit -m "Implement friendly-battle-turn --refresh frame/finalize pump"
 
 ---
 
-## Task 8 — `--status` subcommand
+## Task 8 — `--status` subcommand (MOVED TO PR44)
 
 **Files:**
 - Modify: `src/cli/friendly-battle-turn.ts`
@@ -1099,7 +1124,7 @@ git commit -m "Implement friendly-battle-turn --status read-only envelope"
 
 ---
 
-## Task 9 — Gate `local-harness` deterministic path behind an env flag
+## Task 9 — Gate `local-harness` deterministic path behind an env flag (MOVED TO PR44)
 
 **Files:**
 - Modify: `src/friendly-battle/local-harness.ts`
