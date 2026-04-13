@@ -2,7 +2,7 @@
 description: "Tokenmon friendly battle. Real PvP turn loop against another player on the same network. Korean: 친선전, 친선 배틀, 배틀, 대전, friendly battle"
 ---
 
-Open a friendly battle session and fight another player in real-time turn-based combat. One player opens a room (`open`), shares the session code + host:port with their opponent, who then joins (`join`). Switch / surrender / leave are not yet available (coming in PR45/46).
+Open a friendly battle session and fight another player in real-time turn-based combat. One player opens a room (`open`), shares the session code + host:port with their opponent, who then joins (`join`). Switch and surrender are now supported (PR45). Leave is coming in PR46.
 
 ## Execute
 
@@ -12,9 +12,9 @@ Read the first token of `$ARGUMENTS`:
 
 - `open` → go to **Step 1a** (open flow)
 - `join` → go to **Step 1b** (join flow); the second token must be `<code>@<host>:<port>`
-- `status` → go to **Step 3** (status flow)
-- `help` or empty → go to **Step 4** (help flow)
-- anything else → print `알 수 없는 명령어: <token>` and go to **Step 4**
+- `status` → go to **Step 7** (status flow)
+- `help` or empty → go to **Step 8** (help flow)
+- anything else → print `알 수 없는 명령어: <token>` and go to **Step 8**
 
 ---
 
@@ -94,7 +94,8 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 
 2. Parse the returned envelope. Dispatch on `status`:
 
-   - **`select_action`**: build a move-select AskUserQuestion (see below).
+   - **`select_action`**: build a move-select AskUserQuestion (see **Step 3** below).
+   - **`fainted_switch`**: go directly to **Step 6** (forced switch — no move menu).
    - **`victory`**: show "승리! 배틀이 끝났습니다." and stop.
    - **`defeat`**: show "패배... 배틀이 끝났습니다." and stop.
    - **`aborted`**: read REASON from stderr, show it, and stop.
@@ -109,6 +110,8 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
    - Never add switch or surrender as buttons.
    - Rely on the auto-provided `Other` field for non-move intents.
 
+   **Non-negotiable input rule:** ALWAYS use **AskUserQuestion** for action selection. Never parse actions from plain chat. If the user types `1`, `공격`, `교체`, `항복`, or anything else in free chat during battle, ignore it as a battle command and re-open the correct AskUserQuestion UI.
+
    Parse the AskUserQuestion answer:
    - Button 1-4 on a shown move slot: call `--action`:
 
@@ -116,17 +119,74 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 "$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action "move:$N" --session "$SESSION_ID" --generation "$GEN"
 ```
 
-   - `Other` text matching `/^(교체|switch|change)$/i`: respond with "교체는 PR45에서 추가됩니다. 기술 버튼을 선택해 주세요." and re-ask the same AskUserQuestion.
-   - `Other` text matching `/^(항복|surrender|quit|gg)$/i`: respond with "항복은 PR45에서 추가됩니다. 기술 버튼을 선택해 주세요." and re-ask the same AskUserQuestion.
-   - Anything else in `Other`: show "알아들을 수 없어. 기술 버튼을 눌러줘." and re-ask.
+   - `Other` text matching `/^(교체|switch|change|s)$/i`: enter **Step 4** (switch menu).
+   - `Other` text matching `/^(항복|surrender|quit|giveup|gg)$/i`: enter **Step 5** (surrender confirm).
+   - Anything else in `Other`: show "알아들을 수 없어. 기술 버튼을 누르거나 \"교체\" / \"항복\" 을 입력해줘." and re-ask.
 
-4. After `--action` returns an ack envelope, parse `animationFrames`:
+3a. After `--action` returns an ack envelope, parse `animationFrames`:
    - If `animationFrames.length === 0`: loop back to step 1 immediately.
-   - If frames exist: display each frame's description as a message (no sleep loop for PR44). After displaying all frames, loop back to step 1.
+   - If frames exist: display each frame's description as a message. After displaying all frames, loop back to step 1.
 
 ---
 
-### Step 3 — Status flow
+### Step 4 — Switch flow (user opens switch menu during a normal turn)
+
+If the user's AskUserQuestion Other response matches `/^(교체|switch|change|s)$/i`, open a SECOND AskUserQuestion listing live party members from `partyOptions`:
+
+- Label each live option as `{index}. {name} HP:{hp}/{maxHp}`
+- Mark fainted members as unavailable (label with `기절`)
+- Show up to 4 party members; more via Other text match by name
+
+On button pick (index N, 1-based): run:
+
+```bash
+"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action "switch:$N" --session "$SESSION_ID" --generation "$GEN"
+```
+
+On invalid Other (no name match): re-ask the switch AskUserQuestion.
+On cancel or no live members available: return to the move AskUserQuestion.
+
+After `--action switch:$N` returns an ack, loop back to Step 2 (wait-next-event).
+
+---
+
+### Step 5 — Surrender flow
+
+Show a confirm AskUserQuestion:
+
+- Question: `정말 항복할거야? 상대에게 승리가 돌아갑니다.`
+- Options: `항복 확정`, `취소`
+
+On `항복 확정`: run:
+
+```bash
+"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action surrender --session "$SESSION_ID" --generation "$GEN"
+```
+
+On `취소`: return to the move AskUserQuestion (Step 3).
+
+After `--action surrender` returns an ack, loop back to Step 2 (wait-next-event).
+
+---
+
+### Step 6 — Forced switch flow (after a Pokémon faints)
+
+When `--wait-next-event` returns an envelope with `status === 'fainted_switch'`, skip the move AskUserQuestion entirely and go straight to the party AskUserQuestion from Step 4 — but with cancel disabled. The user MUST pick a live party member.
+
+- Show `questionContext` (e.g. "Your Pokémon fainted — pick a replacement") as the question text.
+- List all party members from `partyOptions`. Mark fainted members as unavailable.
+- Do NOT offer a cancel option.
+- On pick (index N, 1-based): run:
+
+```bash
+"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action "switch:$N" --session "$SESSION_ID" --generation "$GEN"
+```
+
+After `--action switch:$N` returns an ack, loop back to Step 2. The daemon handles the forced switch without an extra AI turn.
+
+---
+
+### Step 7 — Status flow
 
 Requires a stored `sessionId` from the current session. If no session is active, tell the user to run `/tkm:friendly-battle open` or `/tkm:friendly-battle join` first and stop.
 
@@ -140,7 +200,7 @@ Parse the JSON envelope and report `phase` and `status` to the user. This comman
 
 ---
 
-### Step 4 — Help flow
+### Step 8 — Help flow
 
 Show:
 
@@ -151,7 +211,8 @@ Show:
 /tkm:friendly-battle help                       — 이 도움말 표시
 
 /open 실행 후 출력된 세션 코드와 host:port 를 상대방과 공유하세요.
-교체 / 항복 / 나가기는 PR45/46에서 추가됩니다.
+교체(switch) / 항복(surrender)은 배틀 중 기술 선택 AskUserQuestion의 Other에 입력하세요.
+나가기(leave)는 PR46에서 추가됩니다.
 ```
 
 ---
@@ -193,3 +254,11 @@ Show:
 | `/tkm:friendly-battle join <code>@<host>:<port>` | Join an open room |
 | `/tkm:friendly-battle status` | Check current session phase |
 | `/tkm:friendly-battle help` | Show this help |
+
+### Battle actions (via `--action` in bash blocks)
+
+| Token | Description |
+|---|---|
+| `move:<N>` | Use move slot N (1-based, 1-4) |
+| `switch:<N>` | Switch to party member N (1-based, 1-6) |
+| `surrender` | Forfeit the battle (opponent wins) |
