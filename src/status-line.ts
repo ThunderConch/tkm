@@ -203,6 +203,38 @@ export function scatterWeatherParticles(line: string, condition: WeatherConditio
   });
 }
 
+// ── Transparent-cell compaction for font-width-unstable terminals ──
+//
+// Ghostty (and any terminal whose font fallback routes \u2800 Braille Pattern
+// Blank to a different glyph stack than the non-zero braille range) renders
+// transparent sprite cells at a subtly different advance width than opaque
+// cells. Sprite rows with different opaque/transparent ratios then drift
+// relative to each other, producing the "feet pushed forward" artifact
+// even though every row has the same character count.
+//
+// Fix: emit explicit CSI CUF (cursor forward) sequences for transparent
+// runs instead of relying on \u2800 glyph advance. The terminal advances
+// exactly N cells regardless of what font is in use. We apply this only
+// for terminals where we know it's safe — opaque braille must still be
+// rendered at 1 cell per EAW:Neutral default, which holds for ghostty but
+// not for some CJK terminals where non-zero braille is 2-wide. b5b8796
+// (preserve sprite alignment during weather effects) is still the right
+// fix for that CJK case, so we leave non-ghostty terminals untouched.
+
+/** True when the current terminal needs CSI compaction for transparent
+ *  braille cells. Only ghostty is known to need this today — keep the
+ *  list narrow so CJK-wide-braille terminals aren't regressed. */
+export function shouldCompactBlanks(env: Record<string, string | undefined> = process.env): boolean {
+  return env.TERM === 'xterm-ghostty' || env.TERM_PROGRAM === 'ghostty';
+}
+
+/** Replace runs of \u2800 with explicit CSI CUF (cursor forward) escapes so
+ *  transparent cells advance by exact cell count, bypassing font-level
+ *  advance-width inconsistencies between \u2800 and non-zero braille. */
+export function compactBlanksToCsi(line: string): string {
+  return line.replace(/\u2800+/g, (run) => run.length === 1 ? '\x1b[C' : `\x1b[${run.length}C`);
+}
+
 function detectTermWidth(): number {
   // 1. Read per-session term-width file written by status-wrapper.mjs (if present)
   try {
@@ -347,6 +379,7 @@ function renderBattleMode(battleData: {
   }
 
   const baseGapChars = Math.max(2, Math.floor((printWidth - SPRITE_WIDTH * 2) / 2));
+  const useCsiBlanks = shouldCompactBlanks();
 
   if (firstRow <= lastRow) {
     for (let row = firstRow; row <= lastRow; row++) {
@@ -358,7 +391,8 @@ function renderBattleMode(battleData: {
       const playerVisible = playerLine.replace(/\x1b\[[^m]*m/g, '').length;
       const playerPadded = playerVisible < SPRITE_WIDTH ? playerLine + '\u2800'.repeat(SPRITE_WIDTH - playerVisible) : playerLine;
 
-      console.log(oppPadded + '\u2800'.repeat(baseGapChars) + playerPadded);
+      const fullLine = oppPadded + '\u2800'.repeat(baseGapChars) + playerPadded;
+      console.log(useCsiBlanks ? compactBlanksToCsi(fullLine) : fullLine);
     }
   }
 
@@ -399,7 +433,8 @@ function renderBattleMode(battleData: {
 
   // Gym info bottom line
   const gymLine = `\u2800\u2800\u2800\u2800\u2800\u2800\u2800\u2800⚔️ ${gym.leaderKo}의 체육관 — ${gym.type}`;
-  console.log(charWrap(gymLine, printWidth));
+  const wrappedGym = charWrap(gymLine, printWidth);
+  console.log(useCsiBlanks ? compactBlanksToCsi(wrappedGym) : wrappedGym);
 }
 
 function main(): void {
@@ -553,6 +588,8 @@ function main(): void {
       } catch { /* ignore */ }
     }
 
+    const useCsiBlanks = shouldCompactBlanks();
+
     for (let gi = 0; gi < spriteEntries.length; gi += spritesPerRow) {
       const group = spriteEntries.slice(gi, gi + spritesPerRow);
       const maxRows = Math.max(...group.map(s => s.length), 0);
@@ -571,14 +608,19 @@ function main(): void {
         if (weatherCondition) {
           rowStr = scatterWeatherParticles(rowStr, weatherCondition);
         }
-        // Keep \u2800 (braille blank) in output instead of converting to ASCII space.
-        // In some CJK terminals, non-zero braille (sprite art) and \u2800 are both
-        // rendered at the same width while ASCII space is narrower — mixing them
-        // causes per-row width variance proportional to sprite opacity, which is
+        // Default path: keep \u2800 (braille blank) in output instead of converting to
+        // ASCII space. In some CJK terminals, non-zero braille (sprite art) and \u2800
+        // are both rendered at the same width while ASCII space is narrower — mixing
+        // them causes per-row width variance proportional to sprite opacity, which is
         // invisible without weather but blatant once particles land on random cells.
         // Keeping every transparent position as \u2800 guarantees uniform row width
         // regardless of the terminal's actual braille glyph width.
-        console.log(rowStr);
+        //
+        // Ghostty path: \u2800 and non-zero braille disagree on advance width in
+        // ghostty's font fallback, so transparent cells drift the row. Replace runs
+        // of \u2800 with CSI cursor-forward to advance by exact cell count and
+        // sidestep the font-level width math. See shouldCompactBlanks().
+        console.log(useCsiBlanks ? compactBlanksToCsi(rowStr) : rowStr);
       }
     }
   }
