@@ -2,7 +2,10 @@ import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import net from 'node:net';
-import { FRIENDLY_BATTLE_PROTOCOL_VERSION } from '../src/friendly-battle/contracts.js';
+import {
+  FRIENDLY_BATTLE_PROTOCOL_VERSION,
+  type FriendlyBattleBattleEvent,
+} from '../src/friendly-battle/contracts.js';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -43,6 +46,40 @@ function makeGuestSnapshot(options: { generation?: string; snapshotId?: string }
     snapshotId: options.snapshotId ?? 'guest-snapshot-001',
     createdAt: '2026-04-12T12:34:56.000Z',
   });
+}
+
+function createInitialBattleEvents(battleId: string): FriendlyBattleBattleEvent[] {
+  return [
+    {
+      type: 'battle_initialized',
+      battleId,
+      turn: 1,
+    },
+    {
+      type: 'choices_requested',
+      turn: 1,
+      waitingFor: ['guest'],
+      phase: 'waiting_for_choices',
+    },
+  ];
+}
+
+function createResolvedBattleEvents(): FriendlyBattleBattleEvent[] {
+  return [
+    {
+      type: 'turn_resolved',
+      turn: 1,
+      messages: ['authoritative spike smoke resolved the guest choice'],
+      waitingFor: [],
+      nextPhase: 'completed',
+      winner: 'host',
+    },
+    {
+      type: 'battle_finished',
+      winner: 'host',
+      reason: 'completed',
+    },
+  ];
 }
 
 function parseLines(buffer: string, onLine: (line: string) => void): string {
@@ -132,7 +169,7 @@ async function terminate(spawned: SpawnedCli): Promise<void> {
 }
 
 describe('friendly battle spike CLI', { concurrency: false }, () => {
-  it('prints a copyable join command and lets the host CLI finish the first action exchange', async () => {
+  it('prints a copyable join command and lets the host CLI finish an authoritative event smoke', async () => {
     const hostStartupTimeoutMs = 60_000;
     const battleExchangeTimeoutMs = 15_000;
     const host = spawnCli([
@@ -167,23 +204,35 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
     const readyState = await guest.markReady();
     assert.equal(readyState.guestReady, true);
 
-    await guest.waitForStarted(battleExchangeTimeoutMs);
-    const guestAction = await guest.submitAction('move:1');
-    const hostAction = await guest.waitForHostAction(battleExchangeTimeoutMs);
+    const started = await guest.waitForStarted(battleExchangeTimeoutMs);
+    assert.equal(started.type, 'battle_started');
+    assert.ok(started.battleId === '' || started.battleId === 'spike-alpha-123');
+    const initialEvents = createInitialBattleEvents('spike-alpha-123');
+    assert.deepEqual(await guest.waitForBattleEvent(battleExchangeTimeoutMs), initialEvents[0]);
+    const choicesRequested = await guest.waitForBattleEvent(battleExchangeTimeoutMs);
+    assert.deepEqual(choicesRequested, initialEvents[1]);
+
+    const guestChoice = await guest.submitChoice('move:1');
+    const resolvedEvents = createResolvedBattleEvents();
+    assert.deepEqual(await guest.waitForBattleEvent(battleExchangeTimeoutMs), resolvedEvents[0]);
+    assert.deepEqual(await guest.waitForBattleEvent(battleExchangeTimeoutMs), resolvedEvents[1]);
     const hostResult = await host.completion;
 
-    assert.equal(guestAction.value, 'move:1');
-    assert.equal(hostAction.value, 'move:1');
+    assert.deepEqual(guestChoice.choice, {
+      type: 'move',
+      moveIndex: 1,
+    });
     assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
     assert.equal(hostResult.exitCode, 0, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
     assert.match(hostResult.stdout, /STAGE: guest_joined \(Guest\)/);
     assert.match(hostResult.stdout, /STAGE: battle_started/);
-    assert.match(hostResult.stdout, /GUEST_ACTION: move:1/);
-    assert.match(hostResult.stdout, /HOST_ACTION: move:1/);
-    assert.match(hostResult.stdout, /SUCCESS: first_action_exchange_completed/);
+    assert.match(hostResult.stdout, /GUEST_CHOICE: move:1/);
+    assert.match(hostResult.stdout, /EVENT_SENT: battle_finished/);
+    assert.match(hostResult.stdout, /WINNER: host/);
+    assert.match(hostResult.stdout, /SUCCESS: authoritative_event_smoke_completed/);
   });
 
-  it('lets the join CLI complete the first action exchange against an in-process host', async () => {
+  it('lets the join CLI complete an authoritative event smoke against an in-process host', async () => {
     const guestStartupTimeoutMs = 60_000;
     const battleExchangeTimeoutMs = 15_000;
     const host = await createFriendlyBattleSpikeHost({
@@ -219,22 +268,31 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
     const readyState = host.markHostReady();
     assert.equal(readyState.hostReady, true);
     await host.waitUntilCanStart(battleExchangeTimeoutMs);
-    await host.startBattle();
+    const battleId = 'beta-battle';
+    await host.startBattle(battleId);
+    const initialEvents = createInitialBattleEvents(battleId);
+    host.sendBattleEvents(initialEvents);
 
-    const guestAction = await host.waitForGuestAction(battleExchangeTimeoutMs);
-    const hostAction = host.submitHostAction('move:1');
+    const guestChoice = await host.waitForGuestChoice(battleExchangeTimeoutMs);
+    const resolvedEvents = createResolvedBattleEvents();
+    host.sendBattleEvents(resolvedEvents);
     const guestResult = await guest.completion;
 
-    assert.equal(guestAction.value, 'move:1');
-    assert.equal(hostAction.value, 'move:1');
+    assert.deepEqual(guestChoice.choice, {
+      type: 'move',
+      moveIndex: 1,
+    });
     assert.equal(guestResult.signal, null, `guest stderr:\n${guestResult.stderr}`);
     assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestResult.stdout}\n--- stderr ---\n${guestResult.stderr}`);
     assert.match(guestResult.stdout, /STAGE: connected/);
     assert.match(guestResult.stdout, /STAGE: ready/);
     assert.match(guestResult.stdout, /STAGE: battle_started/);
-    assert.match(guestResult.stdout, /GUEST_ACTION: move:1/);
-    assert.match(guestResult.stdout, /HOST_ACTION: move:1/);
-    assert.match(guestResult.stdout, /SUCCESS: first_action_exchange_completed/);
+    assert.match(guestResult.stdout, /EVENT_RECEIVED: battle_initialized/);
+    assert.match(guestResult.stdout, /EVENT_RECEIVED: choices_requested/);
+    assert.match(guestResult.stdout, /GUEST_CHOICE: move:1/);
+    assert.match(guestResult.stdout, /EVENT_RECEIVED: battle_finished/);
+    assert.match(guestResult.stdout, /WINNER: host/);
+    assert.match(guestResult.stdout, /SUCCESS: authoritative_event_smoke_completed/);
   });
 
   it('prints a guest-facing join command from --join-host even when the host listens on 0.0.0.0', async () => {
@@ -504,7 +562,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       assert.match(result.stderr, /NEXT_ACTION: .*host.*session code/i);
       assert.match(result.stderr, /INPUT_HINT: .*sessionCode=alpha-123/);
       assert.match(result.stderr, /RETRY_HINT: .*--timeout-ms 200/);
-      assert.match(result.stderr, /hello acknowledgement 대기 중 시간이 초과/);
+      assert.match(result.stderr, /hello (acknowledgement|handshake) 대기 중 시간이 초과/);
       assert.ok(
         elapsedMs < 900,
         `expected join timeout to honor 200ms input without leaking a 1s internal wait (elapsed=${elapsedMs}ms)\nstdout=${result.stdout}\nstderr=${result.stderr}`,

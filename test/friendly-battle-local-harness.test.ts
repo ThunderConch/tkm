@@ -333,13 +333,15 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     assert.match(hostResult.stdout, /STAGE: guest_joined/);
     assert.match(hostResult.stdout, /STAGE: ready/);
     assert.match(hostResult.stdout, /STAGE: battle_started/);
-    assert.match(hostResult.stdout, /SUCCESS: first_turn_smoke_completed/);
+    assert.match(hostResult.stdout, /WINNER: /);
+    assert.match(hostResult.stdout, /SUCCESS: battle_completed/);
     assert.match(hostResult.stdout, /CLEANUP: session_artifacts_removed/);
 
     assert.match(guestStdout, /STAGE: connected/);
     assert.match(guestStdout, /STAGE: ready/);
     assert.match(guestStdout, /STAGE: battle_started/);
-    assert.match(guestStdout, /SUCCESS: first_turn_smoke_completed/);
+    assert.match(guestStdout, /WINNER: /);
+    assert.match(guestStdout, /SUCCESS: battle_completed/);
 
     const sessionPath = hostResult.stdout.match(/^SESSION_PATH: (.+)$/m)?.[1];
     const hostSnapshotPath = hostResult.stdout.match(/^HOST_SNAPSHOT_PATH: (.+)$/m)?.[1];

@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import net from 'node:net';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FRIENDLY_BATTLE_PROTOCOL_VERSION } from '../src/friendly-battle/contracts.js';
+import {
+  FRIENDLY_BATTLE_PROTOCOL_VERSION,
+  type FriendlyBattleBattleEvent,
+} from '../src/friendly-battle/contracts.js';
 import {
   FriendlyBattleTransportError,
   connectFriendlyBattleSpikeGuest,
@@ -38,6 +41,40 @@ function makeGuestSnapshot(options: {
     snapshotId: options.snapshotId ?? 'guest-snapshot-001',
     createdAt: '2026-04-12T12:34:56.000Z',
   });
+}
+
+function createInitialBattleEvents(battleId: string): FriendlyBattleBattleEvent[] {
+  return [
+    {
+      type: 'battle_initialized',
+      battleId,
+      turn: 1,
+    },
+    {
+      type: 'choices_requested',
+      turn: 1,
+      waitingFor: ['guest'],
+      phase: 'waiting_for_choices',
+    },
+  ];
+}
+
+function createResolvedBattleEvents(): FriendlyBattleBattleEvent[] {
+  return [
+    {
+      type: 'turn_resolved',
+      turn: 1,
+      messages: ['authoritative spike transport resolved turn 1'],
+      waitingFor: [],
+      nextPhase: 'completed',
+      winner: 'host',
+    },
+    {
+      type: 'battle_finished',
+      winner: 'host',
+      reason: 'completed',
+    },
+  ];
 }
 
 async function reserveUnusedPort(): Promise<number> {
@@ -127,7 +164,7 @@ async function createHelloAckHost(options: {
 }
 
 describe('friendly battle TCP direct transport spike', () => {
-  it('supports host/join/ready/start and bidirectional action exchange on one machine', async () => {
+  it('supports host/join/ready/start and authoritative battle event exchange on one machine', async () => {
     const guestSnapshot = makeGuestSnapshot({ snapshotId: 'guest-snapshot-happy-path' });
     const host = await createFriendlyBattleSpikeHost({
       host: '127.0.0.1',
@@ -170,23 +207,34 @@ describe('friendly battle TCP direct transport spike', () => {
           canStart: true,
         });
 
-        await host.startBattle();
-        await guest.waitForStarted(1_000);
+        const battleId = 'alpha-battle';
+        await host.startBattle(battleId);
+        const started = await guest.waitForStarted(1_000);
+        assert.equal(started.type, 'battle_started');
+        assert.ok(started.battleId === '' || started.battleId === battleId);
 
-        const guestAction = await guest.submitAction('move:1');
-        assert.equal(guestAction.actor, 'guest');
-        assert.equal(guestAction.value, 'move:1');
+        const initialEvents = createInitialBattleEvents(battleId);
+        assert.deepEqual(host.sendBattleEvents(initialEvents), initialEvents);
+        assert.deepEqual(await guest.waitForBattleEvent(1_000), initialEvents[0]);
+        assert.deepEqual(await guest.waitForBattleEvent(1_000), initialEvents[1]);
 
-        const hostObservedGuestAction = await host.waitForGuestAction(1_000);
-        assert.deepEqual(hostObservedGuestAction, guestAction);
+        const guestChoice = await guest.submitChoice('move:1');
+        assert.equal(guestChoice.actor, 'guest');
+        assert.deepEqual(guestChoice.choice, {
+          type: 'move',
+          moveIndex: 1,
+        });
 
-        const hostAction = host.submitHostAction('move:2');
-        assert.equal(hostAction.actor, 'host');
-        assert.equal(hostAction.value, 'move:2');
+        const hostObservedGuestChoice = await host.waitForGuestChoice(1_000);
+        assert.deepEqual(hostObservedGuestChoice, guestChoice);
 
-        const guestObservedHostAction = await guest.waitForHostAction(1_000);
-        assert.deepEqual(guestObservedHostAction, hostAction);
-        assert.deepEqual(host.getActionLog(), [guestAction, hostAction]);
+        const resolvedEvents = createResolvedBattleEvents();
+        assert.deepEqual(host.sendBattleEvents(resolvedEvents), resolvedEvents);
+        assert.deepEqual(await guest.waitForBattleEvent(1_000), resolvedEvents[0]);
+        assert.deepEqual(await guest.waitForBattleEvent(1_000), resolvedEvents[1]);
+
+        assert.deepEqual(host.getSubmittedChoiceLog(), [guestChoice]);
+        assert.deepEqual(host.getBattleEventLog(), [...initialEvents, ...resolvedEvents]);
       } finally {
         await guest.close();
       }
@@ -220,7 +268,7 @@ describe('friendly battle TCP direct transport spike', () => {
         await guest.markReady();
         await host.waitUntilCanStart(1_000);
 
-        await host.startBattle();
+        await host.startBattle('alpha-queued-start-battle');
         await new Promise((resolve) => setTimeout(resolve, 25));
         await guest.waitForStarted(1_000);
       } finally {
@@ -276,7 +324,7 @@ describe('friendly battle TCP direct transport spike', () => {
         host.markHostReady();
 
         await assert.rejects(
-          host.startBattle(),
+          host.startBattle('alpha-ready-check'),
           (error: unknown) => {
             assert.ok(error instanceof FriendlyBattleTransportError);
             assert.equal(error.code, 'not_ready');

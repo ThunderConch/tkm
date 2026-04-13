@@ -1,5 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { join } from 'node:path';
+import type { FriendlyBattleBattleRuntime } from '../friendly-battle/battle-adapter.js';
 import {
   FriendlyBattleTransportError,
   connectFriendlyBattleSpikeGuest,
@@ -8,11 +9,14 @@ import {
 import {
   attachFriendlyBattleGuestSnapshot,
   cleanupFriendlyBattleLocalArtifacts,
+  createFriendlyBattleChoiceEnvelope,
   createFriendlyBattleLocalArtifacts,
+  formatFriendlyBattleChoice,
   loadFriendlyBattleCurrentProfile,
   markFriendlyBattleReady,
-  resolveFriendlyBattleLocalFirstTurn,
+  selectDeterministicFriendlyBattleChoiceValue,
   startFriendlyBattleLocalBattle,
+  submitFriendlyBattleLocalChoice,
 } from '../friendly-battle/local-harness.js';
 import { buildFriendlyBattlePartySnapshot } from '../friendly-battle/snapshot.js';
 import { PLUGIN_ROOT } from '../core/paths.js';
@@ -109,6 +113,30 @@ function printFailure(stage: string, message: string): void {
   console.error(message);
 }
 
+function getWaitingFor(runtime: FriendlyBattleBattleRuntime): Array<'host' | 'guest'> {
+  if (runtime.phase === 'completed') {
+    return [];
+  }
+
+  if (runtime.phase === 'waiting_for_choices') {
+    return (['host', 'guest'] as const).filter(
+      (role) => runtime.pendingChoices[role] === undefined,
+    );
+  }
+
+  return (['host', 'guest'] as const).filter((role) => {
+    if (runtime.pendingChoices[role] !== undefined) {
+      return false;
+    }
+
+    const team = role === 'host' ? runtime.state.player : runtime.state.opponent;
+    const activePokemon = team.pokemon[team.activeIndex];
+    return activePokemon !== undefined
+      && activePokemon.fainted
+      && team.pokemon.some((pokemon, index) => index !== team.activeIndex && !pokemon.fainted);
+  });
+}
+
 async function runHost(
   values: Map<string, string>,
   options: FriendlyBattleLocalCliOptions = {},
@@ -176,20 +204,61 @@ async function runHost(
     markFriendlyBattleReady(artifacts, readyState);
     console.log('STAGE: ready');
 
-    const { runtime } = startFriendlyBattleLocalBattle(artifacts);
-    await host.startBattle();
+    const battle = startFriendlyBattleLocalBattle(artifacts);
+    await host.startBattle(battle.runtime.battleId);
+    host.sendBattleEvents(battle.events);
     console.log('STAGE: battle_started');
 
     currentStage = 'battle';
-    const guestAction = await host.waitForGuestAction(timeoutMs);
-    const hostAction = host.submitHostAction('move:1');
-    resolveFriendlyBattleLocalFirstTurn({
-      artifacts,
-      runtime,
-      guestActionValue: guestAction.value,
-      hostActionValue: hostAction.value,
-    });
-    console.log('SUCCESS: first_turn_smoke_completed');
+    let winner: 'host' | 'guest' | null = null;
+
+    while (true) {
+      if (battle.runtime.phase === 'completed') {
+        break;
+      }
+
+      if (getWaitingFor(battle.runtime).includes('host')) {
+        const hostChoiceValue = selectDeterministicFriendlyBattleChoiceValue(
+          battle.runtime,
+          'host',
+        );
+        console.log(`HOST_CHOICE: ${hostChoiceValue}`);
+        const hostEvents = submitFriendlyBattleLocalChoice({
+          artifacts,
+          battle,
+          envelope: createFriendlyBattleChoiceEnvelope('host', hostChoiceValue),
+        });
+
+        if (hostEvents.length > 0) {
+          host.sendBattleEvents(hostEvents);
+          const finished = hostEvents.find((event) => event.type === 'battle_finished');
+          if (finished) {
+            winner = finished.winner;
+          }
+        }
+      }
+
+      if (getWaitingFor(battle.runtime).includes('guest')) {
+        const guestEnvelope = await host.waitForGuestChoice(timeoutMs);
+        console.log(`GUEST_CHOICE: ${formatFriendlyBattleChoice(guestEnvelope.choice)}`);
+        const guestEvents = submitFriendlyBattleLocalChoice({
+          artifacts,
+          battle,
+          envelope: guestEnvelope,
+        });
+
+        if (guestEvents.length > 0) {
+          host.sendBattleEvents(guestEvents);
+          const finished = guestEvents.find((event) => event.type === 'battle_finished');
+          if (finished) {
+            winner = finished.winner;
+          }
+        }
+      }
+    }
+
+    console.log(`WINNER: ${winner ?? 'none'}`);
+    console.log('SUCCESS: battle_completed');
   } catch (error) {
     if (error instanceof FriendlyBattleTransportError) {
       printFailure(currentStage, error.message);
@@ -234,9 +303,24 @@ async function runJoin(values: Map<string, string>): Promise<void> {
     await guest.waitForStarted(timeoutMs);
     console.log('STAGE: battle_started');
 
-    await guest.submitAction('move:1');
-    await guest.waitForHostAction(timeoutMs);
-    console.log('SUCCESS: first_turn_smoke_completed');
+    while (true) {
+      const event = await guest.waitForBattleEvent(timeoutMs);
+      console.log(`EVENT_RECEIVED: ${event.type}`);
+
+      if (event.type === 'choices_requested' && event.waitingFor.includes('guest')) {
+        const guestChoiceValue = event.phase === 'awaiting_fainted_switch'
+          ? 'surrender'
+          : 'move:0';
+        await guest.submitChoice(guestChoiceValue);
+        console.log(`GUEST_CHOICE: ${guestChoiceValue}`);
+      }
+
+      if (event.type === 'battle_finished') {
+        console.log(`WINNER: ${event.winner ?? 'none'}`);
+        console.log('SUCCESS: battle_completed');
+        break;
+      }
+    }
   } catch (error) {
     if (error instanceof FriendlyBattleTransportError) {
       printFailure(currentStage, error.message);

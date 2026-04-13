@@ -1,5 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { FriendlyBattleTransportError, connectFriendlyBattleSpikeGuest, createFriendlyBattleSpikeHost } from '../friendly-battle/spike/tcp-direct.js';
+import type { FriendlyBattleBattleEvent, FriendlyBattleChoice } from '../friendly-battle/contracts.js';
 import { loadFriendlyBattleCurrentProfile } from '../friendly-battle/local-harness.js';
 import { buildFriendlyBattlePartySnapshot } from '../friendly-battle/snapshot.js';
 
@@ -89,6 +90,17 @@ function printFriendlyBattleFailure(args: {
   console.error(`RETRY_HINT: ${args.retryHint}`);
 }
 
+function formatFriendlyBattleChoice(choice: FriendlyBattleChoice): string {
+  switch (choice.type) {
+    case 'move':
+      return `move:${choice.moveIndex}`;
+    case 'switch':
+      return `switch:${choice.pokemonIndex}`;
+    case 'surrender':
+      return 'surrender';
+  }
+}
+
 async function runHost(values: Map<string, string>): Promise<void> {
   const listenHost = values.get('listen-host') ?? values.get('host') ?? '127.0.0.1';
   const joinHost = values.get('join-host');
@@ -146,7 +158,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
           ? currentStage
         : error.code === 'ready_timeout' || error.code === 'not_ready'
           ? 'ready'
-          : error.code === 'guest_action_timeout' || error.code === 'battle_not_started'
+          : error.code === 'guest_choice_timeout' || error.code === 'battle_not_started'
             ? 'battle'
             : 'host';
 
@@ -225,21 +237,57 @@ async function runHost(values: Map<string, string>): Promise<void> {
       'ready_timeout',
       'guest ready 대기 중 시간이 초과되었습니다.',
     );
-    await host.startBattle();
+    const battleId = `spike-${sessionCode}`;
+    await host.startBattle(battleId);
     console.log('STAGE: battle_started');
 
     currentStage = 'battle';
-    const guestActionPromise = withStageTimeout(
-      host.waitForGuestAction(timeoutMs),
-      'guest_action_timeout',
-      'guest action 대기 중 시간이 초과되었습니다.',
-    );
-    const guestAction = await guestActionPromise;
-    console.log(`GUEST_ACTION: ${guestAction.value}`);
+    const initialEvents: FriendlyBattleBattleEvent[] = [
+      {
+        type: 'battle_initialized',
+        battleId,
+        turn: 1,
+      },
+      {
+        type: 'choices_requested',
+        turn: 1,
+        waitingFor: ['guest'],
+        phase: 'waiting_for_choices',
+      },
+    ];
+    host.sendBattleEvents(initialEvents);
+    for (const event of initialEvents) {
+      console.log(`EVENT_SENT: ${event.type}`);
+    }
 
-    const hostAction = host.submitHostAction('move:1');
-    console.log(`HOST_ACTION: ${hostAction.value}`);
-    console.log('SUCCESS: first_action_exchange_completed');
+    const guestChoice = await withStageTimeout(
+      host.waitForGuestChoice(timeoutMs),
+      'guest_choice_timeout',
+      'guest choice 대기 중 시간이 초과되었습니다.',
+    );
+    console.log(`GUEST_CHOICE: ${formatFriendlyBattleChoice(guestChoice.choice)}`);
+
+    const resultEvents: FriendlyBattleBattleEvent[] = [
+      {
+        type: 'turn_resolved',
+        turn: 1,
+        messages: ['authoritative spike smoke resolved the guest choice'],
+        waitingFor: [],
+        nextPhase: 'completed',
+        winner: 'host',
+      },
+      {
+        type: 'battle_finished',
+        winner: 'host',
+        reason: 'completed',
+      },
+    ];
+    host.sendBattleEvents(resultEvents);
+    for (const event of resultEvents) {
+      console.log(`EVENT_SENT: ${event.type}`);
+    }
+    console.log('WINNER: host');
+    console.log('SUCCESS: authoritative_event_smoke_completed');
   } catch (error) {
     if (error instanceof FriendlyBattleTransportError) {
       handleFriendlyBattleError(error);
@@ -332,12 +380,24 @@ async function runJoin(values: Map<string, string>): Promise<void> {
     await guest.waitForStarted(timeoutMs);
     console.log('STAGE: battle_started');
 
-    const guestAction = await guest.submitAction('move:1');
-    console.log(`GUEST_ACTION: ${guestAction.value}`);
+    let battleFinished = false;
+    while (!battleFinished) {
+      const event = await guest.waitForBattleEvent(timeoutMs);
+      console.log(`EVENT_RECEIVED: ${event.type}`);
 
-    const hostAction = await guest.waitForHostAction(timeoutMs);
-    console.log(`HOST_ACTION: ${hostAction.value}`);
-    console.log('SUCCESS: first_action_exchange_completed');
+      if (event.type === 'choices_requested' && event.waitingFor.includes('guest')) {
+        const choiceValue = event.phase === 'awaiting_fainted_switch' ? 'surrender' : 'move:1';
+        const submittedChoice = await guest.submitChoice(choiceValue);
+        console.log(`GUEST_CHOICE: ${formatFriendlyBattleChoice(submittedChoice.choice)}`);
+        continue;
+      }
+
+      if (event.type === 'battle_finished') {
+        console.log(`WINNER: ${event.winner ?? 'none'}`);
+        console.log('SUCCESS: authoritative_event_smoke_completed');
+        battleFinished = true;
+      }
+    }
   } catch (error) {
     if (error instanceof FriendlyBattleTransportError) {
       handleFriendlyBattleError(error);

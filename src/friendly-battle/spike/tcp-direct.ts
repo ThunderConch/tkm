@@ -440,6 +440,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
   const socket = new net.Socket();
 
   let closed = false;
+  let failed = false;
   let battleStarted = false;
   let lastReadyState: FriendlyBattleReadyState | null = null;
   const timeoutMs = options.timeoutMs ?? 1_000;
@@ -491,28 +492,46 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
   let buffer = '';
 
   const closeWithError = (error: Error) => {
+    if (failed) {
+      return;
+    }
+    failed = true;
     readyStateQueue.fail(error);
     startedQueue.fail(error);
     battleEventQueue.fail(error);
   };
 
+  const failAndDestroy = (error: Error) => {
+    closeWithError(error);
+    if (!socket.destroyed) {
+      socket.destroy();
+    }
+  };
+
   socket.on('data', (chunk: string) => {
     buffer = parseDelimitedMessages<GuestInboundMessage>(buffer + chunk, (message) => {
       if (message.type === 'hello_reject') {
-        closeWithError(new FriendlyBattleTransportError(message.code, message.message));
-        socket.end();
+        failAndDestroy(new FriendlyBattleTransportError(message.code, message.message));
         return;
       }
 
       if (message.type === 'hello_ack') {
         if (message.protocolVersion !== FRIENDLY_BATTLE_PROTOCOL_VERSION) {
-          closeWithError(
+          failAndDestroy(
             new FriendlyBattleTransportError(
               'unsupported_protocol',
               `protocol version이 맞지 않습니다. host=${message.protocolVersion}, guest=${FRIENDLY_BATTLE_PROTOCOL_VERSION}`,
             ),
           );
-          socket.end();
+          return;
+        }
+        if (message.generation !== options.generation) {
+          failAndDestroy(
+            new FriendlyBattleTransportError(
+              'generation_mismatch',
+              `generation이 맞지 않습니다. host=${message.generation}, guest=${options.generation}`,
+            ),
+          );
           return;
         }
         lastReadyState = message.readyState;
@@ -564,7 +583,16 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     guestSnapshot: options.guestSnapshot,
   });
 
-  await waitForReadyState(timeoutMs, () => true, 'hello handshake');
+  try {
+    await waitForReadyState(timeoutMs, () => true, 'hello handshake');
+  } catch (error) {
+    failAndDestroy(
+      error instanceof Error
+        ? error
+        : new FriendlyBattleTransportError('timeout', 'hello handshake 대기 중 시간이 초과되었습니다.'),
+    );
+    throw error;
+  }
 
   return {
     async markReady(): Promise<FriendlyBattleReadyState> {

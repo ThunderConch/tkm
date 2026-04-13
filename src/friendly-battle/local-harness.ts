@@ -238,15 +238,10 @@ export function submitFriendlyBattleLocalChoice(input: {
   const events = submitFriendlyBattleChoice(input.battle.runtime, input.envelope);
   input.battle.events.push(...events);
 
-  const resolved = events.some((event) => event.type === 'turn_resolved');
-  if (!resolved) {
-    throw new Error('Friendly battle local harness expected a turn_resolved event after first-turn exchange');
-  }
-
   persistFriendlyBattleLocalBattleState({
     artifacts: input.artifacts,
-    runtime: input.runtime,
-    updatedAt: submittedAt,
+    runtime: input.battle.runtime,
+    updatedAt: input.envelope.submittedAt,
     appendEvents: events,
   });
 
@@ -286,7 +281,7 @@ export async function resolveFriendlyBattleLocalBattleToCompletion(input: {
       });
       const events = submitFriendlyBattleChoice(
         input.runtime,
-        createChoiceEnvelope(role, actionValue, submittedAt),
+        createFriendlyBattleChoiceEnvelope(role, actionValue, submittedAt),
       );
 
       if (events.length > 0) {
@@ -465,7 +460,9 @@ function getWaitingForLocalBattle(
   }
 
   if (runtime.phase === 'waiting_for_choices') {
-    return ['host', 'guest'].filter((role) => runtime.pendingChoices[role] === undefined) as Array<'host' | 'guest'>;
+    return (['host', 'guest'] as const).filter(
+      (role) => runtime.pendingChoices[role] === undefined,
+    );
   }
 
   return (['host', 'guest'] as const).filter(
