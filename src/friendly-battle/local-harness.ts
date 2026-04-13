@@ -58,6 +58,18 @@ export interface FriendlyBattleLocalBattleArtifacts {
   events: FriendlyBattleBattleEvent[];
 }
 
+export interface FriendlyBattleLocalChoiceRequest {
+  role: 'host' | 'guest';
+  turn: number;
+  phase: FriendlyBattleBattleRuntime['phase'];
+  artifacts: FriendlyBattleLocalArtifacts;
+  runtime: FriendlyBattleBattleRuntime;
+}
+
+export type FriendlyBattleLocalChoiceProvider = (
+  request: FriendlyBattleLocalChoiceRequest,
+) => string | Promise<string>;
+
 export function loadFriendlyBattleCurrentProfile(generation?: string): FriendlyBattleLoadedProfile {
   const resolvedGeneration = generation ?? getActiveGeneration();
   return {
@@ -226,26 +238,72 @@ export function submitFriendlyBattleLocalChoice(input: {
   const events = submitFriendlyBattleChoice(input.battle.runtime, input.envelope);
   input.battle.events.push(...events);
 
-  input.artifacts.session.updatedAt = input.envelope.submittedAt;
-  input.artifacts.session.pendingChoices = structuredClone(input.battle.runtime.pendingChoices);
-  input.artifacts.session.battle = toFriendlyBattleBattleRef(input.battle.runtime);
-  if (input.battle.runtime.phase === 'completed') {
-    input.artifacts.session.phase = 'completed';
-  } else {
-    input.artifacts.session.phase = 'in_battle';
+  const resolved = events.some((event) => event.type === 'turn_resolved');
+  if (!resolved) {
+    throw new Error('Friendly battle local harness expected a turn_resolved event after first-turn exchange');
   }
 
-  writeJsonAtomic(input.artifacts.sessionPath, input.artifacts.session);
-  writeJsonAtomic(input.artifacts.battlePath, {
-    layer: 'battle',
-    battleId: input.battle.runtime.battleId,
-    generation: input.artifacts.generation,
-    createdAt: input.battle.runtime.startedAt,
-    battle: toFriendlyBattleBattleRef(input.battle.runtime),
-    events: input.battle.events,
+  persistFriendlyBattleLocalBattleState({
+    artifacts: input.artifacts,
+    runtime: input.runtime,
+    updatedAt: submittedAt,
+    appendEvents: events,
   });
 
   return events;
+}
+
+export async function resolveFriendlyBattleLocalBattleToCompletion(input: {
+  artifacts: FriendlyBattleLocalArtifacts;
+  runtime: FriendlyBattleBattleRuntime;
+  chooseHostAction: FriendlyBattleLocalChoiceProvider;
+  chooseGuestAction: FriendlyBattleLocalChoiceProvider;
+  maxChoices?: number;
+}): Promise<FriendlyBattleBattleEvent[]> {
+  const allEvents = readPersistedFriendlyBattleEvents(input.artifacts.battlePath);
+  let remainingChoices = input.maxChoices ?? 200;
+
+  while (input.runtime.phase !== 'completed') {
+    const waitingFor = getWaitingForLocalBattle(input.runtime);
+    if (waitingFor.length === 0) {
+      throw new Error('Friendly battle local harness could not determine the next waiting actor');
+    }
+
+    for (const role of waitingFor) {
+      remainingChoices -= 1;
+      if (remainingChoices < 0) {
+        throw new Error('Friendly battle local harness exceeded the max choice budget before completion');
+      }
+
+      const chooseAction = role === 'host' ? input.chooseHostAction : input.chooseGuestAction;
+      const submittedAt = new Date().toISOString();
+      const actionValue = await chooseAction({
+        role,
+        turn: input.runtime.state.turn + 1,
+        phase: input.runtime.phase,
+        artifacts: input.artifacts,
+        runtime: input.runtime,
+      });
+      const events = submitFriendlyBattleChoice(
+        input.runtime,
+        createChoiceEnvelope(role, actionValue, submittedAt),
+      );
+
+      if (events.length > 0) {
+        allEvents.push(...events);
+      }
+
+      persistFriendlyBattleLocalBattleState({
+        artifacts: input.artifacts,
+        runtime: input.runtime,
+        updatedAt: submittedAt,
+        appendEvents: events,
+        eventHistory: allEvents,
+      });
+    }
+  }
+
+  return allEvents;
 }
 
 export function cleanupFriendlyBattleLocalArtifacts(artifacts: FriendlyBattleLocalArtifacts): void {
@@ -359,6 +417,74 @@ function readJsonFile<T>(path: string): Partial<T> | null {
 
 function readFriendlyBattleSnapshotFile(path: string): FriendlyBattlePartySnapshot {
   return JSON.parse(readFileSync(path, 'utf8')) as FriendlyBattlePartySnapshot;
+}
+
+function readPersistedFriendlyBattleEvents(path: string): FriendlyBattleBattleEvent[] {
+  if (!existsSync(path)) {
+    return [];
+  }
+
+  const parsed = JSON.parse(readFileSync(path, 'utf8')) as { events?: FriendlyBattleBattleEvent[] };
+  return parsed.events ?? [];
+}
+
+function persistFriendlyBattleLocalBattleState(input: {
+  artifacts: FriendlyBattleLocalArtifacts;
+  runtime: FriendlyBattleBattleRuntime;
+  updatedAt: string;
+  appendEvents?: FriendlyBattleBattleEvent[];
+  eventHistory?: FriendlyBattleBattleEvent[];
+}): void {
+  input.artifacts.session.updatedAt = input.updatedAt;
+  input.artifacts.session.phase = input.runtime.phase === 'completed' ? 'completed' : 'in_battle';
+  input.artifacts.session.pendingChoices = { ...input.runtime.pendingChoices };
+  input.artifacts.session.battle = toFriendlyBattleBattleRef(input.runtime);
+
+  const events = input.eventHistory
+    ?? [
+      ...readPersistedFriendlyBattleEvents(input.artifacts.battlePath),
+      ...(input.appendEvents ?? []),
+    ];
+
+  writeJsonAtomic(input.artifacts.sessionPath, input.artifacts.session);
+  writeJsonAtomic(input.artifacts.battlePath, {
+    layer: 'battle',
+    battleId: input.runtime.battleId,
+    generation: input.artifacts.generation,
+    createdAt: input.runtime.startedAt,
+    battle: toFriendlyBattleBattleRef(input.runtime),
+    events,
+  });
+}
+
+function getWaitingForLocalBattle(
+  runtime: FriendlyBattleBattleRuntime,
+): Array<'host' | 'guest'> {
+  if (runtime.phase === 'completed') {
+    return [];
+  }
+
+  if (runtime.phase === 'waiting_for_choices') {
+    return ['host', 'guest'].filter((role) => runtime.pendingChoices[role] === undefined) as Array<'host' | 'guest'>;
+  }
+
+  return (['host', 'guest'] as const).filter(
+    (role) =>
+      runtime.pendingChoices[role] === undefined
+      && requiresForcedSwitchForRole(runtime, role),
+  );
+}
+
+function requiresForcedSwitchForRole(
+  runtime: FriendlyBattleBattleRuntime,
+  role: 'host' | 'guest',
+): boolean {
+  const team = role === 'host' ? runtime.state.player : runtime.state.opponent;
+  const activePokemon = team.pokemon[team.activeIndex];
+
+  return activePokemon !== undefined
+    && activePokemon.fainted
+    && team.pokemon.some((pokemon, index) => index !== team.activeIndex && !pokemon.fainted);
 }
 
 function writeJsonAtomic(path: string, value: unknown): void {
