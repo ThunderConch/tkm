@@ -6,15 +6,15 @@ import {
   createFriendlyBattleSpikeHost,
 } from '../friendly-battle/spike/tcp-direct.js';
 import {
+  attachFriendlyBattleGuestSnapshot,
   cleanupFriendlyBattleLocalArtifacts,
   createFriendlyBattleLocalArtifacts,
   loadFriendlyBattleCurrentProfile,
-  loadFriendlyBattleProfileFromConfigDir,
-  markFriendlyBattleGuestJoined,
   markFriendlyBattleReady,
   resolveFriendlyBattleLocalFirstTurn,
   startFriendlyBattleLocalBattle,
 } from '../friendly-battle/local-harness.js';
+import { buildFriendlyBattlePartySnapshot } from '../friendly-battle/snapshot.js';
 import { PLUGIN_ROOT } from '../core/paths.js';
 
 type Command = 'host' | 'join';
@@ -30,8 +30,8 @@ export type FriendlyBattleLocalCliOptions = {
 
 function usage(): never {
   console.error('Usage:');
-  console.error('  tokenmon friendly-battle local host --session-code <code> --guest-config-dir <path> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]');
-  console.error('  tokenmon friendly-battle local join --host <host> --port <port> --session-code <code> [--timeout-ms 4000] [--player-name Guest]');
+  console.error('  tokenmon friendly-battle local host --session-code <code> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]');
+  console.error('  tokenmon friendly-battle local join --host <host> --port <port> --session-code <code> [--timeout-ms 4000] [--generation gen4] [--player-name Guest]');
   process.exit(1);
 }
 
@@ -118,16 +118,13 @@ async function runHost(
   const port = getNumberArg(values, 'port', 0, { min: 0, max: 65_535 });
   const timeoutMs = getNumberArg(values, 'timeout-ms', 4_000, { min: 1 });
   const sessionCode = getRequiredArg(values, 'session-code');
-  const guestConfigDir = getRequiredArg(values, 'guest-config-dir');
   const generation = values.get('generation');
   const hostPlayerName = values.get('player-name') ?? 'Host';
   const guestPlayerName = values.get('guest-player-name') ?? 'Guest';
 
   const hostProfile = loadFriendlyBattleCurrentProfile(generation);
-  const guestProfile = loadFriendlyBattleProfileFromConfigDir(guestConfigDir, generation ?? hostProfile.generation);
   const artifacts = createFriendlyBattleLocalArtifacts({
     hostProfile,
-    guestProfile,
     sessionCode,
     hostPlayerName,
     guestPlayerName,
@@ -143,20 +140,20 @@ async function runHost(
       port,
       sessionCode,
       hostPlayerName,
+      generation: hostProfile.generation,
     });
 
     console.log(`SESSION_PATH: ${artifacts.sessionPath}`);
     console.log(`HOST_SNAPSHOT_PATH: ${artifacts.hostSnapshotPath}`);
-    console.log(`GUEST_SNAPSHOT_PATH: ${artifacts.guestSnapshotPath}`);
     console.log(`BATTLE_PATH: ${artifacts.battlePath}`);
 
     const joinCommand = buildJoinCommand({
-      guestConfigDir,
       host: host.connectionInfo.host,
       port: host.connectionInfo.port,
       guestPlayerName,
       sessionCode,
       timeoutMs,
+      generation: hostProfile.generation,
       style: options.joinCommandStyle ?? 'local-script',
     });
 
@@ -165,7 +162,11 @@ async function runHost(
 
     currentStage = 'join';
     const joined = await host.waitForGuestJoin(timeoutMs);
-    markFriendlyBattleGuestJoined(artifacts, joined.guestPlayerName);
+    attachFriendlyBattleGuestSnapshot(artifacts, {
+      guestPlayerName: joined.guestPlayerName,
+      guestSnapshot: joined.guestSnapshot,
+    });
+    console.log(`GUEST_SNAPSHOT_PATH: ${artifacts.guestSnapshotPath}`);
     console.log(`STAGE: guest_joined (${joined.guestPlayerName})`);
 
     currentStage = 'ready';
@@ -206,7 +207,10 @@ async function runJoin(values: Map<string, string>): Promise<void> {
   const port = getNumberArg(values, 'port', Number.NaN, { min: 1, max: 65_535 });
   const timeoutMs = getNumberArg(values, 'timeout-ms', 4_000, { min: 1 });
   const sessionCode = getRequiredArg(values, 'session-code');
+  const generation = values.get('generation');
   const guestPlayerName = values.get('player-name') ?? 'Guest';
+  const guestProfile = loadFriendlyBattleCurrentProfile(generation);
+  const guestSnapshot = buildFriendlyBattlePartySnapshot(guestProfile);
 
   let currentStage: 'connect' | 'ready' | 'battle' = 'connect';
   let guest;
@@ -216,6 +220,8 @@ async function runJoin(values: Map<string, string>): Promise<void> {
       port,
       sessionCode,
       guestPlayerName,
+      generation: guestProfile.generation,
+      guestSnapshot,
       timeoutMs,
     });
 
@@ -242,12 +248,12 @@ async function runJoin(values: Map<string, string>): Promise<void> {
 }
 
 function buildJoinCommand(params: {
-  guestConfigDir: string;
   host: string;
   port: number;
   guestPlayerName: string;
   sessionCode: string;
   timeoutMs: number;
+  generation: string;
   style: 'local-script' | 'tokenmon-cli';
 }): string {
   const command =
@@ -269,8 +275,6 @@ function buildJoinCommand(params: {
         ];
 
   return [
-    'env',
-    `CLAUDE_CONFIG_DIR=${shellEscape(params.guestConfigDir)}`,
     ...command,
     '--host',
     shellEscape(params.host),
@@ -280,6 +284,8 @@ function buildJoinCommand(params: {
     shellEscape(params.sessionCode),
     '--timeout-ms',
     shellEscape(String(params.timeoutMs)),
+    '--generation',
+    shellEscape(params.generation),
     '--player-name',
     shellEscape(params.guestPlayerName),
   ].join(' ');

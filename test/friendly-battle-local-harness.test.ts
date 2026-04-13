@@ -5,11 +5,13 @@ import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
+  attachFriendlyBattleGuestSnapshot,
   cleanupFriendlyBattleLocalArtifacts,
   createFriendlyBattleLocalArtifacts,
   loadFriendlyBattleProfileFromConfigDir,
   startFriendlyBattleLocalBattle,
 } from '../src/friendly-battle/local-harness.js';
+import { buildFriendlyBattlePartySnapshot } from '../src/friendly-battle/snapshot.js';
 import { spawnPrintedCommand } from './helpers.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
@@ -152,13 +154,18 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     const guestProfile = loadFriendlyBattleProfileFromConfigDir(guestProfileFixture.profileDir, 'gen4');
     const artifacts = createFriendlyBattleLocalArtifacts({
       hostProfile,
-      guestProfile,
       sessionCode: 'authority-check-123',
       hostPlayerName: 'Host',
       guestPlayerName: 'Guest',
     });
 
     try {
+      const guestSnapshot = buildFriendlyBattlePartySnapshot(guestProfile);
+      attachFriendlyBattleGuestSnapshot(artifacts, {
+        guestPlayerName: 'Guest',
+        guestSnapshot,
+      });
+
       hostProfile.state.pokemon['387'].level = 60;
       guestProfile.state.pokemon['390'].level = 1;
 
@@ -173,16 +180,12 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
   it('rejects invalid numeric host arguments at the CLI boundary', async () => {
     const hostProfile = createProfile('host-invalid-args', '387', 387, 16);
-    const guestProfile = createProfile('guest-invalid-args', '390', 390, 18);
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const invalidPort = spawnCli([
       'host',
       '--session-code',
       'invalid-port-123',
-      '--guest-config-dir',
-      guestProfile.profileDir,
       '--port',
       '-1',
     ], {
@@ -197,8 +200,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       'host',
       '--session-code',
       'invalid-timeout-123',
-      '--guest-config-dir',
-      guestProfile.profileDir,
       '--timeout-ms',
       '1.5',
     ], {
@@ -227,8 +228,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       'alpha-local-123',
       '--timeout-ms',
       String(battleExchangeTimeoutMs),
-      '--guest-config-dir',
-      guestProfile.profileDir,
     ], {
       configDir: hostProfile.profileDir,
     });
@@ -244,6 +243,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
         ...process.env,
         TOKENMON_TEST: '1',
         TSX_DISABLE_CACHE: '1',
+        CLAUDE_CONFIG_DIR: guestProfile.profileDir,
       },
     });
 
@@ -300,9 +300,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
   it('prints a guest-facing JOIN_COMMAND from --join-host even when the host listens on 0.0.0.0', async () => {
     const hostProfile = createProfile('host-join-host', '387', 387, 16);
-    const guestProfile = createProfile('guest-join-host', '390', 390, 18);
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const host = spawnCli([
       'host',
@@ -310,8 +308,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       'join-host-local-123',
       '--timeout-ms',
       '50',
-      '--guest-config-dir',
-      guestProfile.profileDir,
       '--listen-host',
       '0.0.0.0',
       '--join-host',
@@ -336,9 +332,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
   it('requires --join-host when the host listens on a wildcard address', async () => {
     const hostProfile = createProfile('host-wildcard-missing-join', '387', 387, 16);
-    const guestProfile = createProfile('guest-wildcard-missing-join', '390', 390, 18);
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const host = spawnCli([
       'host',
@@ -346,8 +340,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       'wildcard-host-123',
       '--timeout-ms',
       '50',
-      '--guest-config-dir',
-      guestProfile.profileDir,
       '--listen-host',
       '0.0.0.0',
     ], {
@@ -365,9 +357,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
   it('rejects wildcard --join-host values before printing an unusable guest command', async () => {
     const hostProfile = createProfile('host-wildcard-invalid-join', '387', 387, 16);
-    const guestProfile = createProfile('guest-wildcard-invalid-join', '390', 390, 18);
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const host = spawnCli([
       'host',
@@ -375,8 +365,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       'wildcard-invalid-join-123',
       '--timeout-ms',
       '50',
-      '--guest-config-dir',
-      guestProfile.profileDir,
       '--listen-host',
       '0.0.0.0',
       '--join-host',
@@ -397,9 +385,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
   it('cleans up persisted session artifacts after a failed host handshake', async () => {
     const hostProfile = createProfile('host-timeout', '387', 387, 16);
-    const guestProfile = createProfile('guest-timeout', '390', 390, 18);
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const host = spawnCli([
       'host',
@@ -407,8 +393,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       'timeout-local-123',
       '--timeout-ms',
       '50',
-      '--guest-config-dir',
-      guestProfile.profileDir,
     ], {
       configDir: hostProfile.profileDir,
     });
@@ -427,12 +411,11 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
     assert.ok(sessionPath, `expected SESSION_PATH in host stdout:\n${hostResult.stdout}`);
     assert.ok(hostSnapshotPath, `expected HOST_SNAPSHOT_PATH in host stdout:\n${hostResult.stdout}`);
-    assert.ok(guestSnapshotPath, `expected GUEST_SNAPSHOT_PATH in host stdout:\n${hostResult.stdout}`);
     assert.ok(battlePath, `expected BATTLE_PATH in host stdout:\n${hostResult.stdout}`);
 
     assert.equal(existsSync(sessionPath!), false, `expected cleaned session path ${sessionPath}`);
     assert.equal(existsSync(hostSnapshotPath!), false, `expected cleaned host snapshot path ${hostSnapshotPath}`);
-    assert.equal(existsSync(guestSnapshotPath!), false, `expected cleaned guest snapshot path ${guestSnapshotPath}`);
+    assert.equal(guestSnapshotPath, undefined);
     assert.equal(existsSync(battlePath!), false, `expected cleaned battle path ${battlePath}`);
   });
 });

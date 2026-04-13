@@ -10,6 +10,7 @@ import {
   assertValidFriendlyBattlePartySnapshot,
   buildFriendlyBattlePartySnapshot,
   buildFriendlyBattleProgressionRef,
+  buildFriendlyBattleProgressionRefFromSnapshot,
   createBattleTeamFromFriendlyBattleSnapshot,
   toFriendlyBattleSnapshotRef,
   validateFriendlyBattlePartySnapshot,
@@ -141,6 +142,45 @@ describe('friendly battle snapshot', () => {
         }),
       /missing progression pokemon/i,
     );
+  });
+
+  it('derives a progression ref from snapshot party order', () => {
+    const snapshot = buildFriendlyBattlePartySnapshot({
+      config: makeConfig({ party: ['390_shiny', '387'] }),
+      state: makeState({
+        pokemon: {
+          '387': {
+            id: 387,
+            xp: 100,
+            level: 16,
+            friendship: 0,
+            ev: 0,
+            moves: [33, 45],
+          },
+          '390_shiny': {
+            id: 390,
+            xp: 200,
+            level: 18,
+            friendship: 0,
+            ev: 0,
+            shiny: true,
+            moves: [33, 45, 65, 55],
+          },
+        },
+      }),
+      generation: 'gen4',
+      pluginRoot,
+      snapshotId: 'snapshot-derive-001',
+      createdAt: '2026-04-12T12:34:56.000Z',
+    });
+
+    const progression = buildFriendlyBattleProgressionRefFromSnapshot(snapshot);
+    assert.deepEqual(progression, {
+      layer: 'progression',
+      generation: 'gen4',
+      partySource: 'current_party',
+      partyPokemonIds: ['390_shiny', '387'],
+    });
   });
 
   it('validates tampered snapshots', () => {

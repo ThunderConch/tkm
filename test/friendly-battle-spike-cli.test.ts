@@ -1,18 +1,49 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { resolve } from 'node:path';
 import net from 'node:net';
-import { connectFriendlyBattleSpikeGuest, createFriendlyBattleSpikeHost } from '../src/friendly-battle/spike/tcp-direct.js';
+import { FRIENDLY_BATTLE_PROTOCOL_VERSION } from '../src/friendly-battle/contracts.js';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import {
+  connectFriendlyBattleSpikeGuest,
+  createFriendlyBattleSpikeHost,
+} from '../src/friendly-battle/spike/tcp-direct.js';
+import { buildFriendlyBattlePartySnapshot } from '../src/friendly-battle/snapshot.js';
+import { makeConfig, makeState } from './helpers.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-spike.ts');
+const pluginRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+const DEFAULT_GENERATION = 'gen4';
 
 type SpawnedCli = {
   child: ChildProcessWithoutNullStreams;
   output: { stdout: string; stderr: string };
   completion: Promise<{ stdout: string; stderr: string; exitCode: number | null; signal: NodeJS.Signals | null }>;
 };
+
+function makeGuestSnapshot(options: { generation?: string; snapshotId?: string } = {}) {
+  return buildFriendlyBattlePartySnapshot({
+    config: makeConfig({ party: ['387'] }),
+    state: makeState({
+      pokemon: {
+        '387': {
+          id: 387,
+          xp: 100,
+          level: 16,
+          friendship: 0,
+          ev: 0,
+          moves: [33, 45],
+        },
+      },
+    }),
+    generation: options.generation ?? DEFAULT_GENERATION,
+    pluginRoot,
+    snapshotId: options.snapshotId ?? 'guest-snapshot-001',
+    createdAt: '2026-04-12T12:34:56.000Z',
+  });
+}
 
 function parseLines(buffer: string, onLine: (line: string) => void): string {
   let remainder = buffer;
@@ -116,7 +147,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
     const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, hostStartupTimeoutMs);
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
-    assert.match(joinCommand, /friendly-battle-spike\.ts join --host 127\.0\.0\.1 --port \d+ --session-code alpha-123 --timeout-ms 15000/);
+    assert.match(joinCommand, /friendly-battle-spike\.ts join --host 127\.0\.0\.1 --port \d+ --session-code alpha-123 --timeout-ms 15000 --generation gen4/);
 
     const joinInfoJson = hostStdout.match(/^JOIN_INFO: (.+)$/m)?.[1];
     assert.ok(joinInfoJson, `expected JOIN_INFO line in host stdout:\n${hostStdout}`);
@@ -127,6 +158,8 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       port: joinInfo.port,
       sessionCode: 'alpha-123',
       guestPlayerName: 'Guest',
+      generation: DEFAULT_GENERATION,
+      guestSnapshot: makeGuestSnapshot(),
       timeoutMs: battleExchangeTimeoutMs,
     });
     after(async () => guest.close().catch(() => undefined));
@@ -158,6 +191,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       port: 0,
       sessionCode: 'beta-123',
       hostPlayerName: 'Host',
+      generation: DEFAULT_GENERATION,
     });
     after(async () => host.close());
 
@@ -169,6 +203,8 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       String(host.connectionInfo.port),
       '--session-code',
       'beta-123',
+      '--generation',
+      DEFAULT_GENERATION,
       '--timeout-ms',
       String(battleExchangeTimeoutMs),
     ]);
@@ -178,6 +214,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
 
     const joined = await host.waitForGuestJoin(battleExchangeTimeoutMs);
     assert.equal(joined.guestPlayerName, 'Guest');
+    assert.equal(joined.guestSnapshot.generation, DEFAULT_GENERATION);
 
     const readyState = host.markHostReady();
     assert.equal(readyState.hostReady, true);
@@ -351,7 +388,14 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
         socket.once('error', reject);
         socket.once('connect', () => resolve());
       });
-      socket.write(`${JSON.stringify({ type: 'hello', sessionCode: 'alpha-123', guestPlayerName: 'IdleGuest' })}\n`);
+      socket.write(`${JSON.stringify({
+        type: 'hello',
+        protocolVersion: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+        sessionCode: 'alpha-123',
+        generation: DEFAULT_GENERATION,
+        guestPlayerName: 'IdleGuest',
+        guestSnapshot: makeGuestSnapshot({ snapshotId: 'idle-guest-snapshot' }),
+      })}\n`);
 
       const result = await host.completion;
       assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
@@ -399,7 +443,14 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
         });
       });
 
-      socket.write(`${JSON.stringify({ type: 'hello', sessionCode: 'alpha-123', guestPlayerName: 'BattleDropGuest' })}\n`);
+      socket.write(`${JSON.stringify({
+        type: 'hello',
+        protocolVersion: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+        sessionCode: 'alpha-123',
+        generation: DEFAULT_GENERATION,
+        guestPlayerName: 'BattleDropGuest',
+        guestSnapshot: makeGuestSnapshot({ snapshotId: 'battle-drop-guest-snapshot' }),
+      })}\n`);
 
       const result = await host.completion;
       assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
@@ -477,6 +528,8 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
           if (message.type === 'hello') {
             socket.write(`${JSON.stringify({
               type: 'hello_ack',
+              protocolVersion: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+              generation: DEFAULT_GENERATION,
               hostPlayerName: 'Host',
               readyState: { hostReady: false, guestReady: false, canStart: false },
             })}\n`);
@@ -538,6 +591,8 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
           if (message.type === 'hello') {
             socket.write(`${JSON.stringify({
               type: 'hello_ack',
+              protocolVersion: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+              generation: DEFAULT_GENERATION,
               hostPlayerName: 'Host',
               readyState: { hostReady: false, guestReady: false, canStart: false },
             })}\n`);

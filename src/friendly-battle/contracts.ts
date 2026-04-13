@@ -66,7 +66,8 @@ export type FriendlyBattleJoinRejectCode =
   | 'bad_session_code'
   | 'room_full'
   | 'generation_mismatch'
-  | 'unsupported_protocol';
+  | 'unsupported_protocol'
+  | 'invalid_guest_snapshot';
 
 export type FriendlyBattleCompletionReason = 'completed' | 'surrender' | 'cancelled' | 'disconnect';
 
@@ -205,15 +206,14 @@ export interface FriendlyBattleHelloMessage {
   sessionCode: string;
   generation: string;
   guestPlayerName: string;
+  guestSnapshot: FriendlyBattlePartySnapshot;
 }
 
 export interface FriendlyBattleHelloAckMessage {
   type: 'hello_ack';
   protocolVersion: number;
-  sessionId: string;
   generation: string;
   hostPlayerName: string;
-  guestPlayerName: string;
   readyState: FriendlyBattleReadyState;
 }
 

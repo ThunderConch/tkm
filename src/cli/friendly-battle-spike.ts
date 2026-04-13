@@ -1,5 +1,7 @@
 #!/usr/bin/env -S npx tsx
 import { FriendlyBattleTransportError, connectFriendlyBattleSpikeGuest, createFriendlyBattleSpikeHost } from '../friendly-battle/spike/tcp-direct.js';
+import { loadFriendlyBattleCurrentProfile } from '../friendly-battle/local-harness.js';
+import { buildFriendlyBattlePartySnapshot } from '../friendly-battle/snapshot.js';
 
 type Command = 'host' | 'join';
 
@@ -10,8 +12,8 @@ type ParsedArgs = {
 
 function usage(): never {
   console.error('Usage:');
-  console.error('  tokenmon friendly-battle spike host --session-code <code> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000]');
-  console.error('  tokenmon friendly-battle spike join --host <host> --port <port> --session-code <code> [--timeout-ms 4000]');
+  console.error('  tokenmon friendly-battle spike host --session-code <code> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4]');
+  console.error('  tokenmon friendly-battle spike join --host <host> --port <port> --session-code <code> [--timeout-ms 4000] [--generation gen4]');
   process.exit(1);
 }
 
@@ -93,6 +95,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
   const port = getNumberArg(values, 'port', 0);
   const timeoutMs = getNumberArg(values, 'timeout-ms', 4_000);
   const sessionCode = getRequiredArg(values, 'session-code');
+  const generation = values.get('generation') ?? 'gen4';
   const hostHintLabel = values.has('listen-host') ? 'listenHost' : 'host';
   const inputHint = `${hostHintLabel}=${listenHost}${joinHost ? ` joinHost=${joinHost}` : ''} port=${port} sessionCode=${sessionCode}`;
   let currentStage: 'listen' | 'join' | 'ready' | 'battle' = 'listen';
@@ -110,6 +113,8 @@ async function runHost(values: Map<string, string>): Promise<void> {
     sessionCode,
     '--timeout-ms',
     String(timeoutMs),
+    '--generation',
+    generation,
   ];
   if (joinHost) {
     retryCommandParts.push('--join-host', joinHost);
@@ -174,6 +179,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
       port,
       sessionCode,
       hostPlayerName: values.get('player-name') ?? 'Host',
+      generation,
     });
   } catch (error) {
     if (error instanceof FriendlyBattleTransportError) {
@@ -197,6 +203,8 @@ async function runHost(values: Map<string, string>): Promise<void> {
       sessionCode,
       '--timeout-ms',
       String(timeoutMs),
+      '--generation',
+      generation,
     ].map(shellEscape).join(' ');
 
     console.log(`JOIN_INFO: ${JSON.stringify(host.connectionInfo)}`);
@@ -247,6 +255,9 @@ async function runJoin(values: Map<string, string>): Promise<void> {
   const port = getNumberArg(values, 'port', Number.NaN);
   const timeoutMs = getNumberArg(values, 'timeout-ms', 4_000);
   const sessionCode = getRequiredArg(values, 'session-code');
+  const generation = values.get('generation') ?? 'gen4';
+  const guestProfile = loadFriendlyBattleCurrentProfile(generation);
+  const guestSnapshot = buildFriendlyBattlePartySnapshot(guestProfile);
   let currentStage: 'join' | 'ready' | 'battle' = 'join';
 
   const fallbackRetryCommand = [
@@ -263,6 +274,8 @@ async function runJoin(values: Map<string, string>): Promise<void> {
     sessionCode,
     '--timeout-ms',
     String(timeoutMs),
+    '--generation',
+    generation,
   ].map(shellEscape).join(' ');
 
   const handleFriendlyBattleError = (error: FriendlyBattleTransportError): never => {
@@ -298,6 +311,8 @@ async function runJoin(values: Map<string, string>): Promise<void> {
       port,
       sessionCode,
       guestPlayerName: values.get('player-name') ?? 'Guest',
+      generation,
+      guestSnapshot,
       timeoutMs,
     });
   } catch (error) {

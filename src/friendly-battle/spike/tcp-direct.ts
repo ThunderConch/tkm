@@ -1,4 +1,6 @@
 import net from 'node:net';
+import { FRIENDLY_BATTLE_PROTOCOL_VERSION, type FriendlyBattlePartySnapshot } from '../contracts.js';
+import { assertValidFriendlyBattlePartySnapshot } from '../snapshot.js';
 
 export type FriendlyBattleReadyState = {
   hostReady: boolean;
@@ -26,6 +28,7 @@ type HostOptions = {
   advertiseHost?: string;
   port: number;
   sessionCode: string;
+  generation: string;
   hostPlayerName: string;
 };
 
@@ -33,18 +36,24 @@ type GuestOptions = {
   host: string;
   port: number;
   sessionCode: string;
+  generation: string;
   guestPlayerName: string;
+  guestSnapshot: FriendlyBattlePartySnapshot;
   timeoutMs?: number;
 };
 
 type GuestJoinEvent = {
   guestPlayerName: string;
+  guestSnapshot: FriendlyBattlePartySnapshot;
 };
 
 type HostHelloMessage = {
   type: 'hello';
+  protocolVersion: number;
   sessionCode: string;
+  generation: string;
   guestPlayerName: string;
+  guestSnapshot: FriendlyBattlePartySnapshot;
 };
 
 type HostReadyMessage = {
@@ -57,8 +66,8 @@ type HostActionMessage = {
 };
 
 type GuestInboundMessage =
-  | { type: 'hello_ack'; hostPlayerName: string; readyState: FriendlyBattleReadyState }
-  | { type: 'hello_reject'; code: 'bad_session_code' | 'room_full'; message: string }
+  | { type: 'hello_ack'; protocolVersion: number; generation: string; hostPlayerName: string; readyState: FriendlyBattleReadyState }
+  | { type: 'hello_reject'; code: 'bad_session_code' | 'room_full' | 'generation_mismatch' | 'unsupported_protocol' | 'invalid_guest_snapshot'; message: string }
   | { type: 'ready_state'; readyState: FriendlyBattleReadyState }
   | { type: 'battle_started' }
   | { type: 'host_action'; value: string };
@@ -212,6 +221,19 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     incomingSocket.on('data', (chunk: string) => {
       buffer = parseDelimitedMessages<HostInboundMessage>(buffer + chunk, (message) => {
         if (message.type === 'hello') {
+          if (message.protocolVersion !== FRIENDLY_BATTLE_PROTOCOL_VERSION) {
+            writeMessage(incomingSocket, {
+              type: 'hello_reject',
+              code: 'unsupported_protocol',
+              message: `지원하지 않는 friendly battle protocol 버전입니다. host=${FRIENDLY_BATTLE_PROTOCOL_VERSION}, guest=${message.protocolVersion}`,
+            });
+            if (socket === incomingSocket) {
+              socket = null;
+            }
+            incomingSocket.end();
+            return;
+          }
+
           if (message.sessionCode !== options.sessionCode) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
@@ -225,11 +247,57 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             return;
           }
 
+          if (message.generation !== options.generation) {
+            writeMessage(incomingSocket, {
+              type: 'hello_reject',
+              code: 'generation_mismatch',
+              message: `세대가 일치하지 않습니다. host=${options.generation}, guest=${message.generation}`,
+            });
+            if (socket === incomingSocket) {
+              socket = null;
+            }
+            incomingSocket.end();
+            return;
+          }
+
+          try {
+            assertValidFriendlyBattlePartySnapshot(message.guestSnapshot);
+          } catch (error) {
+            writeMessage(incomingSocket, {
+              type: 'hello_reject',
+              code: 'invalid_guest_snapshot',
+              message: `guest snapshot 검증에 실패했습니다: ${error instanceof Error ? error.message : String(error)}`,
+            });
+            if (socket === incomingSocket) {
+              socket = null;
+            }
+            incomingSocket.end();
+            return;
+          }
+
+          if (message.guestSnapshot.generation !== options.generation) {
+            writeMessage(incomingSocket, {
+              type: 'hello_reject',
+              code: 'generation_mismatch',
+              message: `guest snapshot 세대가 host 세대와 다릅니다. host=${options.generation}, snapshot=${message.guestSnapshot.generation}`,
+            });
+            if (socket === incomingSocket) {
+              socket = null;
+            }
+            incomingSocket.end();
+            return;
+          }
+
           handshakeAccepted = true;
           guestPlayerName = message.guestPlayerName;
-          guestJoinQueue.push({ guestPlayerName: message.guestPlayerName });
+          guestJoinQueue.push({
+            guestPlayerName: message.guestPlayerName,
+            guestSnapshot: structuredClone(message.guestSnapshot),
+          });
           writeMessage(incomingSocket, {
             type: 'hello_ack',
+            protocolVersion: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+            generation: options.generation,
             hostPlayerName: options.hostPlayerName,
             readyState: toReadyState(hostReady, guestReady),
           });
@@ -319,7 +387,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       listenHost: listenAddress.host,
       port: listenAddress.port,
       sessionCode: options.sessionCode,
-      joinHint: `tokenmon friendly-battle spike join --host ${advertisedHost} --port ${listenAddress.port} --session-code ${options.sessionCode}`,
+      joinHint: `tokenmon friendly-battle spike join --host ${advertisedHost} --port ${listenAddress.port} --session-code ${options.sessionCode} --generation ${options.generation}`,
     },
     async waitForGuestJoin(timeoutMs: number): Promise<GuestJoinEvent> {
       return guestJoinQueue.shift(timeoutMs, 'guest join');
@@ -439,7 +507,35 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
         return;
       }
 
-      if (message.type === 'hello_ack' || message.type === 'ready_state') {
+      if (message.type === 'hello_ack') {
+        if (message.protocolVersion !== FRIENDLY_BATTLE_PROTOCOL_VERSION) {
+          closeWithError(
+            new FriendlyBattleTransportError(
+              'unsupported_protocol',
+              `protocol version이 맞지 않습니다. host=${message.protocolVersion}, guest=${FRIENDLY_BATTLE_PROTOCOL_VERSION}`,
+            ),
+          );
+          socket.end();
+          return;
+        }
+
+        if (message.generation !== options.generation) {
+          closeWithError(
+            new FriendlyBattleTransportError(
+              'generation_mismatch',
+              `host generation이 guest generation과 다릅니다. host=${message.generation}, guest=${options.generation}`,
+            ),
+          );
+          socket.end();
+          return;
+        }
+
+        lastReadyState = message.readyState;
+        readyStateQueue.push(message.readyState);
+        return;
+      }
+
+      if (message.type === 'ready_state') {
         lastReadyState = message.readyState;
         readyStateQueue.push(message.readyState);
         return;
@@ -469,8 +565,11 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
 
   writeMessage(socket, {
     type: 'hello',
+    protocolVersion: FRIENDLY_BATTLE_PROTOCOL_VERSION,
     sessionCode: options.sessionCode,
+    generation: options.generation,
     guestPlayerName: options.guestPlayerName,
+    guestSnapshot: options.guestSnapshot,
   } satisfies HostHelloMessage);
 
   await waitForReadyState(timeoutMs, () => true, 'hello acknowledgement');

@@ -88,7 +88,7 @@ describe('friendly battle product CLI', () => {
     assert.match(result.output, /Friendly Battle \(local v1\)/);
     assert.match(result.output, /same network/i);
     assert.match(result.output, /two Claude profiles\/terminals/i);
-    assert.match(result.output, /host --session-code <code> --opponent-config-dir <opponent Claude config dir> \[--listen-host/i);
+    assert.match(result.output, /host --session-code <code> \[--listen-host/i);
     assert.match(result.output, /\[--join-host <host>\]/i);
     assert.match(result.output, /join --host <host> --port <port> --session-code <code>/i);
     assert.match(result.output, /ready\s+Explain how ready works/i);
@@ -126,17 +126,13 @@ describe('friendly battle product CLI', () => {
 
   it('forwards product host args into the local runner and preserves numeric validation', () => {
     const hostProfile = createProfile('host');
-    const guestProfile = createProfile('guest');
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const result = runTokenmon([
       'friendly-battle',
       'host',
       '--session-code',
       'alpha-local-123',
-      '--opponent-config-dir',
-      guestProfile.profileDir,
       '--port',
       '-1',
     ], {
@@ -149,17 +145,13 @@ describe('friendly battle product CLI', () => {
 
   it('prints a product-facing JOIN_COMMAND that re-enters through tokenmon friendly-battle join', () => {
     const hostProfile = createProfile('host-join-command');
-    const guestProfile = createProfile('guest-join-command');
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const result = runTokenmon([
       'friendly-battle',
       'host',
       '--session-code',
       'alpha-join-command-123',
-      '--opponent-config-dir',
-      guestProfile.profileDir,
       '--timeout-ms',
       '50',
     ], {
@@ -169,6 +161,7 @@ describe('friendly battle product CLI', () => {
     assert.equal(result.status, 1, result.output);
     assert.match(result.output, /JOIN_COMMAND: .+/);
     assert.match(result.output, /friendly-battle join/);
+    assert.match(result.output, /--generation gen4/);
     assert.doesNotMatch(result.output, /friendly-battle-local\.ts join/);
     assert.match(result.output, /FAILED_STAGE: join/);
     assert.match(result.output, /CLEANUP: session_artifacts_removed/);
@@ -176,17 +169,13 @@ describe('friendly battle product CLI', () => {
 
   it('preserves a guest-facing --join-host through the product host entrypoint', () => {
     const hostProfile = createProfile('host-product-join-host');
-    const guestProfile = createProfile('guest-product-join-host');
     after(() => hostProfile.cleanup());
-    after(() => guestProfile.cleanup());
 
     const result = runTokenmon([
       'friendly-battle',
       'host',
       '--session-code',
       'alpha-product-join-host-123',
-      '--opponent-config-dir',
-      guestProfile.profileDir,
       '--listen-host',
       '0.0.0.0',
       '--join-host',

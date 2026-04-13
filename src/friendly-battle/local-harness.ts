@@ -27,7 +27,9 @@ import {
 import {
   buildFriendlyBattlePartySnapshot,
   buildFriendlyBattleProgressionRef,
+  buildFriendlyBattleProgressionRefFromSnapshot,
   createBattleTeamFromFriendlyBattleSnapshot,
+  assertValidFriendlyBattlePartySnapshot,
   toFriendlyBattleSnapshotRef,
 } from './snapshot.js';
 import type { FriendlyBattlePartySnapshot } from './contracts.js';
@@ -45,7 +47,7 @@ export interface FriendlyBattleLocalArtifacts {
   generation: string;
   session: FriendlyBattleSessionState;
   hostSnapshotPath: string;
-  guestSnapshotPath: string;
+  guestSnapshotPath: string | null;
   sessionPath: string;
   battlePath: string;
 }
@@ -87,22 +89,14 @@ export function loadFriendlyBattleProfileFromConfigDir(
 
 export function createFriendlyBattleLocalArtifacts(input: {
   hostProfile: FriendlyBattleLoadedProfile;
-  guestProfile: FriendlyBattleLoadedProfile;
   sessionCode: string;
   hostPlayerName: string;
   guestPlayerName?: string;
 }): FriendlyBattleLocalArtifacts {
   const generation = input.hostProfile.generation;
-  if (input.guestProfile.generation !== generation) {
-    throw new Error(
-      `Friendly battle local harness generation mismatch: host=${generation} guest=${input.guestProfile.generation}`,
-    );
-  }
 
   const hostProgression = buildFriendlyBattleProgressionRef(input.hostProfile);
-  const guestProgression = buildFriendlyBattleProgressionRef(input.guestProfile);
   const hostSnapshot = buildFriendlyBattlePartySnapshot(input.hostProfile);
-  const guestSnapshot = buildFriendlyBattlePartySnapshot(input.guestProfile);
 
   const sessionId = randomUUID();
   const battleId = randomUUID();
@@ -118,8 +112,8 @@ export function createFriendlyBattleLocalArtifacts(input: {
 
   session.hostSnapshot = toFriendlyBattleSnapshotRef(hostSnapshot);
   session.guest.playerName = input.guestPlayerName ?? 'Guest';
-  session.guestProgression = guestProgression;
-  session.guestSnapshot = toFriendlyBattleSnapshotRef(guestSnapshot);
+  session.guestProgression = null;
+  session.guestSnapshot = null;
   session.updatedAt = createdAt;
 
   const artifacts: FriendlyBattleLocalArtifacts = {
@@ -129,26 +123,46 @@ export function createFriendlyBattleLocalArtifacts(input: {
     session,
     sessionPath: friendlyBattleSessionPath(sessionId, generation),
     hostSnapshotPath: friendlyBattleSnapshotPath(hostSnapshot.snapshotId, generation),
-    guestSnapshotPath: friendlyBattleSnapshotPath(guestSnapshot.snapshotId, generation),
+    guestSnapshotPath: null,
     battlePath: friendlyBattleBattlePath(battleId, generation),
   };
 
   writeJsonAtomic(artifacts.hostSnapshotPath, hostSnapshot);
-  writeJsonAtomic(artifacts.guestSnapshotPath, guestSnapshot);
   writeJsonAtomic(artifacts.sessionPath, session);
 
   return artifacts;
 }
 
-export function markFriendlyBattleGuestJoined(
+export function attachFriendlyBattleGuestSnapshot(
   artifacts: FriendlyBattleLocalArtifacts,
-  guestPlayerName: string,
+  input: {
+    guestPlayerName: string;
+    guestSnapshot: FriendlyBattlePartySnapshot;
+  },
 ): void {
+  assertValidFriendlyBattlePartySnapshot(input.guestSnapshot);
+  if (input.guestSnapshot.generation !== artifacts.generation) {
+    throw new Error(
+      `Friendly battle local harness generation mismatch: host=${artifacts.generation} guest=${input.guestSnapshot.generation}`,
+    );
+  }
+
+  const guestProgression = buildFriendlyBattleProgressionRefFromSnapshot(input.guestSnapshot);
+  const guestSnapshotPath = friendlyBattleSnapshotPath(
+    input.guestSnapshot.snapshotId,
+    artifacts.generation,
+  );
+
+  writeJsonAtomic(guestSnapshotPath, input.guestSnapshot);
+
   artifacts.session.phase = 'awaiting_ready';
   artifacts.session.updatedAt = new Date().toISOString();
-  artifacts.session.guest.playerName = guestPlayerName;
+  artifacts.session.guest.playerName = input.guestPlayerName;
   artifacts.session.guest.connectionState = 'connected';
+  artifacts.session.guestProgression = guestProgression;
+  artifacts.session.guestSnapshot = toFriendlyBattleSnapshotRef(input.guestSnapshot);
   writeJsonAtomic(artifacts.sessionPath, artifacts.session);
+  artifacts.guestSnapshotPath = guestSnapshotPath;
 }
 
 export function markFriendlyBattleReady(
@@ -166,6 +180,12 @@ export function markFriendlyBattleReady(
 export function startFriendlyBattleLocalBattle(
   artifacts: FriendlyBattleLocalArtifacts,
 ): FriendlyBattleLocalBattleArtifacts {
+  if (!artifacts.guestSnapshotPath) {
+    throw new Error(
+      'Friendly battle local harness cannot start battle before guest snapshot is attached',
+    );
+  }
+
   const { runtime, events } = createFriendlyBattleBattleRuntime({
     battleId: artifacts.battleId,
     hostTeam: createBattleTeamFromFriendlyBattleSnapshot(
@@ -229,12 +249,16 @@ export function resolveFriendlyBattleLocalFirstTurn(input: {
 }
 
 export function cleanupFriendlyBattleLocalArtifacts(artifacts: FriendlyBattleLocalArtifacts): void {
-  for (const path of [
+  const paths = [
     artifacts.sessionPath,
     artifacts.hostSnapshotPath,
-    artifacts.guestSnapshotPath,
     artifacts.battlePath,
-  ]) {
+  ];
+  if (artifacts.guestSnapshotPath) {
+    paths.push(artifacts.guestSnapshotPath);
+  }
+
+  for (const path of paths) {
     rmSync(path, { force: true });
     rmSync(`${path}.tmp`, { force: true });
   }

@@ -110,6 +110,22 @@ export function buildFriendlyBattlePartySnapshot(
   return snapshot;
 }
 
+export function buildFriendlyBattleProgressionRefFromSnapshot(
+  snapshot: FriendlyBattlePartySnapshot,
+): FriendlyBattleProgressionRef {
+  assertValidFriendlyBattlePartySnapshot(snapshot);
+
+  return {
+    layer: 'progression',
+    generation: snapshot.generation,
+    partySource: snapshot.partySource,
+    partyPokemonIds: snapshot.pokemon
+      .slice()
+      .sort((left, right) => left.slot - right.slot)
+      .map((pokemon) => pokemon.progressionKey),
+  };
+}
+
 export function toFriendlyBattleSnapshotRef(
   snapshot: FriendlyBattlePartySnapshot,
 ): FriendlyBattleSnapshotRef {

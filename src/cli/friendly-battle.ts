@@ -21,7 +21,6 @@ type Copy = {
   leaveBody: string;
   leaveNext: string;
   unknown: (command: string) => string;
-  aliasConflict: string;
 };
 
 const KO_COPY: Copy = {
@@ -33,13 +32,13 @@ const KO_COPY: Copy = {
     '3) local v1에서는 두 쪽이 연결되면 ready가 자동으로 처리되고 바로 배틀이 시작됩니다.',
   ],
   commandsTitle: '명령:',
-  hostCommand: '  host --session-code <코드> --opponent-config-dir <상대 Claude 설정 경로> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
+  hostCommand: '  host --session-code <코드> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
   joinCommand: '  join --host <host> --port <port> --session-code <코드> [--timeout-ms 4000] [--player-name Guest]',
   readyCommand: '  ready              현재 local v1에서 ready가 어떻게 동작하는지 설명',
   leaveCommand: '  leave              현재 local v1에서 세션을 빠져나오는 방법 설명',
   helpCommand: '  help               이 도움말 보기',
   exampleTitle: '예시:',
-  exampleCommand: '  tokenmon friendly-battle host --session-code alpha-123 --opponent-config-dir ~/.claude-opponent',
+  exampleCommand: '  tokenmon friendly-battle host --session-code alpha-123 --generation gen4',
   readyTitle: 'READY_STATUS: automatic_in_local_v1',
   readyBody: 'local v1에서는 host와 join이 모두 연결되면 ready가 자동으로 처리됩니다. 지금은 별도의 ready 입력이 필요하지 않습니다.',
   readyNext: 'NEXT_ACTION: host 터미널에서 JOIN_COMMAND를 복사해 상대 프로필 터미널에서 실행하세요.',
@@ -47,7 +46,6 @@ const KO_COPY: Copy = {
   leaveBody: 'local v1에서는 별도 leave 패킷 없이 현재 실행 중인 host/join 터미널을 중단하면 세션을 종료할 수 있습니다.',
   leaveNext: 'NEXT_ACTION: 실행 중인 터미널에서 Ctrl+C로 중단한 뒤 다시 host부터 시작하세요.',
   unknown: (command: string) => `알 수 없는 friendly-battle 명령: ${command}`,
-  aliasConflict: '--opponent-config-dir 과 --guest-config-dir 은 동시에 사용할 수 없습니다.',
 };
 
 const EN_COPY: Copy = {
@@ -59,13 +57,13 @@ const EN_COPY: Copy = {
     '3) In local v1, ready is automatic once both sides connect, so the battle starts immediately.',
   ],
   commandsTitle: 'Commands:',
-  hostCommand: '  host --session-code <code> --opponent-config-dir <opponent Claude config dir> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
+  hostCommand: '  host --session-code <code> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
   joinCommand: '  join --host <host> --port <port> --session-code <code> [--timeout-ms 4000] [--player-name Guest]',
   readyCommand: '  ready              Explain how ready works in local v1',
   leaveCommand: '  leave              Explain how to leave/cancel the current local session',
   helpCommand: '  help               Show this help',
   exampleTitle: 'Example:',
-  exampleCommand: '  tokenmon friendly-battle host --session-code alpha-123 --opponent-config-dir ~/.claude-opponent',
+  exampleCommand: '  tokenmon friendly-battle host --session-code alpha-123 --generation gen4',
   readyTitle: 'READY_STATUS: automatic_in_local_v1',
   readyBody: 'In local v1, ready becomes automatic once both host and join are connected. You do not need a separate ready input yet.',
   readyNext: 'NEXT_ACTION: copy the JOIN_COMMAND from the host terminal and run it from the opponent profile terminal.',
@@ -73,7 +71,6 @@ const EN_COPY: Copy = {
   leaveBody: 'Local v1 does not send a dedicated leave packet yet. Stop the currently running host/join terminal to leave the session.',
   leaveNext: 'NEXT_ACTION: press Ctrl+C in the running terminal, then start again from host when you want a new battle.',
   unknown: (command: string) => `Unknown friendly-battle command: ${command}`,
-  aliasConflict: 'Do not pass both --opponent-config-dir and --guest-config-dir at the same time.',
 };
 
 function copy(): Copy {
@@ -115,30 +112,6 @@ function printLeaveGuidance(): void {
   console.log(text.leaveNext);
 }
 
-function normalizeHostArgs(argv: string[]): string[] {
-  const text = copy();
-  let sawOpponentAlias = false;
-  let sawGuestAlias = false;
-
-  const normalized = argv.map((token) => {
-    if (token === '--opponent-config-dir') {
-      sawOpponentAlias = true;
-      return '--guest-config-dir';
-    }
-    if (token === '--guest-config-dir') {
-      sawGuestAlias = true;
-    }
-    return token;
-  });
-
-  if (sawOpponentAlias && sawGuestAlias) {
-    console.error(text.aliasConflict);
-    process.exit(1);
-  }
-
-  return normalized;
-}
-
 function isHelpArg(argv: string[]): boolean {
   return argv.includes('--help') || argv.includes('-h');
 }
@@ -161,7 +134,7 @@ export async function runFriendlyBattleCli(argv: string[]): Promise<void> {
         printFriendlyBattleHelp();
         return;
       }
-      await runFriendlyBattleLocalCli(normalizeHostArgs(['host', ...rest]), {
+      await runFriendlyBattleLocalCli(['host', ...rest], {
         joinCommandStyle: 'tokenmon-cli',
       });
       return;
