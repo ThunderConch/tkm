@@ -16,6 +16,7 @@ describe('friendly-battle daemon protocol', () => {
       { op: 'submit_action', action: { kind: 'surrender' } },
       { op: 'status' },
       { op: 'ping' },
+      { op: 'leave' },
     ];
 
     for (const variant of variants) {

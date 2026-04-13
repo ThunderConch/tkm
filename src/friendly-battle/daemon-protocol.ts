@@ -4,7 +4,8 @@ export type DaemonRequest =
   | { op: 'wait_next_event'; timeoutMs: number }
   | { op: 'submit_action'; action: DaemonAction }
   | { op: 'status' }
-  | { op: 'ping' };
+  | { op: 'ping' }
+  | { op: 'leave' };
 
 export type DaemonAction =
   | { kind: 'move'; index: number }
