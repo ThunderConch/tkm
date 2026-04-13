@@ -35,7 +35,7 @@ type ProfilePokemon = {
   level: number;
 };
 
-function spawnCli(args: string[], options?: { configDir?: string; env?: NodeJS.ProcessEnv }): SpawnedCli {
+function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli {
   const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
     cwd: REPO_ROOT,
     env: {
