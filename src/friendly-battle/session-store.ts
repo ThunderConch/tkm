@@ -36,15 +36,41 @@ export interface FriendlyBattleSessionRecord {
   updatedAt: string;
 }
 
+const SAFE_SEGMENT = /^[A-Za-z0-9_.-]{1,64}$/;
+
+function assertSafeSegment(value: string, field: string): void {
+  if (!SAFE_SEGMENT.test(value)) {
+    throw new Error(`friendly-battle session store: invalid ${field}: ${JSON.stringify(value)}`);
+  }
+}
+
+function isValidRecord(value: unknown): value is FriendlyBattleSessionRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const r = value as Record<string, unknown>;
+  if (typeof r.sessionId !== 'string' || !SAFE_SEGMENT.test(r.sessionId)) return false;
+  if (typeof r.generation !== 'string' || !SAFE_SEGMENT.test(r.generation)) return false;
+  if (r.role !== 'host' && r.role !== 'guest') return false;
+  if (typeof r.pid !== 'number' || !Number.isInteger(r.pid) || r.pid <= 0) return false;
+  if (typeof r.phase !== 'string') return false;
+  if (typeof r.status !== 'string') return false;
+  if (typeof r.sessionCode !== 'string') return false;
+  if (typeof r.transport !== 'object' || r.transport === null) return false;
+  if (typeof r.createdAt !== 'string') return false;
+  if (typeof r.updatedAt !== 'string') return false;
+  return true;
+}
+
 function currentClaudeDir(): string {
   return process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), '.claude');
 }
 
 export function friendlyBattleSessionsDir(generation: string): string {
+  assertSafeSegment(generation, 'generation');
   return join(currentClaudeDir(), 'tokenmon', generation, 'friendly-battle', 'sessions');
 }
 
 export function friendlyBattleSessionRecordPath(sessionId: string, generation: string): string {
+  assertSafeSegment(sessionId, 'sessionId');
   return join(friendlyBattleSessionsDir(generation), `${sessionId}.json`);
 }
 
@@ -62,15 +88,20 @@ export function readFriendlyBattleSessionRecord(
 ): FriendlyBattleSessionRecord | null {
   const path = friendlyBattleSessionRecordPath(sessionId, generation);
   if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, 'utf8')) as FriendlyBattleSessionRecord;
+  const parsed: unknown = JSON.parse(readFileSync(path, 'utf8'));
+  if (!isValidRecord(parsed)) return null;
+  return parsed;
 }
 
 export function listFriendlyBattleSessionRecords(generation: string): FriendlyBattleSessionRecord[] {
   const dir = friendlyBattleSessionsDir(generation);
   if (!existsSync(dir)) return [];
-  return readdirSync(dir)
-    .filter((name) => name.endsWith('.json'))
-    .map((name) => JSON.parse(readFileSync(join(dir, name), 'utf8')) as FriendlyBattleSessionRecord);
+  const records: FriendlyBattleSessionRecord[] = [];
+  for (const name of readdirSync(dir).filter((n) => n.endsWith('.json'))) {
+    const parsed: unknown = JSON.parse(readFileSync(join(dir, name), 'utf8'));
+    if (isValidRecord(parsed)) records.push(parsed);
+  }
+  return records;
 }
 
 export function reapFriendlyBattleSessionRecord(sessionId: string, generation: string): void {

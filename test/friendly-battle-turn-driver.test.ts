@@ -136,6 +136,28 @@ describe('friendly-battle-turn --init-host', () => {
     assert.match(result.stdout, /"phase":\s*"waiting_for_guest"/);
     assert.match(result.stderr, /STAGE:\s*waiting_for_guest/);
   });
+
+  it('rejects a non-integer --port with a REASON line and exit 1', async () => {
+    const result = await spawnDriver([
+      '--init-host',
+      '--session-code', 'nan-port',
+      '--port', 'banana',
+      '--timeout-ms', '300',
+      '--generation', 'gen4',
+    ]);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /REASON: flag --port must be a non-negative integer/);
+  });
+
+  it('rejects an unknown flag like --sesion-code with a REASON line', async () => {
+    const result = await spawnDriver([
+      '--init-host',
+      '--sesion-code', 'typo',
+      '--timeout-ms', '300',
+    ]);
+    assert.equal(result.exitCode, 1);
+    assert.match(result.stderr, /REASON:/);
+  });
 });
 
 describe('friendly-battle-turn init handshake', () => {
@@ -170,6 +192,25 @@ describe('friendly-battle-turn init handshake', () => {
       assert.match(hostResult.stdout, /"phase":\s*"battle"/);
       assert.match(joinResult.stdout, /"phase":\s*"battle"/);
       assert.match(joinResult.stdout, /"role":\s*"guest"/);
+    });
+  });
+
+  it('guest emits an aborted envelope on stdout when host is unreachable', async () => {
+    await withSeededClaudeConfigDir(async (claudeDir) => {
+      // Pick an unused loopback port
+      const deadPort = 1; // privileged port; connect always refused
+      const guest = await spawnDriverWithClaudeDir(claudeDir, [
+        '--init-join',
+        '--session-code', 'unreachable',
+        '--host', '127.0.0.1',
+        '--port', String(deadPort),
+        '--timeout-ms', '600',
+        '--generation', 'gen4',
+        '--player-name', 'Guest',
+      ]).completion;
+      assert.equal(guest.exitCode, 1);
+      assert.match(guest.stdout, /"phase":\s*"aborted"/);
+      assert.match(guest.stderr, /FAILED_STAGE:/);
     });
   });
 });

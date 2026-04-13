@@ -56,6 +56,62 @@ const CLI_FLAG_SCHEMA = {
   'action': { type: 'string' as const },
 };
 
+// ---------------------------------------------------------------------------
+// Input validation helpers
+// ---------------------------------------------------------------------------
+
+function requirePositiveInt(value: string | undefined, name: string, fallback?: number): number {
+  if (value === undefined) {
+    if (fallback !== undefined) return fallback;
+    process.stderr.write(`missing required flag --${name}\n`);
+    process.exit(1);
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== value.trim()) {
+    process.stderr.write(`REASON: flag --${name} must be a non-negative integer, got ${JSON.stringify(value)}\n`);
+    process.exit(1);
+  }
+  return parsed;
+}
+
+const SAFE_NAME = /^[\p{L}\p{N}_.\- ]{1,32}$/u;
+function sanitizeName(value: string | undefined, name: string, fallback: string): string {
+  if (value === undefined || value === '') return fallback;
+  // strip control chars + cap length
+  const cleaned = value.replace(/[\x00-\x1F\x7F]/g, '').slice(0, 32);
+  if (!SAFE_NAME.test(cleaned)) {
+    process.stderr.write(`REASON: flag --${name} must match /^[A-Za-z0-9 _.-]{1,32}$/, got ${JSON.stringify(value)}\n`);
+    process.exit(1);
+  }
+  return cleaned;
+}
+
+const SAFE_CODE = /^[A-Za-z0-9_-]{1,48}$/;
+function validateSessionCode(value: string): string {
+  if (!SAFE_CODE.test(value)) {
+    process.stderr.write(`REASON: --session-code must match /^[A-Za-z0-9_-]{1,48}$/, got ${JSON.stringify(value)}\n`);
+    process.exit(1);
+  }
+  return value;
+}
+
+const SAFE_GEN = /^gen[0-9]{1,2}$/;
+function validateGeneration(value: string | undefined): string {
+  const gen = value ?? 'gen4';
+  if (!SAFE_GEN.test(gen)) {
+    process.stderr.write(`REASON: --generation must match /^gen[0-9]+$/, got ${JSON.stringify(gen)}\n`);
+    process.exit(1);
+  }
+  return gen;
+}
+
+function asStringFlag(flags: Record<string, string | boolean | undefined>, name: string): string | undefined {
+  const v = flags[name];
+  return typeof v === 'string' ? v : undefined;
+}
+
+// ---------------------------------------------------------------------------
+
 function printUsage(): void {
   process.stdout.write(`${USAGE}\n`);
 }
@@ -83,23 +139,32 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
   }
 
   const flagArgs = argv.filter((token) => !SUBCOMMAND_FLAGS.has(token));
-  const { values } = parseArgs({
-    args: flagArgs,
-    options: CLI_FLAG_SCHEMA,
-    strict: false,
-    allowPositionals: true,
-  });
+  let values: Record<string, string | boolean | undefined>;
+  try {
+    const result = parseArgs({
+      args: flagArgs,
+      options: CLI_FLAG_SCHEMA,
+      strict: true,
+      allowPositionals: true,
+    });
+    values = result.values as Record<string, string | boolean | undefined>;
+  } catch (err) {
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    process.exit(1);
+  }
 
-  return { subcommand, flags: values as Record<string, string | boolean | undefined> };
+  return { subcommand, flags: values };
 }
 
-async function runInitHost(flags: Record<string, string | undefined>): Promise<void> {
-  const sessionCode = requireFlag(flags, 'session-code');
-  const listenHost = flags['listen-host'] ?? '127.0.0.1';
-  const port = Number.parseInt(flags.port ?? '0', 10);
-  const timeoutMs = Number.parseInt(flags['timeout-ms'] ?? '4000', 10);
-  const generation = flags.generation ?? 'gen4';
-  const playerName = flags['player-name'] ?? 'Host';
+async function runInitHost(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
+  const listenHost = asStringFlag(flags, 'listen-host') ?? '127.0.0.1';
+  const port = requirePositiveInt(asStringFlag(flags, 'port'), 'port', 0);
+  const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 4000);
+  const generation = validateGeneration(asStringFlag(flags, 'generation'));
+  const playerName = sanitizeName(asStringFlag(flags, 'player-name'), 'player-name', 'Host');
+
+  let currentStage: 'waiting_for_guest' | 'handshake' | 'ready' | 'battle' = 'waiting_for_guest';
 
   const host = await createFriendlyBattleSpikeHost({
     host: listenHost,
@@ -144,13 +209,16 @@ async function runInitHost(flags: Record<string, string | undefined>): Promise<v
 
   try {
     const joined = await host.waitForGuestJoin(timeoutMs);
+    currentStage = 'handshake';
     process.stderr.write(`STAGE: guest_joined (${joined.guestPlayerName})\n`);
 
     // Mark host ready, wait for guest ready, then start the battle so the
     // guest's waitForStarted() can resolve.
     host.markHostReady();
     await host.waitUntilCanStart(timeoutMs);
+    currentStage = 'ready';
     await host.startBattle(randomUUID());
+    currentStage = 'battle';
 
     record.phase = 'battle';
     record.status = 'select_action';
@@ -173,35 +241,33 @@ async function runInitHost(flags: Record<string, string | undefined>): Promise<v
     record.status = 'aborted';
     record.updatedAt = nowIso();
     writeFriendlyBattleSessionRecord(record);
-    process.stderr.write(`STAGE: waiting_for_guest\n`);
-    process.stderr.write(`FAILED_STAGE: waiting_for_guest\n`);
+    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+      record,
+      questionContext: `aborted`,
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+    }))}\n`);
+    process.stderr.write(`STAGE: ${currentStage}\n`);
+    process.stderr.write(`FAILED_STAGE: ${currentStage}\n`);
     process.stderr.write(`REASON: ${(err as Error).message}\n`);
     await host.close().catch(() => undefined);
     process.exit(1);
   }
   await host.close().catch(() => undefined);
 }
+
 async function runInitJoin(flags: Record<string, string | boolean | undefined>): Promise<void> {
-  const stringFlags = flags as Record<string, string | undefined>;
-  const sessionCode = requireFlag(stringFlags, 'session-code');
-  const hostAddr = requireFlag(stringFlags, 'host');
-  const port = Number.parseInt(requireFlag(stringFlags, 'port'), 10);
-  const timeoutMs = Number.parseInt(stringFlags['timeout-ms'] ?? '4000', 10);
-  const generation = stringFlags.generation ?? 'gen4';
-  const playerName = stringFlags['player-name'] ?? 'Guest';
+  const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
+  const hostAddr = requireFlag(flags, 'host');
+  const portStr = asStringFlag(flags, 'port') ?? requireFlag(flags, 'port');
+  const port = requirePositiveInt(portStr, 'port');
+  const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 4000);
+  const generation = validateGeneration(asStringFlag(flags, 'generation'));
+  const playerName = sanitizeName(asStringFlag(flags, 'player-name'), 'player-name', 'Guest');
 
-  const guestProfile = loadFriendlyBattleCurrentProfile(generation);
-  const guestSnapshot = buildFriendlyBattlePartySnapshot(guestProfile);
-
-  const guest = await connectFriendlyBattleSpikeGuest({
-    host: hostAddr,
-    port,
-    sessionCode,
-    guestPlayerName: playerName,
-    generation,
-    guestSnapshot,
-    timeoutMs,
-  });
+  let currentStage: 'handshake' | 'ready' | 'battle' = 'handshake';
 
   const sessionId = `fb-${randomUUID()}`;
   const nowIso = () => new Date().toISOString();
@@ -219,33 +285,70 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
     updatedAt: nowIso(),
   };
   writeFriendlyBattleSessionRecord(record);
-  process.stderr.write(`STAGE: connected\n`);
 
-  await guest.markReady();
-  record.phase = 'ready';
-  record.status = 'connecting';
-  record.updatedAt = nowIso();
-  writeFriendlyBattleSessionRecord(record);
-  process.stderr.write(`STAGE: ready\n`);
+  let guest: Awaited<ReturnType<typeof connectFriendlyBattleSpikeGuest>> | undefined;
+  try {
+    const guestProfile = loadFriendlyBattleCurrentProfile(generation);
+    const guestSnapshot = buildFriendlyBattlePartySnapshot(guestProfile);
 
-  await guest.waitForStarted(timeoutMs);
-  record.phase = 'battle';
-  record.status = 'select_action';
-  record.updatedAt = nowIso();
-  writeFriendlyBattleSessionRecord(record);
-  process.stderr.write(`STAGE: battle_started\n`);
+    guest = await connectFriendlyBattleSpikeGuest({
+      host: hostAddr,
+      port,
+      sessionCode,
+      guestPlayerName: playerName,
+      generation,
+      guestSnapshot,
+      timeoutMs,
+    });
+    process.stderr.write(`STAGE: connected\n`);
 
-  process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
-    record,
-    questionContext: `🤝 vs Host`,
-    moveOptions: [],
-    partyOptions: [],
-    animationFrames: [],
-    currentFrameIndex: 0,
-  }))}\n`);
+    await guest.markReady();
+    record.phase = 'ready';
+    record.status = 'connecting';
+    record.updatedAt = nowIso();
+    writeFriendlyBattleSessionRecord(record);
+    process.stderr.write(`STAGE: ready\n`);
+    currentStage = 'ready';
 
-  await guest.close().catch(() => undefined);
+    await guest.waitForStarted(timeoutMs);
+    record.phase = 'battle';
+    record.status = 'select_action';
+    record.updatedAt = nowIso();
+    writeFriendlyBattleSessionRecord(record);
+    process.stderr.write(`STAGE: battle_started\n`);
+    currentStage = 'battle';
+
+    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+      record,
+      questionContext: `🤝 vs Host`,
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+    }))}\n`);
+  } catch (err) {
+    record.phase = 'aborted';
+    record.status = 'aborted';
+    record.updatedAt = nowIso();
+    writeFriendlyBattleSessionRecord(record);
+    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+      record,
+      questionContext: `aborted`,
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+    }))}\n`);
+    process.stderr.write(`STAGE: ${currentStage}\n`);
+    process.stderr.write(`FAILED_STAGE: ${currentStage}\n`);
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    await guest?.close().catch(() => undefined);
+    process.exit(1);
+  }
+
+  await guest?.close().catch(() => undefined);
 }
+
 async function runAction(_flags: Record<string, string | boolean | undefined>): Promise<void> {
   throw new Error('not implemented: --action');
 }
@@ -256,20 +359,18 @@ async function runStatus(_flags: Record<string, string | boolean | undefined>): 
   throw new Error('not implemented: --status');
 }
 
-function requireFlag(flags: Record<string, string | undefined>, name: string): string {
-  const value = flags[name];
-  if (value === undefined) {
-    process.stderr.write(`missing required flag --${name}\n`);
-    process.exit(1);
-  }
-  return value;
+function requireFlag(flags: Record<string, string | boolean | undefined>, name: string): string {
+  const v = flags[name];
+  if (typeof v === 'string') return v;
+  process.stderr.write(`missing required flag --${name}\n`);
+  process.exit(1);
 }
 
 async function main(argv: string[]): Promise<void> {
   const parsed = parseCliArgs(argv);
   switch (parsed.subcommand) {
     case 'init-host':
-      await runInitHost(parsed.flags as Record<string, string | undefined>);
+      await runInitHost(parsed.flags);
       return;
     case 'init-join':
       await runInitJoin(parsed.flags);

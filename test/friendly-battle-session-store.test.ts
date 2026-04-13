@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
@@ -81,6 +81,40 @@ describe('friendly-battle session store', () => {
       assert.deepEqual(reaped, ['dead']);
       const remaining = listFriendlyBattleSessionRecords('gen4').map((r) => r.sessionId);
       assert.deepEqual(remaining.sort(), ['alive']);
+    });
+  });
+
+  it('rejects sessionId values that would escape the sessions directory', () => {
+    withTempClaudeDir(() => {
+      assert.throws(
+        () => friendlyBattleSessionRecordPath('../etc/passwd', 'gen4'),
+        /invalid sessionId/,
+      );
+      assert.throws(
+        () => writeFriendlyBattleSessionRecord(makeRecord({ sessionId: '../oops' })),
+        /invalid sessionId/,
+      );
+    });
+  });
+
+  it('rejects generation values that would escape the per-gen directory', () => {
+    withTempClaudeDir(() => {
+      assert.throws(
+        () => friendlyBattleSessionRecordPath('fb-ok', '../../etc'),
+        /invalid generation/,
+      );
+    });
+  });
+
+  it('returns null when an on-disk record fails shape validation', () => {
+    withTempClaudeDir(() => {
+      const valid = makeRecord({ sessionId: 'corrupt' });
+      writeFriendlyBattleSessionRecord(valid);
+      const path = friendlyBattleSessionRecordPath('corrupt', 'gen4');
+      // Corrupt the file — overwrite with an object missing required keys.
+      writeFileSync(path, JSON.stringify({ sessionId: 'corrupt', role: 'observer' }), 'utf8');
+      const loaded = readFriendlyBattleSessionRecord('corrupt', 'gen4');
+      assert.equal(loaded, null);
     });
   });
 });
