@@ -195,8 +195,24 @@ async function promptForChoice(input: {
   }
 }
 
+function stdinSupportsPromptChoices(): boolean {
+  if (process.stdin.isTTY) {
+    return true;
+  }
+
+  return process.stdin.constructor?.name === 'Socket';
+}
+
 function shouldPromptForChoices(): boolean {
-  return process.stdin.isTTY || process.env.TOKENMON_FORCE_PROMPTS === '1';
+  if (process.env.TOKENMON_FORCE_PROMPTS === '1') {
+    return true;
+  }
+
+  if (process.env.TOKENMON_AUTO_CHOICES === '1') {
+    return false;
+  }
+
+  return stdinSupportsPromptChoices();
 }
 
 async function runHost(

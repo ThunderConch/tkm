@@ -25,7 +25,7 @@ type ProfilePokemon = {
   level: number;
 };
 
-function spawnLocalCli(args: string[], options?: { configDir?: string }): SpawnedCli {
+function spawnLocalCli(args: string[], options?: { configDir?: string; env?: NodeJS.ProcessEnv }): SpawnedCli {
   const child = spawn(process.execPath, ['--import', 'tsx', LOCAL_CLI, ...args], {
     cwd: REPO_ROOT,
     env: {
@@ -33,6 +33,7 @@ function spawnLocalCli(args: string[], options?: { configDir?: string }): Spawne
       TOKENMON_TEST: '1',
       TSX_DISABLE_CACHE: '1',
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
+      ...(options?.env ?? {}),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -155,6 +156,8 @@ async function spawnHostAndGuest(options: {
   hostProfile: CreatedProfile;
   guestProfile: CreatedProfile;
   timeoutMs?: number;
+  hostEnv?: NodeJS.ProcessEnv;
+  guestEnv?: NodeJS.ProcessEnv;
 }): Promise<{ host: SpawnedCli; guest: SpawnedCli }> {
   const host = spawnLocalCli([
     'host',
@@ -164,6 +167,7 @@ async function spawnHostAndGuest(options: {
     String(options.timeoutMs ?? 15_000),
   ], {
     configDir: options.hostProfile.profileDir,
+    env: options.hostEnv,
   });
   after(async () => terminate(host));
 
@@ -188,6 +192,7 @@ async function spawnHostAndGuest(options: {
     'Guest',
   ], {
     configDir: options.guestProfile.profileDir,
+    env: options.guestEnv,
   });
   after(async () => terminate(guest));
 
@@ -265,5 +270,35 @@ describe('friendly battle local CLI interaction', { concurrency: false }, () => 
     assert.doesNotMatch(guest.output.stdout, /GUEST_CHOICE: move:0/, `guest auto-submitted a move before honoring stdin surrender:\n${guest.output.stdout}\n--- stderr ---\n${guest.output.stderr}`);
     assert.match(guest.output.stdout, /GUEST_CHOICE: surrender/, `guest never submitted surrender after stdin input:\n${guest.output.stdout}\n--- stderr ---\n${guest.output.stderr}`);
     assert.doesNotMatch(host.output.stdout, /HOST_CHOICE:/, `host should still have been waiting while surrender was chosen explicitly:\n${host.output.stdout}\n--- stderr ---\n${host.output.stderr}`);
+  });
+
+  it('keeps prompting when force and auto env flags are both set, so force wins over auto', async () => {
+    const hostProfile = createProfile('host-force-over-auto', '387', 387, 16);
+    const guestProfile = createProfile('guest-force-over-auto', '390', 390, 16);
+    after(() => hostProfile.cleanup());
+    after(() => guestProfile.cleanup());
+
+    const { host, guest } = await spawnHostAndGuest({
+      sessionCode: 'force-over-auto-123',
+      hostProfile,
+      guestProfile,
+      hostEnv: {
+        TOKENMON_FORCE_PROMPTS: '1',
+        TOKENMON_AUTO_CHOICES: '1',
+      },
+      guestEnv: {
+        TOKENMON_FORCE_PROMPTS: '1',
+        TOKENMON_AUTO_CHOICES: '1',
+      },
+    });
+
+    await waitForStdout(host, /HOST_PROMPT: turn 1 .*move:0.*surrender/m, 60_000);
+    await waitForStdout(guest, /GUEST_PROMPT: turn 1 .*move:0.*surrender/m, 60_000);
+    await sleep(400);
+
+    assert.equal(host.child.exitCode, null, `host should still be waiting for prompt input when force wins over auto:\n${host.output.stdout}\n--- stderr ---\n${host.output.stderr}`);
+    assert.equal(guest.child.exitCode, null, `guest should still be waiting for prompt input when force wins over auto:\n${guest.output.stdout}\n--- stderr ---\n${guest.output.stderr}`);
+    assert.doesNotMatch(host.output.stdout, /HOST_CHOICE:/, `host auto-submitted despite TOKENMON_FORCE_PROMPTS taking precedence:\n${host.output.stdout}`);
+    assert.doesNotMatch(guest.output.stdout, /GUEST_CHOICE:/, `guest auto-submitted despite TOKENMON_FORCE_PROMPTS taking precedence:\n${guest.output.stdout}`);
   });
 });

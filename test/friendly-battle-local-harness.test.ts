@@ -36,7 +36,7 @@ type ProfilePokemon = {
   moves?: number[];
 };
 
-function spawnCli(args: string[], options?: { configDir?: string; env?: NodeJS.ProcessEnv }): SpawnedCli {
+function spawnCli(args: string[], options?: { configDir?: string; env?: NodeJS.ProcessEnv; stdin?: 'pipe' | 'ignore' }): SpawnedCli {
   const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
     cwd: REPO_ROOT,
     env: {
@@ -46,7 +46,7 @@ function spawnCli(args: string[], options?: { configDir?: string; env?: NodeJS.P
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
       ...(options?.env ?? {}),
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: [options?.stdin ?? 'ignore', 'pipe', 'pipe'],
   });
 
   const output = { stdout: '', stderr: '' };
@@ -468,6 +468,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       env: {
         ...process.env,
         TOKENMON_TEST: '1',
+        TOKENMON_AUTO_CHOICES: '1',
         TSX_DISABLE_CACHE: '1',
         CLAUDE_CONFIG_DIR: guestProfile.profileDir,
       },
@@ -551,6 +552,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       env: {
         TOKENMON_FORCE_PROMPTS: '1',
       },
+      stdin: 'pipe',
     });
     after(async () => terminate(host));
 
