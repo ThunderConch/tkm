@@ -309,6 +309,11 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   // finished envelope immediately instead of hanging until their own timeout.
   let queueClosedEnvelope: ReturnType<typeof formatFriendlyBattleTurnJson> | null = null;
 
+  // Transport closer: set by the host/guest path once a transport is created.
+  // The leave IPC handler uses this to tear down the TCP connection so the
+  // peer gets an EOF and can shut down on its own.
+  let transportClose: (() => Promise<void>) | null = null;
+
   // ---------------------------------------------------------------------------
   // Session record — written every time phase changes
   // ---------------------------------------------------------------------------
@@ -397,6 +402,33 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         };
         return { op: 'ack', envelope: formatFriendlyBattleTurnJson({ record, ...fields }) };
       }
+
+      case 'leave': {
+        // Mark the session as aborted. The leaving player gets the ack envelope
+        // directly (no need to push to localEventQueue — that would cause the
+        // shutdown drain to wait 10s for a consumer that never comes).
+        record.phase = 'aborted';
+        record.status = 'aborted';
+        writeRecord();
+        const leaveEnvelope = formatFriendlyBattleTurnJson({
+          record,
+          questionContext: 'You left the battle.',
+          moveOptions: [],
+          partyOptions: [],
+          animationFrames: [],
+          currentFrameIndex: 0,
+        });
+        // Kick off async shutdown but don't await it — we need to return the ack
+        // response first. Close the transport first so the peer gets an EOF and
+        // can shut down on its own. Then shut down this daemon.
+        setImmediate(() => {
+          void (async () => {
+            if (transportClose) await transportClose().catch(() => undefined);
+            await shutdown(0, 'finished');
+          })();
+        });
+        return { op: 'ack', envelope: leaveEnvelope };
+      }
     }
   }
 
@@ -462,6 +494,9 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       hostPlayerName: playerName,
       generation,
     });
+
+    // Register transport closer so the leave IPC handler can tear down TCP.
+    transportClose = () => host_transport.close();
 
     // Signal ready with actual bound port so parent/test can connect guest
     process.stdout.write(`DAEMON_READY ${sessionId} ${socketPath} ${host_transport.connectionInfo.port}\n`);
@@ -566,6 +601,13 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       await shutdown(0, 'finished');
     } catch (err) {
       process.stderr.write(`daemon host error: ${(err as Error).message}\n`);
+      // Push a synthetic battle_finished event so any pending wait_next_event
+      // on this side returns a clean "opponent left" envelope instead of hanging.
+      localEventQueue.push({
+        type: 'battle_finished',
+        winner: null,
+        reason: 'disconnect',
+      });
       await host_transport.close().catch(() => undefined);
       await shutdown(1, 'aborted');
     }
@@ -588,6 +630,9 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     guestSnapshot,
     timeoutMs,
   });
+
+  // Register transport closer so the leave IPC handler can tear down TCP.
+  transportClose = () => guest_transport.close();
 
   // Signal ready to parent — guest doesn't emit a port
   process.stdout.write(`DAEMON_READY ${sessionId} ${socketPath}\n`);
@@ -662,6 +707,13 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     await shutdown(0, 'finished');
   } catch (err) {
     process.stderr.write(`daemon guest error: ${(err as Error).message}\n`);
+    // Push a synthetic battle_finished event so any pending wait_next_event
+    // on this side returns a clean "opponent left" envelope instead of hanging.
+    localEventQueue.push({
+      type: 'battle_finished',
+      winner: null,
+      reason: 'disconnect',
+    });
     await guest_transport.close().catch(() => undefined);
     await shutdown(1, 'aborted');
   }

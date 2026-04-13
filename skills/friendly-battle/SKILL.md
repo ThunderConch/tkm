@@ -2,7 +2,7 @@
 description: "Tokenmon friendly battle. Real PvP turn loop against another player on the same network. Korean: 친선전, 친선 배틀, 배틀, 대전, friendly battle"
 ---
 
-Open a friendly battle session and fight another player in real-time turn-based combat. One player opens a room (`open`), shares the session code + host:port with their opponent, who then joins (`join`). Switch and surrender are now supported (PR45). Leave is coming in PR46.
+Open a friendly battle session and fight another player in real-time turn-based combat. One player opens a room (`open`), shares the session code + host:port with their opponent, who then joins (`join`). Switch, surrender, and leave are now supported (PR45, PR46).
 
 ## Execute
 
@@ -13,6 +13,7 @@ Read the first token of `$ARGUMENTS`:
 - `open` → go to **Step 1a** (open flow)
 - `join` → go to **Step 1b** (join flow); the second token must be `<code>@<host>:<port>`
 - `status` → go to **Step 7** (status flow)
+- `leave` → go to **Step 9** (leave flow)
 - `help` or empty → go to **Step 8** (help flow)
 - anything else → print `알 수 없는 명령어: <token>` and go to **Step 8**
 
@@ -92,13 +93,13 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 "$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --wait-next-event --session "$SESSION_ID" --generation "$GEN" --timeout-ms 60000
 ```
 
-2. Parse the returned envelope. Dispatch on `status`:
+2. Parse the returned envelope. Dispatch on `status` (also check `phase`):
 
    - **`select_action`**: build a move-select AskUserQuestion (see **Step 3** below).
    - **`fainted_switch`**: go directly to **Step 6** (forced switch — no move menu).
    - **`victory`**: show "승리! 배틀이 끝났습니다." and stop.
    - **`defeat`**: show "패배... 배틀이 끝났습니다." and stop.
-   - **`aborted`**: read REASON from stderr, show it, and stop.
+   - **`aborted`** (or `phase === 'aborted'`): if the envelope's `questionContext` contains "opponent" or the reason is `disconnect`, show "상대방이 배틀을 떠났습니다. (Opponent left the battle.)" and stop. Otherwise read REASON from stderr, show it, and stop.
    - Anything else: loop back to step 1.
 
 3. **Move-select AskUserQuestion** (when `status === 'select_action'`):
@@ -200,6 +201,22 @@ Parse the JSON envelope and report `phase` and `status` to the user. This comman
 
 ---
 
+### Step 9 — Leave flow (/tkm:friendly-battle leave)
+
+Requires a stored `sessionId` from the current session. If no session is active, tell the user to run `/tkm:friendly-battle open` or `/tkm:friendly-battle join` first and stop.
+
+```bash
+P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
+GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
+"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --leave --session "$SESSION_ID" --generation "$GEN"
+```
+
+Read the ack envelope. The daemon transitions to `phase='aborted'` and shuts down. The peer sees a `battle_finished{reason:'disconnect'}` envelope on its next `wait_next_event` and should stop its own turn loop.
+
+Tell the user: "배틀을 떠났습니다. 상대방의 화면에 나갔다는 알림이 표시됩니다. (You left the battle. Your opponent's terminal will see that you left.)"
+
+---
+
 ### Step 8 — Help flow
 
 Show:
@@ -208,11 +225,12 @@ Show:
 /tkm:friendly-battle open                       — 방을 열고 게스트를 기다림
 /tkm:friendly-battle join <code>@<host>:<port>  — 호스트 방에 참가
 /tkm:friendly-battle status                     — 현재 세션의 phase / status 확인
+/tkm:friendly-battle leave                      — 배틀 도중 나가기 (상대방에게 통보)
 /tkm:friendly-battle help                       — 이 도움말 표시
 
 /open 실행 후 출력된 세션 코드와 host:port 를 상대방과 공유하세요.
 교체(switch) / 항복(surrender)은 배틀 중 기술 선택 AskUserQuestion의 Other에 입력하세요.
-나가기(leave)는 PR46에서 추가됩니다.
+배틀 도중 나가려면 /tkm:friendly-battle leave 를 실행하세요.
 ```
 
 ---
@@ -253,6 +271,7 @@ Show:
 | `/tkm:friendly-battle open` | Open a friendly battle room |
 | `/tkm:friendly-battle join <code>@<host>:<port>` | Join an open room |
 | `/tkm:friendly-battle status` | Check current session phase |
+| `/tkm:friendly-battle leave` | Leave the battle mid-flow (opponent is notified) |
 | `/tkm:friendly-battle help` | Show this help |
 
 ### Battle actions (via `--action` in bash blocks)

@@ -20,7 +20,8 @@ type Subcommand =
   | 'init-join'
   | 'wait-next-event'
   | 'action'
-  | 'status';
+  | 'status'
+  | 'leave';
 
 interface ParsedCliArgs {
   subcommand: Subcommand;
@@ -45,6 +46,7 @@ const SUBCOMMAND_FLAGS = new Set<string>([
   '--wait-next-event',
   // '--action' is intentionally absent: it carries a value and is parsed by parseArgs directly
   '--status',
+  '--leave',
 ]);
 
 const CLI_FLAG_SCHEMA = {
@@ -134,6 +136,7 @@ function resolveSubcommand(argv: string[]): Subcommand | null {
   if (argv.includes('--wait-next-event')) return 'wait-next-event';
   if (argv.includes('--action')) return 'action';
   if (argv.includes('--status')) return 'status';
+  if (argv.includes('--leave')) return 'leave';
   return null;
 }
 
@@ -576,6 +579,48 @@ async function runStatus(flags: Record<string, string | boolean | undefined>): P
   process.stdout.write(`${JSON.stringify(envelope)}\n`);
 }
 
+async function runLeave(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  const sessionId = validateSafeId(requireFlag(flags, 'session'), 'session');
+  const generation = validateGeneration(asStringFlag(flags, 'generation'));
+
+  const record = readFriendlyBattleSessionRecord(sessionId, generation);
+  if (!record) {
+    process.stderr.write(`REASON: unknown session ${sessionId}\n`);
+    process.exit(1);
+  }
+
+  const daemonAlive = typeof record.daemonPid === 'number' && isPidAlive(record.daemonPid);
+  if (!daemonAlive || !record.socketPath) {
+    // Daemon is already gone — emit a "you left" envelope and exit idempotently
+    const envelope = formatFriendlyBattleTurnJson({
+      record,
+      questionContext: 'You left the battle. (daemon already gone)',
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+    });
+    process.stdout.write(`${JSON.stringify(envelope)}\n`);
+    return;
+  }
+
+  try {
+    const response = await sendDaemonIpcRequest(record.socketPath, { op: 'leave' }, 5_000);
+    if (response.op === 'error') {
+      process.stderr.write(`REASON: ${response.message}\n`);
+      process.exit(1);
+    }
+    if (response.op !== 'ack') {
+      process.stderr.write(`REASON: unexpected daemon response ${response.op}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`${JSON.stringify(response.envelope)}\n`);
+  } catch (err) {
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    process.exit(1);
+  }
+}
+
 function requireFlag(flags: Record<string, string | boolean | undefined>, name: string): string {
   const v = flags[name];
   if (typeof v === 'string') return v;
@@ -600,6 +645,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case 'status':
       await runStatus(parsed.flags);
+      return;
+    case 'leave':
+      await runLeave(parsed.flags);
       return;
   }
 }
