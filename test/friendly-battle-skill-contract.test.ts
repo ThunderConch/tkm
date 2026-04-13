@@ -48,10 +48,12 @@ describe('friendly-battle SKILL.md contract', () => {
       tokens.add(match[1]);
     }
 
-    // PR44 supports only move:<N>. switch/surrender are deferred with explicit errors.
-    // Template placeholders like move:<N> or move:$N count as move family.
+    // PR45 adds switch:<N> and surrender; move:<N> was already supported.
+    // Template placeholders like move:<N>, move:$N, switch:<N>, switch:$N count as their family.
     const accepted = (token: string): boolean => {
       if (/^move:[\d<$]/.test(token) || token === 'move:') return true;
+      if (/^switch:[\d<$]/.test(token) || token === 'switch:') return true;
+      if (token === 'surrender') return true;
       return false;
     };
 
