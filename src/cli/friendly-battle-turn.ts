@@ -504,16 +504,15 @@ async function runAction(flags: Record<string, string | boolean | undefined>): P
   const generation = validateGeneration(asStringFlag(flags, 'generation'));
   const token = requireFlag(flags, 'action');
 
-  let action: { kind: 'move'; index: number };
-  const moveMatch = /^move:([1-4])$/.exec(token);
-  if (moveMatch) {
-    action = { kind: 'move', index: Number.parseInt(moveMatch[1], 10) - 1 };
-  } else if (/^switch:\d+$/.test(token)) {
-    process.stderr.write(`REASON: switch action not implemented until PR45\n`);
-    process.exit(2);
+  let action: import('../friendly-battle/daemon-protocol.js').DaemonAction;
+  if (/^move:([1-4])$/.test(token)) {
+    const match = /^move:([1-4])$/.exec(token)!;
+    action = { kind: 'move', index: Number.parseInt(match[1], 10) - 1 };
+  } else if (/^switch:([1-6])$/.test(token)) {
+    const match = /^switch:([1-6])$/.exec(token)!;
+    action = { kind: 'switch', pokemonIndex: Number.parseInt(match[1], 10) - 1 };
   } else if (token === 'surrender') {
-    process.stderr.write(`REASON: surrender action not implemented until PR45\n`);
-    process.exit(2);
+    action = { kind: 'surrender' };
   } else {
     process.stderr.write(`REASON: unknown action token ${JSON.stringify(token)}\n`);
     process.exit(1);

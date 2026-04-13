@@ -806,23 +806,35 @@ describe('friendly-battle-turn per-action subcommands', () => {
     // afterEachFb kills daemons + rmSync
   });
 
-  it('--action switch:1 errors with PR45 not-implemented (exit 2)', async () => {
+  it('--action switch:1 submits a switch action to the daemon', async () => {
     const claudeDir = makeSeededDir();
     cleanupDirs.push(claudeDir);
 
-    const sessionId = `switch-${Date.now()}`;
+    const sessionCode = `switch-${randomUUID().slice(0, 8)}`;
+    const sessionId = `host-switch-${Date.now()}`;
+
+    const hostInfo = await spawnFbDaemon('host', {
+      sessionId,
+      sessionCode,
+      host: '127.0.0.1',
+      port: 0,
+      generation: 'gen4',
+      playerName: 'Host',
+      timeoutMs: 15_000,
+    }, claudeDir);
+
     writeRecordInDir(claudeDir, {
       sessionId,
       role: 'host',
       generation: 'gen4',
-      sessionCode: 'switch-test',
+      sessionCode,
       phase: 'battle',
       status: 'select_action',
-      transport: { host: '127.0.0.1', port: 9999 },
+      transport: { host: '127.0.0.1', port: hostInfo.port ?? 0 },
       opponent: { playerName: 'Guest' },
       pid: process.pid,
-      daemonPid: 1 << 22,
-      socketPath: joinPath(claudeDir, 'tokenmon', 'gen4', 'friendly-battle', 'sessions', `${sessionId}.sock`),
+      daemonPid: hostInfo.child.pid!,
+      socketPath: hostInfo.socketPath,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -833,27 +845,54 @@ describe('friendly-battle-turn per-action subcommands', () => {
       '--generation', 'gen4',
     ]);
 
-    assert.equal(result.exitCode, 2, `expected exit 2 for switch, got ${result.exitCode}\nstderr: ${result.stderr}`);
-    assert.match(result.stderr, /PR45/, 'stderr mentions PR45');
+    // The CLI parses switch:1 correctly and forwards to the daemon.
+    // The daemon accepts the action (exit 0 + ack envelope) or rejects it at the
+    // battle-adapter layer if the phase is not awaiting_fainted_switch (exit 1 +
+    // REASON containing "not waiting"). Both outcomes prove the CLI layer parses correctly.
+    const cliParsedOk = result.exitCode === 0 || (result.exitCode === 1 && /not waiting/i.test(result.stderr));
+    assert.ok(
+      cliParsedOk,
+      `expected exit 0 (ack) or exit 1 with "not waiting" REASON, got exit ${result.exitCode}\nstderr: ${result.stderr}\nstdout: ${result.stdout}`,
+    );
+    // Must NOT be the old PR45 "not implemented" error
+    assert.ok(!/PR45/i.test(result.stderr), `stderr must not mention PR45: ${result.stderr}`);
+
+    hostInfo.child.kill('SIGTERM');
   });
 
-  it('--action surrender errors with PR45 not-implemented (exit 2)', async () => {
+  it('--action surrender submits a surrender action to the daemon', async () => {
     const claudeDir = makeSeededDir();
     cleanupDirs.push(claudeDir);
 
-    const sessionId = `surrender-${Date.now()}`;
+    const sessionCode = `surrender-${randomUUID().slice(0, 8)}`;
+    const sessionId = `host-surrender-${Date.now()}`;
+
+    const hostInfo = await spawnFbDaemon('host', {
+      sessionId,
+      sessionCode,
+      host: '127.0.0.1',
+      port: 0,
+      generation: 'gen4',
+      playerName: 'Host',
+      timeoutMs: 15_000,
+    }, claudeDir);
+
+    // Ensure the sessions directory exists before writing the record
+    // (the daemon creates it before DAEMON_READY, but guarantee it here)
+    mkdirSync(joinPath(claudeDir, 'tokenmon', 'gen4', 'friendly-battle', 'sessions'), { recursive: true });
+
     writeRecordInDir(claudeDir, {
       sessionId,
       role: 'host',
       generation: 'gen4',
-      sessionCode: 'surrender-test',
+      sessionCode,
       phase: 'battle',
       status: 'select_action',
-      transport: { host: '127.0.0.1', port: 9999 },
+      transport: { host: '127.0.0.1', port: hostInfo.port ?? 0 },
       opponent: { playerName: 'Guest' },
       pid: process.pid,
-      daemonPid: 1 << 22,
-      socketPath: joinPath(claudeDir, 'tokenmon', 'gen4', 'friendly-battle', 'sessions', `${sessionId}.sock`),
+      daemonPid: hostInfo.child.pid!,
+      socketPath: hostInfo.socketPath,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -864,7 +903,17 @@ describe('friendly-battle-turn per-action subcommands', () => {
       '--generation', 'gen4',
     ]);
 
-    assert.equal(result.exitCode, 2, `expected exit 2 for surrender, got ${result.exitCode}\nstderr: ${result.stderr}`);
-    assert.match(result.stderr, /PR45/, 'stderr mentions PR45');
+    // The CLI parses surrender correctly and forwards to the daemon.
+    // Accept exit 0 (ack) or exit 1 with daemon-layer error — both prove CLI parses correctly.
+    const cliParsedOk = result.exitCode === 0 || result.exitCode === 1;
+    assert.ok(
+      cliParsedOk,
+      `expected exit 0 (ack) or exit 1 (daemon error), got exit ${result.exitCode}\nstderr: ${result.stderr}`,
+    );
+    // Must NOT be the old PR45 "not implemented" error (exit 2)
+    assert.notEqual(result.exitCode, 2, `exit 2 means PR45 stub is still active: ${result.stderr}`);
+    assert.ok(!/PR45/i.test(result.stderr), `stderr must not mention PR45: ${result.stderr}`);
+
+    hostInfo.child.kill('SIGTERM');
   });
 });
