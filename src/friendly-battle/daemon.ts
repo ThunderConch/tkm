@@ -24,6 +24,7 @@ import {
 } from './spike/tcp-direct.js';
 import {
   createFriendlyBattleBattleRuntime,
+  getFriendlyBattleWaitingForRoles,
   submitFriendlyBattleChoice,
 } from './battle-adapter.js';
 import {
@@ -516,15 +517,28 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       // Host turn loop
       // ---------------------------------------------------------------------------
       while (runtime.phase !== 'completed') {
-        // Wait for both host action (from UNIX socket) and guest choice (from TCP)
-        const [hostEnvelope, guestEnvelope] = await Promise.all([
-          localActionQueue.shift(timeoutMs, 'host action'),
-          host_transport.waitForGuestChoice(timeoutMs),
-        ]);
+        // Consult the adapter to learn which roles still need to submit this turn.
+        // During awaiting_fainted_switch only the fainted side(s) submit; both
+        // submit during normal turns. Skipping the non-waiting side avoids the
+        // "not waiting for X" error that the unconditional Promise.all caused.
+        const waitingFor = getFriendlyBattleWaitingForRoles(runtime);
 
-        // submitFriendlyBattleChoice requires two calls; first returns [], second returns events
-        submitFriendlyBattleChoice(runtime, hostEnvelope);
-        const resolvedEvents = submitFriendlyBattleChoice(runtime, guestEnvelope);
+        const hostPromise = waitingFor.includes('host')
+          ? localActionQueue.shift(timeoutMs, 'host action')
+          : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
+
+        const guestPromise = waitingFor.includes('guest')
+          ? host_transport.waitForGuestChoice(timeoutMs)
+          : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
+
+        const [hostEnvelope, guestEnvelope] = await Promise.all([hostPromise, guestPromise]);
+
+        // Submit whichever side(s) actually had pending actions this turn.
+        // The final submit (when all required roles have submitted) returns the
+        // resolved event list; earlier submits return [].
+        let resolvedEvents: FriendlyBattleBattleEvent[] = [];
+        if (hostEnvelope) resolvedEvents = submitFriendlyBattleChoice(runtime, hostEnvelope);
+        if (guestEnvelope) resolvedEvents = submitFriendlyBattleChoice(runtime, guestEnvelope);
 
         // Push events to local queue and send to guest
         for (const event of resolvedEvents) {
@@ -589,19 +603,31 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     record.status = 'select_action';
     writeRecord();
 
-    // Synthesize an initial choices_requested event from own snapshot so the
-    // guest has something to display before the first real TCP event arrives.
-    const initialChoicesEvent: FriendlyBattleBattleEvent = {
-      type: 'choices_requested',
-      turn: 1,
-      waitingFor: ['host', 'guest'],
-      phase: 'waiting_for_choices',
-    };
-    localEventQueue.push(initialChoicesEvent);
-
     // We don't actually need the battleId from started for anything, but keep
     // the variable to silence unused-import TS noise
     void started;
+
+    // Drain the TCP init events (battle_initialized + choices_requested) that
+    // the host sent before the guest connected. These are buffered in the TCP
+    // transport and must be flushed into the local event queue NOW so they are
+    // not interleaved with the real turn-resolution events that arrive after the
+    // guest's first action.  We drain until the first choices_requested event,
+    // which mirrors the inner-pump exit condition used inside the turn loop.
+    //
+    // Before this drain the guest has no events in localEventQueue. After it,
+    // the queue contains the real initial events from the host (battle_initialized
+    // + choices_requested(waiting_for_choices)) so the first wait_next_event call
+    // from the IPC client returns the correct event.
+    {
+      let initDone = false;
+      while (!initDone) {
+        const initEvent = await guest_transport.waitForBattleEvent(timeoutMs);
+        localEventQueue.push(initEvent);
+        if (initEvent.type === 'choices_requested' || initEvent.type === 'battle_finished') {
+          initDone = true;
+        }
+      }
+    }
 
     // ---------------------------------------------------------------------------
     // Guest turn loop

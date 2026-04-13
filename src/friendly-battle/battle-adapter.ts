@@ -255,12 +255,16 @@ function finalizeResolution(
   return events;
 }
 
-function getWaitingFor(runtime: FriendlyBattleBattleRuntime): FriendlyBattleRole[] {
+export function getFriendlyBattleWaitingForRoles(runtime: FriendlyBattleBattleRuntime): FriendlyBattleRole[] {
   const expectedRoles: FriendlyBattleRole[] = runtime.phase === 'awaiting_fainted_switch'
     ? computeRequiredSwitchWaiters(runtime.state)
     : ['host', 'guest'];
 
   return expectedRoles.filter((role) => runtime.pendingChoices[role] === undefined);
+}
+
+function getWaitingFor(runtime: FriendlyBattleBattleRuntime): FriendlyBattleRole[] {
+  return getFriendlyBattleWaitingForRoles(runtime);
 }
 
 function computeRequiredSwitchWaiters(state: BattleState): FriendlyBattleRole[] {
