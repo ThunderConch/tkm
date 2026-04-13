@@ -211,14 +211,19 @@ function eventToEnvelopeFields(
         currentFrameIndex: 0,
       };
     case 'choices_requested': {
-      const moveOptions = runtime
-        ? buildMoveOptionsFromRuntime(runtime, role)
-        : (ownSnapshot ? buildMoveOptionsFromSnapshot(ownSnapshot) : []);
+      const isFaintedSwitch = event.phase === 'awaiting_fainted_switch';
+      const moveOptions = isFaintedSwitch
+        ? []
+        : (runtime
+            ? buildMoveOptionsFromRuntime(runtime, role)
+            : (ownSnapshot ? buildMoveOptionsFromSnapshot(ownSnapshot) : []));
       const partyOptions = runtime
         ? buildPartyOptionsFromRuntime(runtime, role)
         : (ownSnapshot ? buildPartyOptionsFromSnapshot(ownSnapshot) : []);
       return {
-        questionContext: `Turn ${event.turn}: Choose your action`,
+        questionContext: isFaintedSwitch
+          ? 'Your Pokémon fainted — pick a replacement'
+          : `Turn ${event.turn}: Choose your action`,
         moveOptions,
         partyOptions,
         animationFrames: [],
