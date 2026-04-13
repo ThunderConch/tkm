@@ -17,6 +17,7 @@ import {
   type FriendlyBattleBattleEvent,
   type FriendlyBattleChoice,
   type FriendlyBattleChoiceEnvelope,
+  type FriendlyBattleRole,
   type FriendlyBattleSessionState,
 } from './contracts.js';
 import {
@@ -200,49 +201,48 @@ export function startFriendlyBattleLocalBattle(
   artifacts.session.updatedAt = runtime.startedAt;
   artifacts.session.battle = toFriendlyBattleBattleRef(runtime);
   writeJsonAtomic(artifacts.sessionPath, artifacts.session);
+  const battleArtifacts: FriendlyBattleLocalBattleArtifacts = {
+    runtime,
+    events: [...events],
+  };
+
   writeJsonAtomic(artifacts.battlePath, {
     layer: 'battle',
     battleId: runtime.battleId,
     generation: artifacts.generation,
     createdAt: runtime.startedAt,
     battle: toFriendlyBattleBattleRef(runtime),
-    events,
+    events: battleArtifacts.events,
   });
 
-  return { runtime, events };
+  return battleArtifacts;
 }
 
-export function resolveFriendlyBattleLocalFirstTurn(input: {
+export function submitFriendlyBattleLocalChoice(input: {
   artifacts: FriendlyBattleLocalArtifacts;
-  runtime: FriendlyBattleBattleRuntime;
-  guestActionValue: string;
-  hostActionValue: string;
+  battle: FriendlyBattleLocalBattleArtifacts;
+  envelope: FriendlyBattleChoiceEnvelope;
 }): FriendlyBattleBattleEvent[] {
-  const submittedAt = new Date().toISOString();
-  const guestEvents = submitFriendlyBattleChoice(input.runtime, createChoiceEnvelope('guest', input.guestActionValue, submittedAt));
-  const hostEvents = submitFriendlyBattleChoice(input.runtime, createChoiceEnvelope('host', input.hostActionValue, submittedAt));
-  const events = [...guestEvents, ...hostEvents];
+  const events = submitFriendlyBattleChoice(input.battle.runtime, input.envelope);
+  input.battle.events.push(...events);
 
-  const resolved = events.some((event) => event.type === 'turn_resolved');
-  if (!resolved) {
-    throw new Error('Friendly battle local harness expected a turn_resolved event after first-turn exchange');
-  }
-
-  input.artifacts.session.updatedAt = submittedAt;
-  input.artifacts.session.pendingChoices = {};
-  input.artifacts.session.battle = toFriendlyBattleBattleRef(input.runtime);
-  if (input.runtime.phase === 'completed') {
+  input.artifacts.session.updatedAt = input.envelope.submittedAt;
+  input.artifacts.session.pendingChoices = structuredClone(input.battle.runtime.pendingChoices);
+  input.artifacts.session.battle = toFriendlyBattleBattleRef(input.battle.runtime);
+  if (input.battle.runtime.phase === 'completed') {
     input.artifacts.session.phase = 'completed';
+  } else {
+    input.artifacts.session.phase = 'in_battle';
   }
 
   writeJsonAtomic(input.artifacts.sessionPath, input.artifacts.session);
   writeJsonAtomic(input.artifacts.battlePath, {
     layer: 'battle',
-    battleId: input.runtime.battleId,
+    battleId: input.battle.runtime.battleId,
     generation: input.artifacts.generation,
-    createdAt: input.runtime.startedAt,
-    battle: toFriendlyBattleBattleRef(input.runtime),
-    events,
+    createdAt: input.battle.runtime.startedAt,
+    battle: toFriendlyBattleBattleRef(input.battle.runtime),
+    events: input.battle.events,
   });
 
   return events;
@@ -264,10 +264,10 @@ export function cleanupFriendlyBattleLocalArtifacts(artifacts: FriendlyBattleLoc
   }
 }
 
-function createChoiceEnvelope(
-  actor: 'host' | 'guest',
+export function createFriendlyBattleChoiceEnvelope(
+  actor: FriendlyBattleRole,
   value: string,
-  submittedAt: string,
+  submittedAt = new Date().toISOString(),
 ): FriendlyBattleChoiceEnvelope {
   return {
     actor,
@@ -292,6 +292,42 @@ export function parseFriendlyBattleChoice(value: string): FriendlyBattleChoice {
   }
 
   throw new Error(`Unsupported friendly battle local action: ${value}`);
+}
+
+export function formatFriendlyBattleChoice(choice: FriendlyBattleChoice): string {
+  switch (choice.type) {
+    case 'move':
+      return `move:${choice.moveIndex}`;
+    case 'switch':
+      return `switch:${choice.pokemonIndex}`;
+    case 'surrender':
+      return 'surrender';
+  }
+}
+
+export function selectDeterministicFriendlyBattleChoiceValue(
+  runtime: FriendlyBattleBattleRuntime,
+  actor: FriendlyBattleRole,
+): string {
+  const team = actor === 'host' ? runtime.state.player : runtime.state.opponent;
+
+  if (runtime.phase === 'awaiting_fainted_switch') {
+    const switchIndex = team.pokemon.findIndex(
+      (pokemon, index) => index !== team.activeIndex && !pokemon.fainted,
+    );
+    return switchIndex >= 0 ? `switch:${switchIndex}` : 'surrender';
+  }
+
+  const activePokemon = team.pokemon[team.activeIndex];
+  const moveIndex = activePokemon?.moves.findIndex((move) => move.currentPp > 0) ?? -1;
+  if (moveIndex >= 0) {
+    return `move:${moveIndex}`;
+  }
+
+  const switchIndex = team.pokemon.findIndex(
+    (pokemon, index) => index !== team.activeIndex && !pokemon.fainted,
+  );
+  return switchIndex >= 0 ? `switch:${switchIndex}` : 'surrender';
 }
 
 function resolveGenerationFromConfigDir(configDir: string): string {
