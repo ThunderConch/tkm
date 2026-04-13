@@ -1,5 +1,6 @@
 #!/usr/bin/env -S npx tsx
 import { join } from 'node:path';
+import { createInterface } from 'node:readline';
 import type { FriendlyBattleBattleRuntime } from '../friendly-battle/battle-adapter.js';
 import {
   FriendlyBattleTransportError,
@@ -14,7 +15,6 @@ import {
   formatFriendlyBattleChoice,
   loadFriendlyBattleCurrentProfile,
   markFriendlyBattleReady,
-  selectDeterministicFriendlyBattleChoiceValue,
   startFriendlyBattleLocalBattle,
   submitFriendlyBattleLocalChoice,
 } from '../friendly-battle/local-harness.js';
@@ -137,6 +137,62 @@ function getWaitingFor(runtime: FriendlyBattleBattleRuntime): Array<'host' | 'gu
   });
 }
 
+function listRuntimeChoiceOptions(
+  runtime: FriendlyBattleBattleRuntime,
+  actor: 'host' | 'guest',
+): string[] {
+  const team = actor === 'host' ? runtime.state.player : runtime.state.opponent;
+
+  const switchChoices = team.pokemon
+    .flatMap((pokemon, index) => (
+      index !== team.activeIndex && !pokemon.fainted
+        ? [`switch:${index}`]
+        : []
+    ));
+
+  if (runtime.phase === 'awaiting_fainted_switch') {
+    return [...switchChoices, 'surrender'];
+  }
+
+  const activePokemon = team.pokemon[team.activeIndex];
+  const moveChoices = activePokemon?.moves
+    .flatMap((move, index) => (move.currentPp > 0 ? [`move:${index}`] : []))
+    ?? [];
+
+  return [...moveChoices, ...switchChoices, 'surrender'];
+}
+
+async function promptForChoice(input: {
+  promptLabel: 'HOST_PROMPT' | 'GUEST_PROMPT';
+  actorLabel: string;
+  turn: number;
+  phase: string;
+  choices: string[];
+}): Promise<string> {
+  const promptLine = `${input.promptLabel}: turn ${input.turn} [${input.phase}] choose ${input.choices.join(', ')}`;
+  console.log(promptLine);
+
+  while (true) {
+    const answer = await new Promise<string>((resolveAnswer) => {
+      const rl = createInterface({
+        input: process.stdin,
+        output: process.stdout,
+      });
+      rl.question(`${input.actorLabel}> `, (value) => {
+        rl.close();
+        resolveAnswer(value.trim());
+      });
+    });
+
+    if (input.choices.includes(answer)) {
+      return answer;
+    }
+
+    console.log(`INVALID_CHOICE: ${answer || '<empty>'}`);
+    console.log(promptLine);
+  }
+}
+
 async function runHost(
   values: Map<string, string>,
   options: FriendlyBattleLocalCliOptions = {},
@@ -218,10 +274,13 @@ async function runHost(
       }
 
       if (getWaitingFor(battle.runtime).includes('host')) {
-        const hostChoiceValue = selectDeterministicFriendlyBattleChoiceValue(
-          battle.runtime,
-          'host',
-        );
+        const hostChoiceValue = await promptForChoice({
+          promptLabel: 'HOST_PROMPT',
+          actorLabel: 'host',
+          turn: battle.runtime.state.turn + 1,
+          phase: battle.runtime.phase,
+          choices: listRuntimeChoiceOptions(battle.runtime, 'host'),
+        });
         console.log(`HOST_CHOICE: ${hostChoiceValue}`);
         const hostEvents = submitFriendlyBattleLocalChoice({
           artifacts,
@@ -308,9 +367,18 @@ async function runJoin(values: Map<string, string>): Promise<void> {
       console.log(`EVENT_RECEIVED: ${event.type}`);
 
       if (event.type === 'choices_requested' && event.waitingFor.includes('guest')) {
-        const guestChoiceValue = event.phase === 'awaiting_fainted_switch'
-          ? 'surrender'
-          : 'move:0';
+        const guestChoiceValue = await promptForChoice({
+          promptLabel: 'GUEST_PROMPT',
+          actorLabel: 'guest',
+          turn: event.turn,
+          phase: event.phase,
+          choices: event.phase === 'awaiting_fainted_switch'
+            ? guestSnapshot.party
+              .slice(1)
+              .map((_, index) => `switch:${index + 1}`)
+              .concat('surrender')
+            : ['move:0', 'surrender'],
+        });
         await guest.submitChoice(guestChoiceValue);
         console.log(`GUEST_CHOICE: ${guestChoiceValue}`);
       }

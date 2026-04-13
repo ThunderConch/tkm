@@ -30,6 +30,13 @@ type CreatedProfile = {
   cleanup: () => void;
 };
 
+type ProfilePokemon = {
+  key: string;
+  speciesId: number;
+  level: number;
+  moves?: number[];
+};
+
 function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli {
   const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
     cwd: REPO_ROOT,
@@ -39,7 +46,7 @@ function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli 
       TSX_DISABLE_CACHE: '1',
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
     },
-    stdio: ['ignore', 'pipe', 'pipe'],
+    stdio: ['pipe', 'pipe', 'pipe'],
   });
 
   const output = { stdout: '', stderr: '' };
@@ -109,6 +116,10 @@ function writeJson(path: string, value: unknown): void {
 }
 
 function createProfile(name: string, pokemonKey: string, speciesId: number, level: number): CreatedProfile {
+  return createProfileWithParty(name, [{ key: pokemonKey, speciesId, level }]);
+}
+
+function createProfileWithParty(name: string, party: ProfilePokemon[]): CreatedProfile {
   const tempRoot = mkdtempSync(join(tmpdir(), `friendly-battle-local-${name}-`));
   const configDir = join(tempRoot, '.claude');
   const tokenmonDir = join(configDir, 'tokenmon');
@@ -123,26 +134,38 @@ function createProfile(name: string, pokemonKey: string, speciesId: number, leve
   });
 
   writeJson(join(genDir, 'config.json'), {
-    party: [pokemonKey],
+    party: party.map((pokemon) => pokemon.key),
   });
 
   writeJson(join(genDir, 'state.json'), {
-    pokemon: {
-      [pokemonKey]: {
-        id: speciesId,
-        xp: 100,
-        level,
-        friendship: 0,
-        ev: 0,
-        moves: [33, 45],
-      },
-    },
+    pokemon: Object.fromEntries(
+      party.map((pokemon) => [
+        pokemon.key,
+        {
+          id: pokemon.speciesId,
+          xp: 100,
+          level: pokemon.level,
+          friendship: 0,
+          ev: 0,
+          moves: pokemon.moves ?? [33, 45],
+        },
+      ]),
+    ),
   });
 
   return {
     profileDir: configDir,
     cleanup: () => rmSync(tempRoot, { recursive: true, force: true }),
   };
+}
+
+async function writeChoice(spawned: SpawnedCli, choice: string): Promise<void> {
+  if (!spawned.child.stdin.writable) {
+    throw new Error(`stdin is not writable for choice ${choice}`);
+  }
+
+  spawned.child.stdin.write(`${choice}\n`);
+  await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 25));
 }
 
 describe('friendly battle local harness CLI', { concurrency: false }, () => {
@@ -232,6 +255,150 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
             && event.reason === 'completed',
         ),
       );
+    } finally {
+      cleanupFriendlyBattleLocalArtifacts(artifacts);
+    }
+  });
+
+  it('persists repeated turns and surrender outcomes chosen through the local harness providers', async () => {
+    const hostProfileFixture = createProfile('host-surrender-provider', '387', 387, 20);
+    const guestProfileFixture = createProfile('guest-surrender-provider', '390', 390, 20);
+    after(() => hostProfileFixture.cleanup());
+    after(() => guestProfileFixture.cleanup());
+
+    const hostProfile = loadFriendlyBattleProfileFromConfigDir(hostProfileFixture.profileDir, 'gen4');
+    const guestProfile = loadFriendlyBattleProfileFromConfigDir(guestProfileFixture.profileDir, 'gen4');
+    const artifacts = createFriendlyBattleLocalArtifacts({
+      hostProfile,
+      sessionCode: 'provider-surrender-123',
+      hostPlayerName: 'Host',
+      guestPlayerName: 'Guest',
+    });
+
+    const hostChoices: string[] = [];
+    const guestChoices: string[] = [];
+
+    try {
+      attachFriendlyBattleGuestSnapshot(artifacts, {
+        guestPlayerName: 'Guest',
+        guestSnapshot: buildFriendlyBattlePartySnapshot(guestProfile),
+      });
+      markFriendlyBattleReady(artifacts, { hostReady: true, guestReady: true, canStart: true });
+
+      const { runtime } = startFriendlyBattleLocalBattle(artifacts);
+      const events = await resolveFriendlyBattleLocalBattleToCompletion({
+        artifacts,
+        runtime,
+        chooseHostAction: ({ turn, phase }) => {
+          const choice = turn === 1 && phase === 'waiting_for_choices' ? 'move:0' : 'surrender';
+          hostChoices.push(`${turn}:${phase}:${choice}`);
+          return choice;
+        },
+        chooseGuestAction: ({ turn, phase }) => {
+          const choice = 'move:0';
+          guestChoices.push(`${turn}:${phase}:${choice}`);
+          return choice;
+        },
+      });
+
+      assert.equal(runtime.phase, 'completed');
+      assert.deepEqual(hostChoices, [
+        '1:waiting_for_choices:move:0',
+        '2:waiting_for_choices:surrender',
+      ]);
+      assert.deepEqual(guestChoices, [
+        '1:waiting_for_choices:move:0',
+        '2:waiting_for_choices:move:0',
+      ]);
+      assert.deepEqual(events.at(-1), {
+        type: 'battle_finished',
+        winner: 'guest',
+        reason: 'surrender',
+      });
+
+      const persistedBattle = JSON.parse(readFileSync(artifacts.battlePath, 'utf8')) as {
+        battle: { phase: string; endedAt: string | null };
+        events: Array<{ type: string; winner?: string | null; reason?: string }>;
+      };
+      assert.equal(persistedBattle.battle.phase, 'completed');
+      assert.ok(persistedBattle.battle.endedAt);
+      assert.ok(
+        persistedBattle.events.some(
+          (event) =>
+            event.type === 'battle_finished'
+            && event.winner === 'guest'
+            && event.reason === 'surrender',
+        ),
+      );
+    } finally {
+      cleanupFriendlyBattleLocalArtifacts(artifacts);
+    }
+  });
+
+  it('persists forced-switch follow-up choices without skipping the repeated turn flow', async () => {
+    const hostProfileFixture = createProfile('host-forced-switch', '387', 387, 60);
+    const guestProfileFixture = createProfileWithParty('guest-forced-switch', [
+      { key: '390', speciesId: 390, level: 1 },
+      { key: '391', speciesId: 391, level: 30 },
+    ]);
+    after(() => hostProfileFixture.cleanup());
+    after(() => guestProfileFixture.cleanup());
+
+    const hostProfile = loadFriendlyBattleProfileFromConfigDir(hostProfileFixture.profileDir, 'gen4');
+    const guestProfile = loadFriendlyBattleProfileFromConfigDir(guestProfileFixture.profileDir, 'gen4');
+    const artifacts = createFriendlyBattleLocalArtifacts({
+      hostProfile,
+      sessionCode: 'forced-switch-123',
+      hostPlayerName: 'Host',
+      guestPlayerName: 'Guest',
+    });
+
+    const guestChoices: string[] = [];
+
+    try {
+      attachFriendlyBattleGuestSnapshot(artifacts, {
+        guestPlayerName: 'Guest',
+        guestSnapshot: buildFriendlyBattlePartySnapshot(guestProfile),
+      });
+      markFriendlyBattleReady(artifacts, { hostReady: true, guestReady: true, canStart: true });
+
+      const { runtime } = startFriendlyBattleLocalBattle(artifacts);
+      const events = await resolveFriendlyBattleLocalBattleToCompletion({
+        artifacts,
+        runtime,
+        chooseHostAction: ({ phase }) => (phase === 'waiting_for_choices' ? 'move:0' : 'switch:0'),
+        chooseGuestAction: ({ turn, phase }) => {
+          const choice = phase === 'awaiting_fainted_switch'
+            ? 'switch:1'
+            : turn >= 2
+              ? 'surrender'
+              : 'move:0';
+          guestChoices.push(`${turn}:${phase}:${choice}`);
+          return choice;
+        },
+      });
+
+      assert.deepEqual(guestChoices, [
+        '1:waiting_for_choices:move:0',
+        '1:awaiting_fainted_switch:switch:1',
+        '2:waiting_for_choices:surrender',
+      ]);
+      assert.equal(runtime.state.opponent.activeIndex, 1);
+      assert.equal(runtime.phase, 'completed');
+      assert.ok(
+        events.some(
+          (event) =>
+            event.type === 'choices_requested'
+            && event.phase === 'awaiting_fainted_switch'
+            && event.turn === 1
+            && event.waitingFor.includes('guest'),
+        ),
+      );
+      assert.deepEqual(events.at(-1), {
+        type: 'battle_finished',
+        winner: 'host',
+        reason: 'surrender',
+      });
     } finally {
       cleanupFriendlyBattleLocalArtifacts(artifacts);
     }
@@ -357,6 +524,92 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     assert.equal(existsSync(hostSnapshotPath!), false, `expected cleaned host snapshot path ${hostSnapshotPath}`);
     assert.equal(existsSync(guestSnapshotPath!), false, `expected cleaned guest snapshot path ${guestSnapshotPath}`);
     assert.equal(existsSync(battlePath!), false, `expected cleaned battle path ${battlePath}`);
+  });
+
+  it('replays repeated choices, forced switch, and surrender through the local CLI prompts', async () => {
+    const battleExchangeTimeoutMs = 60_000;
+    const hostStartupTimeoutMs = 60_000;
+    const hostProfile = createProfile('host-cli-prompts', '387', 387, 60);
+    const guestProfile = createProfileWithParty('guest-cli-prompts', [
+      { key: '390', speciesId: 390, level: 1 },
+      { key: '391', speciesId: 391, level: 30 },
+    ]);
+    after(() => hostProfile.cleanup());
+    after(() => guestProfile.cleanup());
+
+    const host = spawnCli([
+      'host',
+      '--session-code',
+      'alpha-local-prompts-123',
+      '--timeout-ms',
+      String(battleExchangeTimeoutMs),
+    ], {
+      configDir: hostProfile.profileDir,
+    });
+    after(async () => terminate(host));
+
+    const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, hostStartupTimeoutMs);
+    const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
+    assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
+
+    const guest = spawnPrintedCommand(joinCommand, {
+      cwd: REPO_ROOT,
+      env: {
+        ...process.env,
+        TOKENMON_TEST: '1',
+        TSX_DISABLE_CACHE: '1',
+        CLAUDE_CONFIG_DIR: guestProfile.profileDir,
+      },
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let guestStdout = '';
+    let guestStderr = '';
+    guest.stdout.setEncoding('utf8');
+    guest.stderr.setEncoding('utf8');
+    guest.stdout.on('data', (chunk: string) => {
+      guestStdout += chunk;
+    });
+    guest.stderr.on('data', (chunk: string) => {
+      guestStderr += chunk;
+    });
+
+    await waitForStdout(host, /HOST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
+    await writeChoice(host, 'move:0');
+    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    guest.stdin.write('move:0\n');
+
+    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    guest.stdin.write('switch:1\n');
+    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    guest.stdin.write('surrender\n');
+
+    const [hostResult, guestResult] = await Promise.all([
+      host.completion,
+      new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
+        guest.once('error', rejectGuest);
+        guest.once('close', (exitCode, signal) => resolveGuest({ exitCode, signal }));
+      }),
+    ]);
+
+    assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
+    assert.equal(hostResult.exitCode, 0, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
+    assert.equal(guestResult.signal, null, `guest stderr:\n${guestStderr}`);
+    assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestStdout}\n--- stderr ---\n${guestStderr}`);
+
+    assert.match(hostResult.stdout, /HOST_PROMPT: turn 1 .*move:0.*surrender/);
+    assert.match(hostResult.stdout, /HOST_CHOICE: move:0/);
+    assert.match(guestStdout, /GUEST_PROMPT: turn 1 .*move:0.*surrender/);
+    assert.match(guestStdout, /GUEST_CHOICE: move:0/);
+    assert.match(guestStdout, /GUEST_PROMPT: turn 1 .*switch:1.*surrender/);
+    assert.match(guestStdout, /GUEST_CHOICE: switch:1/);
+    assert.match(guestStdout, /GUEST_PROMPT: turn 2 .*surrender/);
+    assert.match(guestStdout, /GUEST_CHOICE: surrender/);
+    assert.match(hostResult.stdout, /GUEST_CHOICE: surrender/);
+    assert.match(hostResult.stdout, /WINNER: host/);
+    assert.match(guestStdout, /WINNER: host/);
+    assert.match(hostResult.stdout, /SUCCESS: battle_completed/);
+    assert.match(guestStdout, /SUCCESS: battle_completed/);
   });
 
   it('prints a guest-facing JOIN_COMMAND from --join-host even when the host listens on 0.0.0.0', async () => {
