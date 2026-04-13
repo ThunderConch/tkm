@@ -195,6 +195,10 @@ async function promptForChoice(input: {
   }
 }
 
+function shouldPromptForChoices(): boolean {
+  return process.stdin.isTTY || process.env.TOKENMON_FORCE_PROMPTS === '1';
+}
+
 async function runHost(
   values: Map<string, string>,
   options: FriendlyBattleLocalCliOptions = {},
@@ -276,13 +280,15 @@ async function runHost(
       }
 
       if (getWaitingFor(battle.runtime).includes('host')) {
-        const hostChoiceValue = await promptForChoice({
-          promptLabel: 'HOST_PROMPT',
-          actorLabel: 'host',
-          turn: battle.runtime.state.turn + 1,
-          phase: battle.runtime.phase,
-          choices: listRuntimeChoiceOptions(battle.runtime, 'host'),
-        });
+        const hostChoiceValue = shouldPromptForChoices()
+          ? await promptForChoice({
+            promptLabel: 'HOST_PROMPT',
+            actorLabel: 'host',
+            turn: battle.runtime.state.turn + 1,
+            phase: battle.runtime.phase,
+            choices: listRuntimeChoiceOptions(battle.runtime, 'host'),
+          })
+          : selectDeterministicFriendlyBattleChoiceValue(battle.runtime, 'host');
         console.log(`HOST_CHOICE: ${hostChoiceValue}`);
         const hostEvents = submitFriendlyBattleLocalChoice({
           artifacts,
@@ -369,18 +375,20 @@ async function runJoin(values: Map<string, string>): Promise<void> {
       console.log(`EVENT_RECEIVED: ${event.type}`);
 
       if (event.type === 'choices_requested' && event.waitingFor.includes('guest')) {
-        const guestChoiceValue = await promptForChoice({
-          promptLabel: 'GUEST_PROMPT',
-          actorLabel: 'guest',
-          turn: event.turn,
-          phase: event.phase,
-          choices: event.phase === 'awaiting_fainted_switch'
-            ? guestSnapshot.party
-              .slice(1)
-              .map((_, index) => `switch:${index + 1}`)
-              .concat('surrender')
-            : ['move:0', 'surrender'],
-        });
+        const guestChoiceValue = shouldPromptForChoices()
+          ? await promptForChoice({
+            promptLabel: 'GUEST_PROMPT',
+            actorLabel: 'guest',
+            turn: event.turn,
+            phase: event.phase,
+            choices: event.phase === 'awaiting_fainted_switch'
+              ? guestSnapshot.pokemon
+                .slice(1)
+                .map((_, index) => `switch:${index + 1}`)
+                .concat('surrender')
+              : ['move:0', 'surrender'],
+          })
+          : (event.phase === 'awaiting_fainted_switch' ? 'surrender' : 'move:0');
         await guest.submitChoice(guestChoiceValue);
         console.log(`GUEST_CHOICE: ${guestChoiceValue}`);
       }

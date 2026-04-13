@@ -36,7 +36,7 @@ type ProfilePokemon = {
   moves?: number[];
 };
 
-function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli {
+function spawnCli(args: string[], options?: { configDir?: string; env?: NodeJS.ProcessEnv }): SpawnedCli {
   const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
     cwd: REPO_ROOT,
     env: {
@@ -380,7 +380,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
       assert.deepEqual(guestChoices, [
         '1:waiting_for_choices:move:0',
-        '1:awaiting_fainted_switch:switch:1',
+        '2:awaiting_fainted_switch:switch:1',
         '2:waiting_for_choices:surrender',
       ]);
       assert.equal(runtime.state.opponent.activeIndex, 1);
@@ -548,6 +548,9 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       String(battleExchangeTimeoutMs),
     ], {
       configDir: hostProfile.profileDir,
+      env: {
+        TOKENMON_FORCE_PROMPTS: '1',
+      },
     });
     after(async () => terminate(host));
 
@@ -555,14 +558,16 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
 
-    const guest = spawnPrintedCommand(joinCommand, {
+    const guest = spawn(joinCommand, {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
         TOKENMON_TEST: '1',
+        TOKENMON_FORCE_PROMPTS: '1',
         TSX_DISABLE_CACHE: '1',
         CLAUDE_CONFIG_DIR: guestProfile.profileDir,
       },
+      shell: true,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -576,15 +581,26 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     guest.stderr.on('data', (chunk: string) => {
       guestStderr += chunk;
     });
+    const guestCompletion = new Promise<{ stdout: string; stderr: string; exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
+      guest.once('error', rejectGuest);
+      guest.once('close', (exitCode, signal) => resolveGuest({ stdout: guestStdout, stderr: guestStderr, exitCode, signal }));
+    });
+    const guestSpawned: SpawnedCli = {
+      child: guest,
+      output: { get stdout() { return guestStdout; }, get stderr() { return guestStderr; } },
+      completion: guestCompletion,
+    };
 
     await waitForStdout(host, /HOST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
     await writeChoice(host, 'move:0');
-    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('move:0\n');
 
-    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 1 .*switch:1.*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('switch:1\n');
-    await new Promise((resolveNextTick) => setTimeout(resolveNextTick, 100));
+    await waitForStdout(host, /HOST_PROMPT: turn 2 .*move:0.*surrender/m, battleExchangeTimeoutMs);
+    await writeChoice(host, 'move:0');
+    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 2 .*surrender/m, battleExchangeTimeoutMs);
     guest.stdin.write('surrender\n');
     await waitForStdout(host, /SUCCESS: battle_completed/m, battleExchangeTimeoutMs);
     await waitForStdout(guestSpawned, /SUCCESS: battle_completed/m, battleExchangeTimeoutMs);
@@ -593,19 +609,17 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
     const [hostResult, guestResult] = await Promise.all([
       host.completion,
-      new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
-        guest.once('error', rejectGuest);
-        guest.once('close', (exitCode, signal) => resolveGuest({ exitCode, signal }));
-      }),
+      guestCompletion,
     ]);
 
     assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
     assert.equal(hostResult.exitCode, 0, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
-    assert.equal(guestResult.signal, null, `guest stderr:\n${guestStderr}`);
-    assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestStdout}\n--- stderr ---\n${guestStderr}`);
+    assert.equal(guestResult.signal, null, `guest stderr:\n${guestResult.stderr}`);
+    assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestResult.stdout}\n--- stderr ---\n${guestResult.stderr}`);
 
     assert.match(hostResult.stdout, /HOST_PROMPT: turn 1 .*move:0.*surrender/);
     assert.match(hostResult.stdout, /HOST_CHOICE: move:0/);
+    assert.match(hostResult.stdout, /HOST_PROMPT: turn 2 .*move:0.*surrender/);
     assert.match(guestStdout, /GUEST_PROMPT: turn 1 .*move:0.*surrender/);
     assert.match(guestStdout, /GUEST_CHOICE: move:0/);
     assert.match(guestStdout, /GUEST_PROMPT: turn 1 .*switch:1.*surrender/);
