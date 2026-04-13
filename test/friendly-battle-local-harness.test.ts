@@ -1,7 +1,7 @@
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import {
@@ -9,6 +9,8 @@ import {
   cleanupFriendlyBattleLocalArtifacts,
   createFriendlyBattleLocalArtifacts,
   loadFriendlyBattleProfileFromConfigDir,
+  markFriendlyBattleReady,
+  resolveFriendlyBattleLocalBattleToCompletion,
   startFriendlyBattleLocalBattle,
 } from '../src/friendly-battle/local-harness.js';
 import { buildFriendlyBattlePartySnapshot } from '../src/friendly-battle/snapshot.js';
@@ -173,6 +175,63 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
 
       assert.equal(runtime.state.player.pokemon[0]?.level, 16);
       assert.equal(runtime.state.opponent.pokemon[0]?.level, 18);
+    } finally {
+      cleanupFriendlyBattleLocalArtifacts(artifacts);
+    }
+  });
+
+  it('drives a local battle to a completed authoritative result', async () => {
+    const hostProfileFixture = createProfile('host-completed-battle', '387', 387, 60);
+    const guestProfileFixture = createProfile('guest-completed-battle', '390', 390, 1);
+    after(() => hostProfileFixture.cleanup());
+    after(() => guestProfileFixture.cleanup());
+
+    const hostProfile = loadFriendlyBattleProfileFromConfigDir(hostProfileFixture.profileDir, 'gen4');
+    const guestProfile = loadFriendlyBattleProfileFromConfigDir(guestProfileFixture.profileDir, 'gen4');
+    const artifacts = createFriendlyBattleLocalArtifacts({
+      hostProfile,
+      sessionCode: 'completed-battle-123',
+      hostPlayerName: 'Host',
+      guestPlayerName: 'Guest',
+    });
+
+    try {
+      attachFriendlyBattleGuestSnapshot(artifacts, {
+        guestPlayerName: 'Guest',
+        guestSnapshot: buildFriendlyBattlePartySnapshot(guestProfile),
+      });
+      markFriendlyBattleReady(artifacts, { hostReady: true, guestReady: true, canStart: true });
+
+      const { runtime } = startFriendlyBattleLocalBattle(artifacts);
+      const events = await resolveFriendlyBattleLocalBattleToCompletion({
+        artifacts,
+        runtime,
+        chooseHostAction: () => 'move:0',
+        chooseGuestAction: () => 'move:0',
+      });
+
+      assert.equal(runtime.phase, 'completed');
+      assert.equal(artifacts.session.phase, 'completed');
+      assert.deepEqual(events.at(-1), {
+        type: 'battle_finished',
+        winner: 'host',
+        reason: 'completed',
+      });
+
+      const persistedBattle = JSON.parse(readFileSync(artifacts.battlePath, 'utf8')) as {
+        battle: { phase: string; endedAt: string | null };
+        events: Array<{ type: string; winner?: string | null; reason?: string }>;
+      };
+      assert.equal(persistedBattle.battle.phase, 'completed');
+      assert.ok(persistedBattle.battle.endedAt);
+      assert.ok(
+        persistedBattle.events.some(
+          (event) =>
+            event.type === 'battle_finished'
+            && event.winner === 'host'
+            && event.reason === 'completed',
+        ),
+      );
     } finally {
       cleanupFriendlyBattleLocalArtifacts(artifacts);
     }
