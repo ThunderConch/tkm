@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
+import { randomUUID } from 'node:crypto';
 
 export type FriendlyBattlePhase =
   | 'waiting_for_guest'
@@ -92,9 +93,19 @@ export function friendlyBattleSessionRecordPath(sessionId: string, generation: s
 export function writeFriendlyBattleSessionRecord(record: FriendlyBattleSessionRecord): void {
   const path = friendlyBattleSessionRecordPath(record.sessionId, record.generation);
   mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-  const tmpPath = `${path}.tmp`;
-  writeFileSync(tmpPath, JSON.stringify(record, null, 2), 'utf8');
-  renameSync(tmpPath, path);
+  // Unique tmp suffix per writer so two processes (e.g. daemon + test helper)
+  // racing on the same sessionId never collide on the same .tmp path and
+  // hit ENOENT when a second writer renames the first writer's file away.
+  const tmpPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    writeFileSync(tmpPath, JSON.stringify(record, null, 2), 'utf8');
+    renameSync(tmpPath, path);
+  } finally {
+    // Best-effort: if renameSync threw, unlink the orphaned tmp.
+    if (existsSync(tmpPath)) {
+      try { unlinkSync(tmpPath); } catch { /* swallow */ }
+    }
+  }
 }
 
 export function readFriendlyBattleSessionRecord(
