@@ -1,17 +1,22 @@
 import net from 'node:net';
-import { FRIENDLY_BATTLE_PROTOCOL_VERSION, type FriendlyBattlePartySnapshot } from '../contracts.js';
+import {
+  FRIENDLY_BATTLE_PROTOCOL_VERSION,
+  type FriendlyBattleBattleEvent,
+  type FriendlyBattleBattleEventMessage,
+  type FriendlyBattleChoiceEnvelope,
+  type FriendlyBattleHelloAckMessage,
+  type FriendlyBattleHelloMessage,
+  type FriendlyBattleHelloRejectMessage,
+  type FriendlyBattlePartySnapshot,
+  type FriendlyBattleReadyState,
+  type FriendlyBattleReadyStateMessage,
+  type FriendlyBattleStartedMessage,
+  type FriendlyBattleSubmitChoiceMessage,
+} from '../contracts.js';
+import {
+  createFriendlyBattleChoiceEnvelope,
+} from '../local-harness.js';
 import { assertValidFriendlyBattlePartySnapshot } from '../snapshot.js';
-
-export type FriendlyBattleReadyState = {
-  hostReady: boolean;
-  guestReady: boolean;
-  canStart: boolean;
-};
-
-export type FriendlyBattleAction = {
-  actor: 'host' | 'guest';
-  value: string;
-};
 
 export class FriendlyBattleTransportError extends Error {
   readonly code: string;
@@ -47,32 +52,21 @@ type GuestJoinEvent = {
   guestSnapshot: FriendlyBattlePartySnapshot;
 };
 
-type HostHelloMessage = {
-  type: 'hello';
-  protocolVersion: number;
-  sessionCode: string;
-  generation: string;
-  guestPlayerName: string;
-  guestSnapshot: FriendlyBattlePartySnapshot;
-};
-
-type HostReadyMessage = {
+type GuestReadyMessage = {
   type: 'guest_ready';
 };
 
-type HostActionMessage = {
-  type: 'guest_action';
-  value: string;
-};
+type HostInboundMessage =
+  | FriendlyBattleHelloMessage
+  | GuestReadyMessage
+  | FriendlyBattleSubmitChoiceMessage;
 
 type GuestInboundMessage =
-  | { type: 'hello_ack'; protocolVersion: number; generation: string; hostPlayerName: string; readyState: FriendlyBattleReadyState }
-  | { type: 'hello_reject'; code: 'bad_session_code' | 'room_full' | 'generation_mismatch' | 'unsupported_protocol' | 'invalid_guest_snapshot'; message: string }
-  | { type: 'ready_state'; readyState: FriendlyBattleReadyState }
-  | { type: 'battle_started' }
-  | { type: 'host_action'; value: string };
-
-type HostInboundMessage = HostHelloMessage | HostReadyMessage | HostActionMessage;
+  | FriendlyBattleHelloAckMessage
+  | FriendlyBattleHelloRejectMessage
+  | FriendlyBattleReadyStateMessage
+  | FriendlyBattleStartedMessage
+  | FriendlyBattleBattleEventMessage;
 
 class AsyncQueue<T> {
   private readonly values: T[] = [];
@@ -140,9 +134,10 @@ function isWildcardHost(host: string): boolean {
 
 export async function createFriendlyBattleSpikeHost(options: HostOptions) {
   const guestJoinQueue = new AsyncQueue<GuestJoinEvent>();
-  const guestActionQueue = new AsyncQueue<FriendlyBattleAction>();
+  const guestChoiceQueue = new AsyncQueue<FriendlyBattleChoiceEnvelope>();
   const readyStateQueue = new AsyncQueue<FriendlyBattleReadyState>();
-  const actionLog: FriendlyBattleAction[] = [];
+  const battleEventLog: FriendlyBattleBattleEvent[] = [];
+  const submittedChoiceLog: FriendlyBattleChoiceEnvelope[] = [];
   const server = net.createServer();
 
   let socket: net.Socket | null = null;
@@ -150,7 +145,6 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
   let guestReady = false;
   let battleStarted = false;
   let closed = false;
-  let guestPlayerName: string | null = null;
 
   const listenAddress = await new Promise<{ host: string; port: number }>((resolve, reject) => {
     const onListenError = (error: NodeJS.ErrnoException) => {
@@ -199,7 +193,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
   const destroyQueues = (error: Error) => {
     guestJoinQueue.fail(error);
     readyStateQueue.fail(error);
-    guestActionQueue.fail(error);
+    guestChoiceQueue.fail(error);
   };
 
   server.on('connection', (incomingSocket) => {
@@ -289,7 +283,6 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
           }
 
           handshakeAccepted = true;
-          guestPlayerName = message.guestPlayerName;
           guestJoinQueue.push({
             guestPlayerName: message.guestPlayerName,
             guestSnapshot: structuredClone(message.guestSnapshot),
@@ -315,10 +308,9 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
           return;
         }
 
-        if (message.type === 'guest_action') {
-          const action: FriendlyBattleAction = { actor: 'guest', value: message.value };
-          actionLog.push(action);
-          guestActionQueue.push(action);
+        if (message.type === 'submit_choice') {
+          submittedChoiceLog.push(message.envelope);
+          guestChoiceQueue.push(structuredClone(message.envelope));
         }
       });
     });
@@ -399,29 +391,34 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     async waitUntilCanStart(timeoutMs: number): Promise<FriendlyBattleReadyState> {
       return waitForReadyState(timeoutMs, (readyState) => readyState.canStart, 'battle start readiness');
     },
-    async startBattle(): Promise<void> {
+    async startBattle(battleId: string): Promise<void> {
       const activeSocket = ensureSocket();
       if (!hostReady || !guestReady) {
         throw new FriendlyBattleTransportError('not_ready', '둘 다 ready 상태가 되어야 battle을 시작할 수 있습니다.');
       }
       battleStarted = true;
-      writeMessage(activeSocket, { type: 'battle_started' });
+      writeMessage(activeSocket, { type: 'battle_started', battleId });
     },
-    async waitForGuestAction(timeoutMs: number): Promise<FriendlyBattleAction> {
-      return guestActionQueue.shift(timeoutMs, 'guest action');
+    async waitForGuestChoice(timeoutMs: number): Promise<FriendlyBattleChoiceEnvelope> {
+      return guestChoiceQueue.shift(timeoutMs, 'guest choice');
     },
-    submitHostAction(value: string): FriendlyBattleAction {
+    sendBattleEvent(event: FriendlyBattleBattleEvent): FriendlyBattleBattleEvent {
       const activeSocket = ensureSocket();
       if (!battleStarted) {
-        throw new FriendlyBattleTransportError('battle_not_started', 'battle이 시작되기 전에는 행동을 보낼 수 없습니다.');
+        throw new FriendlyBattleTransportError('battle_not_started', 'battle이 시작되기 전에는 이벤트를 보낼 수 없습니다.');
       }
-      const action: FriendlyBattleAction = { actor: 'host', value };
-      actionLog.push(action);
-      writeMessage(activeSocket, { type: 'host_action', value });
-      return action;
+      battleEventLog.push(structuredClone(event));
+      writeMessage(activeSocket, { type: 'battle_event', event });
+      return event;
     },
-    getActionLog(): FriendlyBattleAction[] {
-      return [...actionLog];
+    sendBattleEvents(events: FriendlyBattleBattleEvent[]): FriendlyBattleBattleEvent[] {
+      return events.map((event) => this.sendBattleEvent(event));
+    },
+    getSubmittedChoiceLog(): FriendlyBattleChoiceEnvelope[] {
+      return structuredClone(submittedChoiceLog);
+    },
+    getBattleEventLog(): FriendlyBattleBattleEvent[] {
+      return structuredClone(battleEventLog);
     },
     async close(): Promise<void> {
       closed = true;
@@ -438,8 +435,8 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
 
 export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
   const readyStateQueue = new AsyncQueue<FriendlyBattleReadyState>();
-  const startedQueue = new AsyncQueue<void>();
-  const hostActionQueue = new AsyncQueue<FriendlyBattleAction>();
+  const startedQueue = new AsyncQueue<FriendlyBattleStartedMessage>();
+  const battleEventQueue = new AsyncQueue<FriendlyBattleBattleEvent>();
   const socket = new net.Socket();
 
   let closed = false;
@@ -496,7 +493,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
   const closeWithError = (error: Error) => {
     readyStateQueue.fail(error);
     startedQueue.fail(error);
-    hostActionQueue.fail(error);
+    battleEventQueue.fail(error);
   };
 
   socket.on('data', (chunk: string) => {
@@ -518,18 +515,6 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
           socket.end();
           return;
         }
-
-        if (message.generation !== options.generation) {
-          closeWithError(
-            new FriendlyBattleTransportError(
-              'generation_mismatch',
-              `host generation이 guest generation과 다릅니다. host=${message.generation}, guest=${options.generation}`,
-            ),
-          );
-          socket.end();
-          return;
-        }
-
         lastReadyState = message.readyState;
         readyStateQueue.push(message.readyState);
         return;
@@ -543,24 +528,31 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
 
       if (message.type === 'battle_started') {
         battleStarted = true;
-        startedQueue.push();
+        startedQueue.push(message);
         return;
       }
 
-      if (message.type === 'host_action') {
-        hostActionQueue.push({ actor: 'host', value: message.value });
+      if (message.type === 'battle_event') {
+        battleEventQueue.push(structuredClone(message.event));
       }
     });
   });
 
   socket.on('close', () => {
     if (!closed) {
-      closeWithError(new FriendlyBattleTransportError('socket_closed', 'host 연결이 종료되었습니다.'));      
+      closeWithError(new FriendlyBattleTransportError('socket_closed', 'host 연결이 종료되었습니다.'));
     }
   });
 
-  socket.on('error', () => {
-    // errors after connect are surfaced through close/queue failure.
+  socket.on('error', (error: NodeJS.ErrnoException) => {
+    if (!closed) {
+      closeWithError(
+        new FriendlyBattleTransportError(
+          'socket_error',
+          `friendly battle socket error: ${error.code ?? 'unknown'}`,
+        ),
+      );
+    }
   });
 
   writeMessage(socket, {
@@ -570,35 +562,38 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     generation: options.generation,
     guestPlayerName: options.guestPlayerName,
     guestSnapshot: options.guestSnapshot,
-  } satisfies HostHelloMessage);
+  });
 
-  await waitForReadyState(timeoutMs, () => true, 'hello acknowledgement');
+  await waitForReadyState(timeoutMs, () => true, 'hello handshake');
 
   return {
     async markReady(): Promise<FriendlyBattleReadyState> {
-      writeMessage(socket, { type: 'guest_ready' } satisfies HostReadyMessage);
-      return waitForReadyState(timeoutMs, (readyState) => readyState.guestReady, 'ready state');
+      writeMessage(socket, { type: 'guest_ready' });
+      return waitForReadyState(timeoutMs, (readyState) => readyState.guestReady, 'host ready');
     },
-    async waitForStarted(timeoutMs: number): Promise<void> {
-      return startedQueue.shift(timeoutMs, 'battle start');
-    },
-    async submitAction(value: string): Promise<FriendlyBattleAction> {
-      if (!battleStarted) {
-        throw new FriendlyBattleTransportError('battle_not_started', 'battle이 시작되기 전에는 행동을 보낼 수 없습니다.');
+    async waitForStarted(waitTimeoutMs: number): Promise<FriendlyBattleStartedMessage> {
+      if (battleStarted) {
+        return { type: 'battle_started', battleId: '' };
       }
-      const action: FriendlyBattleAction = { actor: 'guest', value };
-      writeMessage(socket, { type: 'guest_action', value } satisfies HostActionMessage);
-      return action;
+      return startedQueue.shift(waitTimeoutMs, 'battle start');
     },
-    async waitForHostAction(timeoutMs: number): Promise<FriendlyBattleAction> {
-      return hostActionQueue.shift(timeoutMs, 'host action');
+    async submitChoice(value: string): Promise<FriendlyBattleChoiceEnvelope> {
+      if (!battleStarted) {
+        throw new FriendlyBattleTransportError('battle_not_started', 'battle 시작 신호를 받기 전에는 행동을 보낼 수 없습니다.');
+      }
+      const envelope = createFriendlyBattleChoiceEnvelope('guest', value);
+      writeMessage(socket, { type: 'submit_choice', envelope });
+      return envelope;
+    },
+    async waitForBattleEvent(waitTimeoutMs: number): Promise<FriendlyBattleBattleEvent> {
+      return battleEventQueue.shift(waitTimeoutMs, 'battle event');
     },
     async close(): Promise<void> {
       closed = true;
-      await new Promise<void>((resolve) => {
-        socket.end(() => resolve());
-      });
-      socket.destroy();
+      if (!socket.destroyed) {
+        socket.end();
+        socket.destroy();
+      }
     },
   };
 }
