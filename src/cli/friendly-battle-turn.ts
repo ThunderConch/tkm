@@ -1,14 +1,16 @@
 #!/usr/bin/env -S npx tsx
 import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { createFriendlyBattleSpikeHost, connectFriendlyBattleSpikeGuest } from '../friendly-battle/spike/tcp-direct.js';
+import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   type FriendlyBattleSessionRecord,
   writeFriendlyBattleSessionRecord,
 } from '../friendly-battle/session-store.js';
 import { formatFriendlyBattleTurnJson } from '../friendly-battle/turn-json.js';
-import { loadFriendlyBattleCurrentProfile } from '../friendly-battle/local-harness.js';
-import { buildFriendlyBattlePartySnapshot } from '../friendly-battle/snapshot.js';
+
+const DAEMON_ENTRY = resolve(fileURLToPath(new URL('../friendly-battle/daemon.ts', import.meta.url)));
 
 type Subcommand =
   | 'init-host'
@@ -156,7 +158,59 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
   return { subcommand, flags: values };
 }
 
+// ---------------------------------------------------------------------------
+// Reads lines from a Readable stream until a predicate matches, with timeout.
+// Returns the first matching line.
+// ---------------------------------------------------------------------------
+function readLineUntil(
+  stream: NodeJS.ReadableStream,
+  predicate: (line: string) => boolean,
+  timeoutMs: number,
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let buffer = '';
+    let settled = false;
+
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      stream.removeListener('data', onData);
+      stream.removeListener('end', onEnd);
+      reject(new Error(`readLineUntil: timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    function onData(chunk: Buffer | string): void {
+      if (settled) return;
+      buffer += chunk.toString();
+      const lines = buffer.split('\n');
+      // Keep the last partial line in the buffer
+      buffer = lines.pop() ?? '';
+      for (const line of lines) {
+        if (predicate(line)) {
+          settled = true;
+          clearTimeout(timer);
+          stream.removeListener('data', onData);
+          stream.removeListener('end', onEnd);
+          resolve(line);
+          return;
+        }
+      }
+    }
+
+    function onEnd(): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(new Error('readLineUntil: stream ended before predicate matched'));
+    }
+
+    stream.on('data', onData);
+    stream.on('end', onEnd);
+  });
+}
+
 async function runInitHost(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  // --- Input validation (must run before forking daemon) ---
   const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
   const listenHost = asStringFlag(flags, 'listen-host') ?? '127.0.0.1';
   const port = requirePositiveInt(asStringFlag(flags, 'port'), 'port', 0);
@@ -164,21 +218,94 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
   const generation = validateGeneration(asStringFlag(flags, 'generation'));
   const playerName = sanitizeName(asStringFlag(flags, 'player-name'), 'player-name', 'Host');
 
-  let currentStage: 'waiting_for_guest' | 'handshake' | 'ready' | 'battle' = 'waiting_for_guest';
-
-  const host = await createFriendlyBattleSpikeHost({
-    host: listenHost,
-    port,
-    sessionCode,
-    hostPlayerName: playerName,
-    generation,
-  });
-
-  process.stderr.write(`PORT: ${host.connectionInfo.port}\n`);
-
   const sessionId = `fb-${randomUUID()}`;
   const nowIso = () => new Date().toISOString();
 
+  // Build options JSON for the daemon
+  const daemonOptions = {
+    sessionId,
+    sessionCode,
+    host: listenHost,
+    port,
+    generation,
+    playerName,
+    timeoutMs,
+  };
+  const optionsB64 = Buffer.from(JSON.stringify(daemonOptions), 'utf8').toString('base64');
+
+  // Fork the daemon as a detached child
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'host', '--options-json', optionsB64],
+    {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env },
+    },
+  );
+
+  // Relay daemon stderr to our stderr so errors are visible
+  child.stderr?.on('data', (chunk: Buffer) => {
+    process.stderr.write(chunk);
+  });
+
+  let daemonReadyLine: string;
+  try {
+    // Wait for DAEMON_READY <sessionId> <socketPath> <port>
+    // Use timeoutMs + 5s buffer so validation still fires even if daemon takes a moment
+    daemonReadyLine = await readLineUntil(
+      child.stdout,
+      (line) => line.startsWith('DAEMON_READY '),
+      timeoutMs + 5000,
+    );
+  } catch (err) {
+    // Daemon failed to start — emit aborted envelope and exit 1
+    child.kill();
+    const record: FriendlyBattleSessionRecord = {
+      sessionId,
+      role: 'host',
+      generation,
+      sessionCode,
+      phase: 'aborted',
+      status: 'aborted',
+      transport: { host: listenHost, port },
+      opponent: null,
+      pid: process.pid,
+      daemonPid: 0,
+      socketPath: '',
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+      record,
+      questionContext: 'aborted',
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+    }))}\n`);
+    process.stderr.write(`STAGE: waiting_for_guest\n`);
+    process.stderr.write(`FAILED_STAGE: waiting_for_guest\n`);
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    process.exit(1);
+  }
+
+  // Parse DAEMON_READY <sessionId> <socketPath> <boundPort>
+  // Host emits 4 tokens; guest emits 3 (no port).
+  const parts = daemonReadyLine.trim().split(' ');
+  // parts[0] = 'DAEMON_READY', parts[1] = sessionId, parts[2] = socketPath, parts[3] = port
+  const socketPath = parts[2] ?? '';
+  const boundPort = parts[3] !== undefined ? Number.parseInt(parts[3], 10) : port;
+
+  const daemonPid = child.pid ?? 0;
+
+  // Detach from the daemon's stdio so the CLI's event loop can exit.
+  // Must happen before child.unref() so no handles keep the parent alive.
+  child.stdout.destroy();
+  child.stderr?.destroy();
+  child.unref();
+
+  // Write the session record with daemon PID and socket path
   const record: FriendlyBattleSessionRecord = {
     sessionId,
     role: 'host',
@@ -186,79 +313,33 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
     sessionCode,
     phase: 'waiting_for_guest',
     status: 'waiting_for_guest',
-    transport: {
-      host: host.connectionInfo.host,
-      port: host.connectionInfo.port,
-    },
+    transport: { host: listenHost, port: boundPort },
     opponent: null,
     pid: process.pid,
+    daemonPid,
+    socketPath,
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
   writeFriendlyBattleSessionRecord(record);
 
+  // Emit PORT and STAGE on stderr (tests rely on these)
+  process.stderr.write(`PORT: ${boundPort}\n`);
+  process.stderr.write(`STAGE: waiting_for_guest\n`);
+
+  // Emit the first JSON envelope on stdout
   process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
     record,
-    questionContext: `Waiting for guest (code ${sessionCode}) — press Ctrl+C to cancel`,
+    questionContext: `Waiting for guest (code ${sessionCode}) — see /tkm:friendly-battle status`,
     moveOptions: [],
     partyOptions: [],
     animationFrames: [],
     currentFrameIndex: 0,
   }))}\n`);
-  process.stderr.write(`STAGE: waiting_for_guest\n`);
-
-  try {
-    const joined = await host.waitForGuestJoin(timeoutMs);
-    currentStage = 'handshake';
-    process.stderr.write(`STAGE: guest_joined (${joined.guestPlayerName})\n`);
-
-    // Mark host ready, wait for guest ready, then start the battle so the
-    // guest's waitForStarted() can resolve.
-    host.markHostReady();
-    await host.waitUntilCanStart(timeoutMs);
-    currentStage = 'ready';
-    await host.startBattle(randomUUID());
-    currentStage = 'battle';
-
-    record.phase = 'battle';
-    record.status = 'select_action';
-    record.opponent = { playerName: joined.guestPlayerName };
-    record.updatedAt = nowIso();
-    writeFriendlyBattleSessionRecord(record);
-
-    // PR43 scope: emit the ready envelope and exit 0. Turn loop (wait-next-event)
-    // is PR44.
-    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
-      record,
-      questionContext: `🤝 vs ${joined.guestPlayerName}`,
-      moveOptions: [],
-      partyOptions: [],
-      animationFrames: [],
-      currentFrameIndex: 0,
-    }))}\n`);
-  } catch (err) {
-    record.phase = 'aborted';
-    record.status = 'aborted';
-    record.updatedAt = nowIso();
-    writeFriendlyBattleSessionRecord(record);
-    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
-      record,
-      questionContext: `aborted`,
-      moveOptions: [],
-      partyOptions: [],
-      animationFrames: [],
-      currentFrameIndex: 0,
-    }))}\n`);
-    process.stderr.write(`STAGE: ${currentStage}\n`);
-    process.stderr.write(`FAILED_STAGE: ${currentStage}\n`);
-    process.stderr.write(`REASON: ${(err as Error).message}\n`);
-    await host.close().catch(() => undefined);
-    process.exit(1);
-  }
-  await host.close().catch(() => undefined);
 }
 
 async function runInitJoin(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  // --- Input validation (must run before forking daemon) ---
   const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
   const hostAddr = requireFlag(flags, 'host');
   const portStr = asStringFlag(flags, 'port') ?? requireFlag(flags, 'port');
@@ -267,10 +348,89 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
   const generation = validateGeneration(asStringFlag(flags, 'generation'));
   const playerName = sanitizeName(asStringFlag(flags, 'player-name'), 'player-name', 'Guest');
 
-  let currentStage: 'handshake' | 'ready' | 'battle' = 'handshake';
-
   const sessionId = `fb-${randomUUID()}`;
   const nowIso = () => new Date().toISOString();
+
+  // Build options JSON for the daemon
+  const daemonOptions = {
+    sessionId,
+    sessionCode,
+    host: hostAddr,
+    port,
+    generation,
+    playerName,
+    timeoutMs,
+  };
+  const optionsB64 = Buffer.from(JSON.stringify(daemonOptions), 'utf8').toString('base64');
+
+  // Fork the daemon as a detached child
+  const child = spawn(
+    process.execPath,
+    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'guest', '--options-json', optionsB64],
+    {
+      detached: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env },
+    },
+  );
+
+  // Relay daemon stderr to our stderr so errors are visible
+  child.stderr?.on('data', (chunk: Buffer) => {
+    process.stderr.write(chunk);
+  });
+
+  let daemonReadyLine: string;
+  try {
+    // Wait for DAEMON_READY <sessionId> <socketPath>  (guest: 3 tokens, no port)
+    daemonReadyLine = await readLineUntil(
+      child.stdout,
+      (line) => line.startsWith('DAEMON_READY '),
+      timeoutMs + 5000,
+    );
+  } catch (err) {
+    // Daemon failed to start — emit aborted envelope and exit 1
+    child.kill();
+    const record: FriendlyBattleSessionRecord = {
+      sessionId,
+      role: 'guest',
+      generation,
+      sessionCode,
+      phase: 'aborted',
+      status: 'aborted',
+      transport: { host: hostAddr, port },
+      opponent: null,
+      pid: process.pid,
+      daemonPid: 0,
+      socketPath: '',
+      createdAt: nowIso(),
+      updatedAt: nowIso(),
+    };
+    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+      record,
+      questionContext: 'aborted',
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+    }))}\n`);
+    process.stderr.write(`STAGE: handshake\n`);
+    process.stderr.write(`FAILED_STAGE: handshake\n`);
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    process.exit(1);
+  }
+
+  // Parse DAEMON_READY <sessionId> <socketPath>  (guest: 3 tokens)
+  const parts = daemonReadyLine.trim().split(' ');
+  const socketPath = parts[2] ?? '';
+
+  const daemonPid = child.pid ?? 0;
+
+  // Detach from the daemon's stdio so the CLI's event loop can exit.
+  child.stdout.destroy();
+  child.stderr?.destroy();
+  child.unref();
+
+  // Write the session record with daemon PID and socket path
   const record: FriendlyBattleSessionRecord = {
     sessionId,
     role: 'guest',
@@ -279,74 +439,24 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
     phase: 'handshake',
     status: 'connecting',
     transport: { host: hostAddr, port },
-    opponent: { playerName: 'Host' },
+    opponent: null,
     pid: process.pid,
+    daemonPid,
+    socketPath,
     createdAt: nowIso(),
     updatedAt: nowIso(),
   };
   writeFriendlyBattleSessionRecord(record);
 
-  let guest: Awaited<ReturnType<typeof connectFriendlyBattleSpikeGuest>> | undefined;
-  try {
-    const guestProfile = loadFriendlyBattleCurrentProfile(generation);
-    const guestSnapshot = buildFriendlyBattlePartySnapshot(guestProfile);
-
-    guest = await connectFriendlyBattleSpikeGuest({
-      host: hostAddr,
-      port,
-      sessionCode,
-      guestPlayerName: playerName,
-      generation,
-      guestSnapshot,
-      timeoutMs,
-    });
-    process.stderr.write(`STAGE: connected\n`);
-
-    await guest.markReady();
-    record.phase = 'ready';
-    record.status = 'connecting';
-    record.updatedAt = nowIso();
-    writeFriendlyBattleSessionRecord(record);
-    process.stderr.write(`STAGE: ready\n`);
-    currentStage = 'ready';
-
-    await guest.waitForStarted(timeoutMs);
-    record.phase = 'battle';
-    record.status = 'select_action';
-    record.updatedAt = nowIso();
-    writeFriendlyBattleSessionRecord(record);
-    process.stderr.write(`STAGE: battle_started\n`);
-    currentStage = 'battle';
-
-    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
-      record,
-      questionContext: `🤝 vs Host`,
-      moveOptions: [],
-      partyOptions: [],
-      animationFrames: [],
-      currentFrameIndex: 0,
-    }))}\n`);
-  } catch (err) {
-    record.phase = 'aborted';
-    record.status = 'aborted';
-    record.updatedAt = nowIso();
-    writeFriendlyBattleSessionRecord(record);
-    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
-      record,
-      questionContext: `aborted`,
-      moveOptions: [],
-      partyOptions: [],
-      animationFrames: [],
-      currentFrameIndex: 0,
-    }))}\n`);
-    process.stderr.write(`STAGE: ${currentStage}\n`);
-    process.stderr.write(`FAILED_STAGE: ${currentStage}\n`);
-    process.stderr.write(`REASON: ${(err as Error).message}\n`);
-    await guest?.close().catch(() => undefined);
-    process.exit(1);
-  }
-
-  await guest?.close().catch(() => undefined);
+  // Emit the first JSON envelope on stdout
+  process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+    record,
+    questionContext: `Joining battle (code ${sessionCode}) — see /tkm:friendly-battle status`,
+    moveOptions: [],
+    partyOptions: [],
+    animationFrames: [],
+    currentFrameIndex: 0,
+  }))}\n`);
 }
 
 async function runAction(_flags: Record<string, string | boolean | undefined>): Promise<void> {

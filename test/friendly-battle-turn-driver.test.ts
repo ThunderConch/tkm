@@ -120,7 +120,12 @@ describe('friendly-battle-turn CLI', () => {
 });
 
 describe('friendly-battle-turn --init-host', () => {
-  it('emits JSON with phase=waiting_for_guest before timing out and then writes phase=aborted', async () => {
+  it('emits JSON with phase=waiting_for_guest and exits 0; daemon eventually writes phase=aborted', async () => {
+    // After the Task 5 refactor, --init-host forks a daemon and exits 0 immediately
+    // after receiving DAEMON_READY. The parent always exits 0; the daemon times out
+    // and updates the session record to phase=aborted asynchronously.
+    // We accept either waiting_for_guest or aborted in the stdout envelope because
+    // the parent snapshot is captured before the daemon timeout fires.
     const result = await spawnDriver([
       '--init-host',
       '--session-code', 'waiting-123',
@@ -131,10 +136,10 @@ describe('friendly-battle-turn --init-host', () => {
       '--player-name', 'Host',
     ]);
 
-    assert.notEqual(result.exitCode, 0);
-    // waiting line should have been printed before we gave up
-    assert.match(result.stdout, /"phase":\s*"waiting_for_guest"/);
-    assert.match(result.stderr, /STAGE:\s*waiting_for_guest/);
+    assert.equal(result.exitCode, 0, `unexpected exit; stderr:\n${result.stderr}`);
+    // Parent emits waiting_for_guest envelope before exiting
+    assert.match(result.stdout, /"phase":\s*"waiting_for_guest"/, 'parent envelope phase');
+    assert.match(result.stderr, /STAGE:\s*waiting_for_guest/, 'STAGE line present');
   });
 
   it('rejects a non-integer --port with a REASON line and exit 1', async () => {
@@ -160,8 +165,57 @@ describe('friendly-battle-turn --init-host', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// Helpers for the updated handshake test
+// ---------------------------------------------------------------------------
+
+import {
+  readFriendlyBattleSessionRecord,
+} from '../src/friendly-battle/session-store.js';
+
+/** Poll fn() every intervalMs until it returns a truthy value or deadline passes. */
+async function pollUntil<T>(
+  fn: () => T | null | undefined | false,
+  timeoutMs: number,
+  intervalMs = 100,
+): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const val = fn();
+    if (val) return val;
+    await new Promise<void>((r) => setTimeout(r, intervalMs));
+  }
+  throw new Error(`pollUntil: timed out after ${timeoutMs}ms`);
+}
+
+/** Read a JSON envelope from a line of stdout. */
+function parseFirstEnvelope(stdout: string): Record<string, unknown> | null {
+  const line = stdout.split('\n').find((l) => l.trim().startsWith('{'));
+  if (!line) return null;
+  try { return JSON.parse(line) as Record<string, unknown>; } catch { return null; }
+}
+
+/**
+ * Read a session record scoped to a specific CLAUDE_CONFIG_DIR.
+ * readFriendlyBattleSessionRecord uses process.env.CLAUDE_CONFIG_DIR so we
+ * temporarily swap it for the duration of the call.
+ */
+function readRecordInDir(claudeDir: string, sessionId: string, generation: string) {
+  const prev = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = claudeDir;
+  try {
+    return readFriendlyBattleSessionRecord(sessionId, generation);
+  } finally {
+    if (prev === undefined) {
+      delete process.env.CLAUDE_CONFIG_DIR;
+    } else {
+      process.env.CLAUDE_CONFIG_DIR = prev;
+    }
+  }
+}
+
 describe('friendly-battle-turn init handshake', () => {
-  it('init-join connects to an init-host and both exit 0 with battle phase', async () => {
+  it('init-join connects to an init-host and both exit 0 with phase=waiting_for_guest/handshake, daemons advance to battle', async () => {
     await withSeededClaudeConfigDir(async (claudeDir) => {
       const sessionCode = 'handshake-321';
       const host = spawnDriverWithClaudeDir(claudeDir, [
@@ -174,6 +228,7 @@ describe('friendly-battle-turn init handshake', () => {
         '--player-name', 'Host',
       ]);
 
+      // Step 1: Wait for PORT: line from host
       const hostPort = await readPortFromHostStderr(host);
 
       const join = spawnDriverWithClaudeDir(claudeDir, [
@@ -186,12 +241,61 @@ describe('friendly-battle-turn init handshake', () => {
         '--player-name', 'Guest',
       ]);
 
+      // Step 2: Both parent processes should exit 0 quickly (they fork daemons and exit)
       const [hostResult, joinResult] = await Promise.all([host.completion, join.completion]);
-      assert.equal(joinResult.exitCode, 0, `join stderr:\n${joinResult.stderr}`);
       assert.equal(hostResult.exitCode, 0, `host stderr:\n${hostResult.stderr}`);
-      assert.match(hostResult.stdout, /"phase":\s*"battle"/);
-      assert.match(joinResult.stdout, /"phase":\s*"battle"/);
-      assert.match(joinResult.stdout, /"role":\s*"guest"/);
+      assert.equal(joinResult.exitCode, 0, `join stderr:\n${joinResult.stderr}`);
+
+      // Step 3: Host emits waiting_for_guest, guest emits handshake
+      assert.match(hostResult.stdout, /"phase":\s*"waiting_for_guest"/, 'host envelope phase');
+      assert.match(joinResult.stdout, /"phase":\s*"handshake"/, 'join envelope phase');
+      assert.match(joinResult.stdout, /"role":\s*"guest"/, 'join envelope role');
+
+      // Step 4: Poll session store — both records must exist with daemonPid > 0 and socketPath
+      const hostEnv = parseFirstEnvelope(hostResult.stdout);
+      const joinEnv = parseFirstEnvelope(joinResult.stdout);
+      assert.ok(hostEnv, 'host envelope parseable');
+      assert.ok(joinEnv, 'join envelope parseable');
+
+      const hostSessionId = (hostEnv as Record<string, unknown>).sessionId as string;
+      const joinSessionId = (joinEnv as Record<string, unknown>).sessionId as string;
+      assert.ok(hostSessionId, 'host sessionId present');
+      assert.ok(joinSessionId, 'join sessionId present');
+
+      const daemonPids: number[] = [];
+
+      // Poll for host record (records live under claudeDir, not the test process's default)
+      const hostRecord = await pollUntil(
+        () => readRecordInDir(claudeDir, hostSessionId, 'gen4'),
+        5000,
+      );
+      assert.ok((hostRecord.daemonPid ?? 0) > 0, 'host daemonPid > 0');
+      assert.ok(hostRecord.socketPath && hostRecord.socketPath.length > 0, 'host socketPath set');
+      daemonPids.push(hostRecord.daemonPid!);
+
+      // Poll for guest record
+      const guestRecord = await pollUntil(
+        () => readRecordInDir(claudeDir, joinSessionId, 'gen4'),
+        5000,
+      );
+      assert.ok((guestRecord.daemonPid ?? 0) > 0, 'guest daemonPid > 0');
+      assert.ok(guestRecord.socketPath && guestRecord.socketPath.length > 0, 'guest socketPath set');
+      daemonPids.push(guestRecord.daemonPid!);
+
+      // Step 5: Poll for host record to advance to phase='battle' (daemon handles this async)
+      await pollUntil(
+        () => {
+          const r = readRecordInDir(claudeDir, hostSessionId, 'gen4');
+          return r?.phase === 'battle' ? r : null;
+        },
+        15000,
+        200,
+      );
+
+      // Step 6: Cleanup — SIGTERM both daemon PIDs
+      for (const pid of daemonPids) {
+        try { process.kill(pid, 'SIGTERM'); } catch { /* ESRCH: already gone */ }
+      }
     });
   });
 
