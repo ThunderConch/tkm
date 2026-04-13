@@ -13,7 +13,7 @@
     "postinstall": "./bin/tsx-resolve.sh src/setup/postinstall.ts",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
-    "test": "node --import tsx --test test/*.test.ts"
+    "test": "node --import tsx --test --test-concurrency=1 test/*.test.ts"
   },
   "dependencies": {
     "pngjs": "^7.0.0",

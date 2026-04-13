@@ -435,19 +435,38 @@ function runDriver(claudeDir: string, args: string[]): Promise<{ stdout: string;
   });
 }
 
-/** Kill all daemons listed in the session store for the given claudeDir + generation. */
-function killAllDaemons(claudeDir: string, generation: string): void {
+/** Kill all daemons listed in the session store for the given claudeDir + generation,
+ *  then wait for each PID to actually exit before returning so subsequent rmSync
+ *  does not race the daemon's socket-unlink + session-record write. */
+async function killAllDaemons(claudeDir: string, generation: string): Promise<void> {
   const prev = process.env.CLAUDE_CONFIG_DIR;
   process.env.CLAUDE_CONFIG_DIR = claudeDir;
+  const pids: number[] = [];
   try {
     for (const record of listFriendlyBattleSessionRecords(generation)) {
       if (record.daemonPid && record.daemonPid > 0) {
+        pids.push(record.daemonPid);
         try { process.kill(record.daemonPid, 'SIGTERM'); } catch { /* ESRCH */ }
       }
     }
   } finally {
     if (prev === undefined) { delete process.env.CLAUDE_CONFIG_DIR; } else { process.env.CLAUDE_CONFIG_DIR = prev; }
   }
+
+  const deadline = Date.now() + 3_000;
+  while (Date.now() < deadline) {
+    const stillAlive = pids.filter((pid) => {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    });
+    if (stillAlive.length === 0) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+  }
+  // Final sweep with SIGKILL for any still-stuck daemons
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* ESRCH */ }
+  }
+  // Brief wait after SIGKILL so the process table clears before rmSync
+  await new Promise<void>((resolve) => setTimeout(resolve, 100));
 }
 
 // ---------------------------------------------------------------------------
@@ -489,9 +508,9 @@ describe('friendly-battle-turn per-action subcommands', () => {
   // Track claudeDirs to cleanup + kill daemons after each test
   const cleanupDirs: string[] = [];
 
-  afterEachFb(() => {
+  afterEachFb(async () => {
     for (const dir of cleanupDirs.splice(0)) {
-      killAllDaemons(dir, 'gen4');
+      await killAllDaemons(dir, 'gen4');
       rmSync(dir, { recursive: true, force: true });
     }
   });
