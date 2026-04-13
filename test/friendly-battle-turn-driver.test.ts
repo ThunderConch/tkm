@@ -171,6 +171,8 @@ describe('friendly-battle-turn --init-host', () => {
 
 import {
   readFriendlyBattleSessionRecord,
+  writeFriendlyBattleSessionRecord,
+  listFriendlyBattleSessionRecords,
 } from '../src/friendly-battle/session-store.js';
 
 /** Poll fn() every intervalMs until it returns a truthy value or deadline passes. */
@@ -316,5 +318,526 @@ describe('friendly-battle-turn init handshake', () => {
       assert.match(guest.stdout, /"phase":\s*"aborted"/);
       assert.match(guest.stderr, /FAILED_STAGE:/);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Helpers for per-action subcommand tests
+// ---------------------------------------------------------------------------
+
+import { randomUUID } from 'node:crypto';
+import { afterEach as afterEachFb } from 'node:test';
+
+const REPO_ROOT_FB = resolve(import.meta.dirname, '..');
+const DAEMON_ENTRY_FB = resolve(REPO_ROOT_FB, 'src/friendly-battle/daemon.ts');
+
+function encodeDaemonOptionsB64(options: Record<string, unknown>): string {
+  return Buffer.from(JSON.stringify(options)).toString('base64');
+}
+
+interface SpawnedDaemonInfo {
+  child: import('node:child_process').ChildProcess;
+  sessionId: string;
+  socketPath: string;
+  port?: number;
+}
+
+function spawnFbDaemon(
+  role: 'host' | 'guest',
+  options: Record<string, unknown>,
+  claudeDir: string,
+): Promise<SpawnedDaemonInfo> {
+  return new Promise((resolveP, rejectP) => {
+    const child = spawn(
+      process.execPath,
+      ['--import', 'tsx', DAEMON_ENTRY_FB, '--role', role, '--options-json', encodeDaemonOptionsB64(options)],
+      {
+        env: { ...process.env, CLAUDE_CONFIG_DIR: claudeDir, TSX_DISABLE_CACHE: '1', TOKENMON_TEST: '1' },
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: false,
+      },
+    );
+    let stdoutBuf = '';
+    let settled = false;
+    child.stdout!.setEncoding('utf8');
+    child.stdout!.on('data', (chunk: string) => {
+      stdoutBuf += chunk;
+      const nl = stdoutBuf.indexOf('\n');
+      if (nl < 0) return;
+      const line = stdoutBuf.slice(0, nl).trim();
+      if (!line.startsWith('DAEMON_READY ')) return;
+      const parts = line.split(' ');
+      const sessionId = parts[1];
+      const socketPath = parts[2];
+      const port = parts[3] ? Number.parseInt(parts[3], 10) : undefined;
+      if (!sessionId || !socketPath) {
+        rejectP(new Error(`Malformed DAEMON_READY line: ${JSON.stringify(line)}`));
+        return;
+      }
+      if (!settled) {
+        settled = true;
+        resolveP({ child, sessionId, socketPath, port });
+      }
+    });
+    child.stderr!.setEncoding('utf8');
+    child.stderr!.on('data', (_chunk: string) => { /* suppress */ });
+    child.once('error', (err) => { if (!settled) { settled = true; rejectP(err); } });
+    child.once('close', (code) => { if (!settled) { settled = true; rejectP(new Error(`${role} daemon exited ${code} before DAEMON_READY`)); } });
+    const timer = setTimeout(() => {
+      if (!settled) { settled = true; child.kill('SIGTERM'); rejectP(new Error(`${role} daemon timeout`)); }
+    }, 15_000);
+    if (timer.unref) timer.unref();
+  });
+}
+
+/** Read a session record under a specific CLAUDE_CONFIG_DIR without mutating process.env. */
+function readRecordInDirFb(claudeDir: string, sessionId: string, generation: string) {
+  const prev = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = claudeDir;
+  try {
+    return readFriendlyBattleSessionRecord(sessionId, generation);
+  } finally {
+    if (prev === undefined) { delete process.env.CLAUDE_CONFIG_DIR; } else { process.env.CLAUDE_CONFIG_DIR = prev; }
+  }
+}
+
+/** Poll until the session record exists with a matching phase, or timeout. */
+async function waitForRecordPhase(
+  claudeDir: string,
+  sessionId: string,
+  generation: string,
+  phase: string,
+  timeoutMs: number,
+  intervalMs = 150,
+) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const r = readRecordInDirFb(claudeDir, sessionId, generation);
+    if (r?.phase === phase) return r;
+    await new Promise<void>((r2) => setTimeout(r2, intervalMs));
+  }
+  throw new Error(`waitForRecordPhase: timed out waiting for phase=${phase} on session=${sessionId}`);
+}
+
+/** Run the driver CLI with CLAUDE_CONFIG_DIR scoped to claudeDir. */
+function runDriver(claudeDir: string, args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
+  return new Promise((resolveP, rejectP) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
+      env: { ...process.env, TOKENMON_TEST: '1', TSX_DISABLE_CACHE: '1', CLAUDE_CONFIG_DIR: claudeDir },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c: Buffer) => { stdout += c.toString(); });
+    child.stderr.on('data', (c: Buffer) => { stderr += c.toString(); });
+    child.once('error', rejectP);
+    child.once('close', (exitCode) => resolveP({ stdout, stderr, exitCode }));
+  });
+}
+
+/** Kill all daemons listed in the session store for the given claudeDir + generation. */
+function killAllDaemons(claudeDir: string, generation: string): void {
+  const prev = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = claudeDir;
+  try {
+    for (const record of listFriendlyBattleSessionRecords(generation)) {
+      if (record.daemonPid && record.daemonPid > 0) {
+        try { process.kill(record.daemonPid, 'SIGTERM'); } catch { /* ESRCH */ }
+      }
+    }
+  } finally {
+    if (prev === undefined) { delete process.env.CLAUDE_CONFIG_DIR; } else { process.env.CLAUDE_CONFIG_DIR = prev; }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Per-action subcommand tests
+// ---------------------------------------------------------------------------
+
+/** Create a seeded CLAUDE_CONFIG_DIR without automatic cleanup (managed by afterEach). */
+function makeSeededDir(): string {
+  const dir = mkdtempSync(joinPath(tmpdir(), 'tkm-fb-action-'));
+  const genDir = joinPath(dir, 'tokenmon', 'gen4');
+  mkdirSync(genDir, { recursive: true });
+  writeFileSync(
+    joinPath(genDir, 'config.json'),
+    JSON.stringify({ party: ['387'], starter_chosen: true }),
+  );
+  writeFileSync(
+    joinPath(genDir, 'state.json'),
+    JSON.stringify({
+      pokemon: {
+        '387': { id: 387, xp: 100, level: 16, friendship: 0, ev: 0, moves: [33, 45] },
+      },
+    }),
+  );
+  return dir;
+}
+
+/** Write a session record scoped to claudeDir without touching process.env. */
+function writeRecordInDir(claudeDir: string, record: Parameters<typeof writeFriendlyBattleSessionRecord>[0]): void {
+  const prev = process.env.CLAUDE_CONFIG_DIR;
+  process.env.CLAUDE_CONFIG_DIR = claudeDir;
+  try {
+    writeFriendlyBattleSessionRecord(record);
+  } finally {
+    if (prev === undefined) { delete process.env.CLAUDE_CONFIG_DIR; } else { process.env.CLAUDE_CONFIG_DIR = prev; }
+  }
+}
+
+describe('friendly-battle-turn per-action subcommands', () => {
+  // Track claudeDirs to cleanup + kill daemons after each test
+  const cleanupDirs: string[] = [];
+
+  afterEachFb(() => {
+    for (const dir of cleanupDirs.splice(0)) {
+      killAllDaemons(dir, 'gen4');
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('--status returns the persisted envelope when the daemon is alive', async () => {
+    const claudeDir = makeSeededDir();
+    cleanupDirs.push(claudeDir);
+
+    const sessionCode = `status-alive-${randomUUID().slice(0, 8)}`;
+    const sessionId = `test-alive-${Date.now()}`;
+
+    const hostInfo = await spawnFbDaemon('host', {
+      sessionId,
+      sessionCode,
+      host: '127.0.0.1',
+      port: 0,
+      generation: 'gen4',
+      playerName: 'Host',
+      timeoutMs: 15_000,
+    }, claudeDir);
+
+    writeRecordInDir(claudeDir, {
+      sessionId,
+      role: 'host',
+      generation: 'gen4',
+      sessionCode,
+      phase: 'waiting_for_guest',
+      status: 'waiting_for_guest',
+      transport: { host: '127.0.0.1', port: hostInfo.port ?? 0 },
+      opponent: null,
+      pid: process.pid,
+      daemonPid: hostInfo.child.pid!,
+      socketPath: hostInfo.socketPath,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await runDriver(claudeDir, [
+      '--status',
+      '--session', sessionId,
+      '--generation', 'gen4',
+    ]);
+
+    assert.equal(result.exitCode, 0, `stderr:\n${result.stderr}`);
+    const envelope = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
+    assert.ok(typeof envelope.sessionId === 'string', 'envelope has sessionId');
+    assert.ok(typeof envelope.phase === 'string', 'envelope has phase');
+
+    hostInfo.child.kill('SIGTERM');
+    // afterEachFb will rmSync
+  });
+
+  it('--status returns a frozen envelope when the daemon is dead', async () => {
+    const claudeDir = makeSeededDir();
+    cleanupDirs.push(claudeDir);
+
+    const sessionId = `test-dead-${Date.now()}`;
+    writeRecordInDir(claudeDir, {
+      sessionId,
+      role: 'host',
+      generation: 'gen4',
+      sessionCode: 'dead-session',
+      phase: 'battle',
+      status: 'select_action',
+      transport: { host: '127.0.0.1', port: 9999 },
+      opponent: { playerName: 'Ghost' },
+      pid: process.pid,
+      daemonPid: 1 << 22, // non-running PID
+      socketPath: '/tmp/nonexistent-socket-fb.sock',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await runDriver(claudeDir, [
+      '--status',
+      '--session', sessionId,
+      '--generation', 'gen4',
+    ]);
+
+    assert.equal(result.exitCode, 0, `stderr:\n${result.stderr}`);
+    const envelope = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
+    assert.equal(envelope.sessionId, sessionId, 'sessionId matches');
+    assert.equal(envelope.phase, 'battle', 'phase from persisted record');
+    assert.equal(envelope.status, 'select_action', 'status from persisted record');
+  });
+
+  it('--wait-next-event returns the first choices_requested envelope from a full handshake', async () => {
+    const claudeDir = makeSeededDir();
+    cleanupDirs.push(claudeDir);
+
+    const sessionCode = `wne-${randomUUID().slice(0, 8)}`;
+    const hostSessionId = `host-wne-${Date.now()}`;
+    const guestSessionId = `guest-wne-${Date.now()}`;
+
+    const hostInfo = await spawnFbDaemon('host', {
+      sessionId: hostSessionId,
+      sessionCode,
+      host: '127.0.0.1',
+      port: 0,
+      generation: 'gen4',
+      playerName: 'Host',
+      timeoutMs: 20_000,
+    }, claudeDir);
+
+    const guestInfo = await spawnFbDaemon('guest', {
+      sessionId: guestSessionId,
+      sessionCode,
+      host: '127.0.0.1',
+      port: hostInfo.port,
+      generation: 'gen4',
+      playerName: 'Guest',
+      timeoutMs: 20_000,
+    }, claudeDir);
+
+    const nowIso = new Date().toISOString();
+    writeRecordInDir(claudeDir, {
+      sessionId: hostSessionId,
+      role: 'host',
+      generation: 'gen4',
+      sessionCode,
+      phase: 'battle',
+      status: 'ongoing',
+      transport: { host: '127.0.0.1', port: hostInfo.port ?? 0 },
+      opponent: { playerName: 'Guest' },
+      pid: process.pid,
+      daemonPid: hostInfo.child.pid!,
+      socketPath: hostInfo.socketPath,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+    writeRecordInDir(claudeDir, {
+      sessionId: guestSessionId,
+      role: 'guest',
+      generation: 'gen4',
+      sessionCode,
+      phase: 'battle',
+      status: 'ongoing',
+      transport: { host: '127.0.0.1', port: hostInfo.port ?? 0 },
+      opponent: { playerName: 'Host' },
+      pid: process.pid,
+      daemonPid: guestInfo.child.pid!,
+      socketPath: guestInfo.socketPath,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    // Run --wait-next-event for host and guest in parallel
+    const [hostWneResult, guestWneResult] = await Promise.all([
+      runDriver(claudeDir, [
+        '--wait-next-event',
+        '--session', hostSessionId,
+        '--generation', 'gen4',
+        '--timeout-ms', '8000',
+      ]),
+      runDriver(claudeDir, [
+        '--wait-next-event',
+        '--session', guestSessionId,
+        '--generation', 'gen4',
+        '--timeout-ms', '8000',
+      ]),
+    ]);
+
+    assert.equal(hostWneResult.exitCode, 0, `host wne stderr:\n${hostWneResult.stderr}`);
+    const hostEnvelope = JSON.parse(hostWneResult.stdout.trim()) as Record<string, unknown>;
+    assert.ok(hostEnvelope.status !== undefined, 'host envelope has status');
+    assert.ok(Array.isArray(hostEnvelope.moveOptions), 'host has moveOptions array');
+
+    assert.equal(guestWneResult.exitCode, 0, `guest wne stderr:\n${guestWneResult.stderr}`);
+    const guestEnvelope = JSON.parse(guestWneResult.stdout.trim()) as Record<string, unknown>;
+    assert.ok(guestEnvelope.status !== undefined, 'guest envelope has status');
+
+    // afterEachFb will SIGTERM daemons via killAllDaemons + rmSync
+  });
+
+  it('--action move:1 submits a move to the daemon', async () => {
+    const claudeDir = makeSeededDir();
+    cleanupDirs.push(claudeDir);
+
+    const sessionCode = `action-${randomUUID().slice(0, 8)}`;
+    const hostSessionId = `host-act-${Date.now()}`;
+    const guestSessionId = `guest-act-${Date.now()}`;
+
+    const hostInfo = await spawnFbDaemon('host', {
+      sessionId: hostSessionId,
+      sessionCode,
+      host: '127.0.0.1',
+      port: 0,
+      generation: 'gen4',
+      playerName: 'Host',
+      timeoutMs: 20_000,
+    }, claudeDir);
+
+    const guestInfo = await spawnFbDaemon('guest', {
+      sessionId: guestSessionId,
+      sessionCode,
+      host: '127.0.0.1',
+      port: hostInfo.port,
+      generation: 'gen4',
+      playerName: 'Guest',
+      timeoutMs: 20_000,
+    }, claudeDir);
+
+    const nowIso = new Date().toISOString();
+    writeRecordInDir(claudeDir, {
+      sessionId: hostSessionId,
+      role: 'host',
+      generation: 'gen4',
+      sessionCode,
+      phase: 'battle',
+      status: 'ongoing',
+      transport: { host: '127.0.0.1', port: hostInfo.port ?? 0 },
+      opponent: { playerName: 'Guest' },
+      pid: process.pid,
+      daemonPid: hostInfo.child.pid!,
+      socketPath: hostInfo.socketPath,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+    writeRecordInDir(claudeDir, {
+      sessionId: guestSessionId,
+      role: 'guest',
+      generation: 'gen4',
+      sessionCode,
+      phase: 'battle',
+      status: 'ongoing',
+      transport: { host: '127.0.0.1', port: hostInfo.port ?? 0 },
+      opponent: { playerName: 'Host' },
+      pid: process.pid,
+      daemonPid: guestInfo.child.pid!,
+      socketPath: guestInfo.socketPath,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+
+    // Drain events until both sides reach select_action
+    async function drainToSelectAction(sessionId: string): Promise<void> {
+      for (let i = 0; i < 5; i++) {
+        const result = await runDriver(claudeDir, [
+          '--wait-next-event',
+          '--session', sessionId,
+          '--generation', 'gen4',
+          '--timeout-ms', '8000',
+        ]);
+        if (result.exitCode !== 0) throw new Error(`wait-next-event failed: ${result.stderr}`);
+        const env = JSON.parse(result.stdout.trim()) as Record<string, unknown>;
+        if (env.status === 'select_action') return;
+      }
+      throw new Error('never reached select_action after 5 events');
+    }
+
+    await Promise.all([
+      drainToSelectAction(hostSessionId),
+      drainToSelectAction(guestSessionId),
+    ]);
+
+    // Submit move:1 from host (1-based in CLI = index 0 in daemon)
+    const hostActionResult = await runDriver(claudeDir, [
+      '--action', 'move:1',
+      '--session', hostSessionId,
+      '--generation', 'gen4',
+    ]);
+    assert.equal(hostActionResult.exitCode, 0, `host action stderr:\n${hostActionResult.stderr}`);
+    const hostAck = JSON.parse(hostActionResult.stdout.trim()) as Record<string, unknown>;
+    assert.ok(hostAck.sessionId !== undefined || hostAck.phase !== undefined, 'host ack has envelope fields');
+
+    // Submit move:1 from guest
+    const guestActionResult = await runDriver(claudeDir, [
+      '--action', 'move:1',
+      '--session', guestSessionId,
+      '--generation', 'gen4',
+    ]);
+    assert.equal(guestActionResult.exitCode, 0, `guest action stderr:\n${guestActionResult.stderr}`);
+    const guestAck = JSON.parse(guestActionResult.stdout.trim()) as Record<string, unknown>;
+    assert.ok(guestAck.sessionId !== undefined || guestAck.phase !== undefined, 'guest ack has envelope fields');
+
+    // --wait-next-event on host should get another event (turn resolved or next select_action)
+    const postMoveResult = await runDriver(claudeDir, [
+      '--wait-next-event',
+      '--session', hostSessionId,
+      '--generation', 'gen4',
+      '--timeout-ms', '8000',
+    ]);
+    assert.equal(postMoveResult.exitCode, 0, `post-move wne stderr:\n${postMoveResult.stderr}`);
+
+    // afterEachFb kills daemons + rmSync
+  });
+
+  it('--action switch:1 errors with PR45 not-implemented (exit 2)', async () => {
+    const claudeDir = makeSeededDir();
+    cleanupDirs.push(claudeDir);
+
+    const sessionId = `switch-${Date.now()}`;
+    writeRecordInDir(claudeDir, {
+      sessionId,
+      role: 'host',
+      generation: 'gen4',
+      sessionCode: 'switch-test',
+      phase: 'battle',
+      status: 'select_action',
+      transport: { host: '127.0.0.1', port: 9999 },
+      opponent: { playerName: 'Guest' },
+      pid: process.pid,
+      daemonPid: 1 << 22,
+      socketPath: '/tmp/nonexistent-switch.sock',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await runDriver(claudeDir, [
+      '--action', 'switch:1',
+      '--session', sessionId,
+      '--generation', 'gen4',
+    ]);
+
+    assert.equal(result.exitCode, 2, `expected exit 2 for switch, got ${result.exitCode}\nstderr: ${result.stderr}`);
+    assert.match(result.stderr, /PR45/, 'stderr mentions PR45');
+  });
+
+  it('--action surrender errors with PR45 not-implemented (exit 2)', async () => {
+    const claudeDir = makeSeededDir();
+    cleanupDirs.push(claudeDir);
+
+    const sessionId = `surrender-${Date.now()}`;
+    writeRecordInDir(claudeDir, {
+      sessionId,
+      role: 'host',
+      generation: 'gen4',
+      sessionCode: 'surrender-test',
+      phase: 'battle',
+      status: 'select_action',
+      transport: { host: '127.0.0.1', port: 9999 },
+      opponent: { playerName: 'Guest' },
+      pid: process.pid,
+      daemonPid: 1 << 22,
+      socketPath: '/tmp/nonexistent-surrender.sock',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const result = await runDriver(claudeDir, [
+      '--action', 'surrender',
+      '--session', sessionId,
+      '--generation', 'gen4',
+    ]);
+
+    assert.equal(result.exitCode, 2, `expected exit 2 for surrender, got ${result.exitCode}\nstderr: ${result.stderr}`);
+    assert.match(result.stderr, /PR45/, 'stderr mentions PR45');
   });
 });

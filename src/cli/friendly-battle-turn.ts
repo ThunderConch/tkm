@@ -7,14 +7,18 @@ import { fileURLToPath } from 'node:url';
 import {
   type FriendlyBattleSessionRecord,
   writeFriendlyBattleSessionRecord,
+  readFriendlyBattleSessionRecord,
+  isPidAlive,
 } from '../friendly-battle/session-store.js';
 import { formatFriendlyBattleTurnJson } from '../friendly-battle/turn-json.js';
+import { sendDaemonIpcRequest } from '../friendly-battle/daemon-ipc.js';
 
 const DAEMON_ENTRY = resolve(fileURLToPath(new URL('../friendly-battle/daemon.ts', import.meta.url)));
 
 type Subcommand =
   | 'init-host'
   | 'init-join'
+  | 'wait-next-event'
   | 'action'
   | 'refresh'
   | 'status';
@@ -30,16 +34,18 @@ const USAGE = [
   'Subcommands:',
   '  --init-host --session-code <code> [--listen-host 127.0.0.1] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
   '  --init-join --session-code <code> --host <host> --port <port> [--timeout-ms 4000] [--generation gen4] [--player-name Guest]',
-  '  --action <move|switch:N|surrender> --session <id>',
+  '  --wait-next-event --session <id> --generation <gen> [--timeout-ms 60000]',
+  '  --action <move:N|switch:N|surrender> --session <id> --generation <gen>',
   '  --refresh (--frame <i> | --finalize) --session <id>',
-  '  --status --session <id>',
+  '  --status --session <id> --generation <gen>',
   '',
 ].join('\n');
 
 const SUBCOMMAND_FLAGS = new Set<string>([
   '--init-host',
   '--init-join',
-  '--action',
+  '--wait-next-event',
+  // '--action' is intentionally absent: it carries a value and is parsed by parseArgs directly
   '--refresh',
   '--status',
 ]);
@@ -112,6 +118,15 @@ function asStringFlag(flags: Record<string, string | boolean | undefined>, name:
   return typeof v === 'string' ? v : undefined;
 }
 
+const SAFE_ID = /^[A-Za-z0-9_.-]{1,128}$/;
+function validateSafeId(value: string, name: string): string {
+  if (!SAFE_ID.test(value)) {
+    process.stderr.write(`REASON: --${name} must match /^[A-Za-z0-9_.-]{1,128}$/, got ${JSON.stringify(value)}\n`);
+    process.exit(1);
+  }
+  return value;
+}
+
 // ---------------------------------------------------------------------------
 
 function printUsage(): void {
@@ -121,6 +136,7 @@ function printUsage(): void {
 function resolveSubcommand(argv: string[]): Subcommand | null {
   if (argv.includes('--init-host')) return 'init-host';
   if (argv.includes('--init-join')) return 'init-join';
+  if (argv.includes('--wait-next-event')) return 'wait-next-event';
   if (argv.includes('--action')) return 'action';
   if (argv.includes('--refresh')) return 'refresh';
   if (argv.includes('--status')) return 'status';
@@ -459,14 +475,114 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
   }))}\n`);
 }
 
-async function runAction(_flags: Record<string, string | boolean | undefined>): Promise<void> {
-  throw new Error('not implemented: --action');
+async function runWaitNextEvent(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  const sessionId = validateSafeId(requireFlag(flags, 'session'), 'session');
+  const generation = validateGeneration(asStringFlag(flags, 'generation'));
+  const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 60_000);
+
+  const record = readFriendlyBattleSessionRecord(sessionId, generation);
+  if (!record || !record.socketPath || !record.daemonPid) {
+    process.stderr.write(`REASON: unknown session ${sessionId}\n`);
+    process.exit(1);
+  }
+
+  try {
+    const response = await sendDaemonIpcRequest(record.socketPath, { op: 'wait_next_event', timeoutMs }, timeoutMs + 2_000);
+    if (response.op === 'error') {
+      process.stderr.write(`REASON: ${response.message}\n`);
+      process.exit(1);
+    }
+    if (response.op !== 'event') {
+      process.stderr.write(`REASON: unexpected daemon response ${response.op}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`${JSON.stringify(response.envelope)}\n`);
+  } catch (err) {
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    process.exit(1);
+  }
 }
+
+async function runAction(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  const sessionId = validateSafeId(requireFlag(flags, 'session'), 'session');
+  const generation = validateGeneration(asStringFlag(flags, 'generation'));
+  const token = requireFlag(flags, 'action');
+
+  let action: { kind: 'move'; index: number };
+  const moveMatch = /^move:([1-4])$/.exec(token);
+  if (moveMatch) {
+    action = { kind: 'move', index: Number.parseInt(moveMatch[1], 10) - 1 };
+  } else if (/^switch:\d+$/.test(token)) {
+    process.stderr.write(`REASON: switch action not implemented until PR45\n`);
+    process.exit(2);
+  } else if (token === 'surrender') {
+    process.stderr.write(`REASON: surrender action not implemented until PR45\n`);
+    process.exit(2);
+  } else {
+    process.stderr.write(`REASON: unknown action token ${JSON.stringify(token)}\n`);
+    process.exit(1);
+  }
+
+  const record = readFriendlyBattleSessionRecord(sessionId, generation);
+  if (!record || !record.socketPath || !record.daemonPid) {
+    process.stderr.write(`REASON: unknown session ${sessionId}\n`);
+    process.exit(1);
+  }
+
+  try {
+    const response = await sendDaemonIpcRequest(record.socketPath, { op: 'submit_action', action }, 10_000);
+    if (response.op === 'error') {
+      process.stderr.write(`REASON: ${response.message}\n`);
+      process.exit(1);
+    }
+    if (response.op !== 'ack') {
+      process.stderr.write(`REASON: unexpected daemon response ${response.op}\n`);
+      process.exit(1);
+    }
+    process.stdout.write(`${JSON.stringify(response.envelope)}\n`);
+  } catch (err) {
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    process.exit(1);
+  }
+}
+
 async function runRefresh(_flags: Record<string, string | boolean | undefined>): Promise<void> {
   throw new Error('not implemented: --refresh');
 }
-async function runStatus(_flags: Record<string, string | boolean | undefined>): Promise<void> {
-  throw new Error('not implemented: --status');
+
+async function runStatus(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  const sessionId = validateSafeId(requireFlag(flags, 'session'), 'session');
+  const generation = validateGeneration(asStringFlag(flags, 'generation'));
+
+  const record = readFriendlyBattleSessionRecord(sessionId, generation);
+  if (!record) {
+    process.stderr.write(`REASON: unknown session ${sessionId}\n`);
+    process.exit(1);
+  }
+
+  const daemonAlive = typeof record.daemonPid === 'number' && isPidAlive(record.daemonPid);
+  if (daemonAlive && record.socketPath) {
+    try {
+      const response = await sendDaemonIpcRequest(record.socketPath, { op: 'status' }, 2_000);
+      if (response.op === 'status') {
+        process.stdout.write(`${JSON.stringify(response.envelope)}\n`);
+        return;
+      }
+    } catch {
+      // fall through to persisted snapshot
+    }
+  }
+
+  // Daemon is dead or unreachable — synthesize a frozen envelope from the record
+  const envelope = formatFriendlyBattleTurnJson({
+    record,
+    questionContext: daemonAlive ? 'Daemon unreachable' : 'Daemon no longer running',
+    moveOptions: [],
+    partyOptions: [],
+    animationFrames: [],
+    currentFrameIndex: 0,
+  });
+  process.stdout.write(`${JSON.stringify(envelope)}\n`);
 }
 
 function requireFlag(flags: Record<string, string | boolean | undefined>, name: string): string {
@@ -484,6 +600,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case 'init-join':
       await runInitJoin(parsed.flags);
+      return;
+    case 'wait-next-event':
+      await runWaitNextEvent(parsed.flags);
       return;
     case 'action':
       await runAction(parsed.flags);
