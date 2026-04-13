@@ -1,5 +1,12 @@
 #!/usr/bin/env -S npx tsx
 import { parseArgs } from 'node:util';
+import { randomUUID } from 'node:crypto';
+import { createFriendlyBattleSpikeHost } from '../friendly-battle/spike/tcp-direct.js';
+import {
+  type FriendlyBattleSessionRecord,
+  writeFriendlyBattleSessionRecord,
+} from '../friendly-battle/session-store.js';
+import { formatFriendlyBattleTurnJson } from '../friendly-battle/turn-json.js';
 
 type Subcommand =
   | 'init-host'
@@ -84,8 +91,85 @@ function parseCliArgs(argv: string[]): ParsedCliArgs {
   return { subcommand, flags: values as Record<string, string | boolean | undefined> };
 }
 
-async function runInitHost(_flags: Record<string, string | boolean | undefined>): Promise<void> {
-  throw new Error('not implemented: --init-host');
+async function runInitHost(flags: Record<string, string | undefined>): Promise<void> {
+  const sessionCode = requireFlag(flags, 'session-code');
+  const listenHost = flags['listen-host'] ?? '127.0.0.1';
+  const port = Number.parseInt(flags.port ?? '0', 10);
+  const timeoutMs = Number.parseInt(flags['timeout-ms'] ?? '4000', 10);
+  const generation = flags.generation ?? 'gen4';
+  const playerName = flags['player-name'] ?? 'Host';
+
+  const host = await createFriendlyBattleSpikeHost({
+    host: listenHost,
+    port,
+    sessionCode,
+    hostPlayerName: playerName,
+    generation,
+  });
+
+  process.stderr.write(`PORT: ${host.connectionInfo.port}\n`);
+
+  const sessionId = `fb-${randomUUID()}`;
+  const nowIso = () => new Date().toISOString();
+
+  const record: FriendlyBattleSessionRecord = {
+    sessionId,
+    role: 'host',
+    generation,
+    sessionCode,
+    phase: 'waiting_for_guest',
+    status: 'waiting_for_guest',
+    transport: {
+      host: host.connectionInfo.host,
+      port: host.connectionInfo.port,
+    },
+    opponent: null,
+    pid: process.pid,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  writeFriendlyBattleSessionRecord(record);
+
+  process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+    record,
+    questionContext: `Waiting for guest (code ${sessionCode}) — press Ctrl+C to cancel`,
+    moveOptions: [],
+    partyOptions: [],
+    animationFrames: [],
+    currentFrameIndex: 0,
+  }))}\n`);
+  process.stderr.write(`STAGE: waiting_for_guest\n`);
+
+  try {
+    const joined = await host.waitForGuestJoin(timeoutMs);
+    record.phase = 'battle';
+    record.status = 'select_action';
+    record.opponent = { playerName: joined.guestPlayerName };
+    record.updatedAt = nowIso();
+    writeFriendlyBattleSessionRecord(record);
+    process.stderr.write(`STAGE: guest_joined (${joined.guestPlayerName})\n`);
+    // PR43 scope: emit the ready envelope and exit 0. Turn loop (wait-next-event)
+    // is PR44.
+    process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+      record,
+      questionContext: `🤝 vs ${joined.guestPlayerName}`,
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+    }))}\n`);
+  } catch (err) {
+    record.phase = 'aborted';
+    record.status = 'aborted';
+    record.updatedAt = nowIso();
+    writeFriendlyBattleSessionRecord(record);
+    process.stderr.write(`STAGE: waiting_for_guest\n`);
+    process.stderr.write(`FAILED_STAGE: waiting_for_guest\n`);
+    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    await host.close().catch(() => undefined);
+    process.exit(1);
+  }
+  await host.close().catch(() => undefined);
 }
 async function runInitJoin(_flags: Record<string, string | boolean | undefined>): Promise<void> {
   throw new Error('not implemented: --init-join');
@@ -100,11 +184,20 @@ async function runStatus(_flags: Record<string, string | boolean | undefined>): 
   throw new Error('not implemented: --status');
 }
 
+function requireFlag(flags: Record<string, string | undefined>, name: string): string {
+  const value = flags[name];
+  if (value === undefined) {
+    process.stderr.write(`missing required flag --${name}\n`);
+    process.exit(1);
+  }
+  return value;
+}
+
 async function main(argv: string[]): Promise<void> {
   const parsed = parseCliArgs(argv);
   switch (parsed.subcommand) {
     case 'init-host':
-      await runInitHost(parsed.flags);
+      await runInitHost(parsed.flags as Record<string, string | undefined>);
       return;
     case 'init-join':
       await runInitJoin(parsed.flags);
