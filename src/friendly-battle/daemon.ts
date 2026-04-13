@@ -272,8 +272,9 @@ function eventStatus(
 
 function serializeDaemonAction(action: DaemonAction): string {
   switch (action.kind) {
-    case 'move':
-      return `move:${action.index}`;
+    case 'move': return `move:${action.index}`;
+    case 'switch': return `switch:${action.pokemonIndex}`;
+    case 'surrender': return 'surrender';
   }
 }
 
