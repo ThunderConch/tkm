@@ -2,11 +2,13 @@ import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import net from 'node:net';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import {
   FRIENDLY_BATTLE_PROTOCOL_VERSION,
   type FriendlyBattleBattleEvent,
 } from '../src/friendly-battle/contracts.js';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   connectFriendlyBattleSpikeGuest,
@@ -19,6 +21,37 @@ const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-spike.ts');
 const pluginRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const DEFAULT_GENERATION = 'gen4';
+
+// The `join` CLI now loads the current tokenmon profile and builds a party
+// snapshot before it can announce STAGE: connected. In CI the runner has no
+// persisted config/state, so we seed a dedicated CLAUDE_CONFIG_DIR with a
+// single-pokemon party and point every spawned CLI at it.
+const CLI_CLAUDE_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'tkm-fb-spike-cli-'));
+{
+  const genDir = join(CLI_CLAUDE_CONFIG_DIR, 'tokenmon', DEFAULT_GENERATION);
+  mkdirSync(genDir, { recursive: true });
+  writeFileSync(
+    join(genDir, 'config.json'),
+    JSON.stringify({ party: ['387'], starter_chosen: true }),
+    'utf8',
+  );
+  writeFileSync(
+    join(genDir, 'state.json'),
+    JSON.stringify({
+      pokemon: {
+        '387': {
+          id: 387,
+          xp: 100,
+          level: 16,
+          friendship: 0,
+          ev: 0,
+          moves: [33, 45],
+        },
+      },
+    }),
+    'utf8',
+  );
+}
 
 type SpawnedCli = {
   child: ChildProcessWithoutNullStreams;
@@ -103,6 +136,7 @@ function spawnCli(args: string[]): SpawnedCli {
       ...process.env,
       TOKENMON_TEST: '1',
       TSX_DISABLE_CACHE: '1',
+      CLAUDE_CONFIG_DIR: CLI_CLAUDE_CONFIG_DIR,
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -169,6 +203,10 @@ async function terminate(spawned: SpawnedCli): Promise<void> {
 }
 
 describe('friendly battle spike CLI', { concurrency: false }, () => {
+  after(() => {
+    rmSync(CLI_CLAUDE_CONFIG_DIR, { recursive: true, force: true });
+  });
+
   it('prints a copyable join command and lets the host CLI finish an authoritative event smoke', async () => {
     const hostStartupTimeoutMs = 60_000;
     const battleExchangeTimeoutMs = 15_000;
