@@ -67,6 +67,7 @@ function runTokenmon(args: string[], options?: { configDir?: string }): RunResul
     env: {
       ...process.env,
       TOKENMON_TEST: '1',
+      TSX_DISABLE_CACHE: '1',
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
     },
   });
@@ -85,8 +86,10 @@ describe('friendly battle product CLI', () => {
     const result = runTokenmon(['friendly-battle'], { configDir: profile.profileDir });
     assert.equal(result.status, 0, result.output);
     assert.match(result.output, /Friendly Battle \(local v1\)/);
-    assert.match(result.output, /same machine/i);
-    assert.match(result.output, /host --session-code <code> --opponent-config-dir <opponent Claude config dir>/i);
+    assert.match(result.output, /same network/i);
+    assert.match(result.output, /two Claude profiles\/terminals/i);
+    assert.match(result.output, /host --session-code <code> --opponent-config-dir <opponent Claude config dir> \[--listen-host/i);
+    assert.match(result.output, /\[--join-host <host>\]/i);
     assert.match(result.output, /join --host <host> --port <port> --session-code <code>/i);
     assert.match(result.output, /ready\s+Explain how ready works/i);
     assert.match(result.output, /leave\s+Explain how to leave/i);
@@ -167,6 +170,37 @@ describe('friendly battle product CLI', () => {
     assert.match(result.output, /JOIN_COMMAND: .+/);
     assert.match(result.output, /friendly-battle join/);
     assert.doesNotMatch(result.output, /friendly-battle-local\.ts join/);
+    assert.match(result.output, /FAILED_STAGE: join/);
+    assert.match(result.output, /CLEANUP: session_artifacts_removed/);
+  });
+
+  it('preserves a guest-facing --join-host through the product host entrypoint', () => {
+    const hostProfile = createProfile('host-product-join-host');
+    const guestProfile = createProfile('guest-product-join-host');
+    after(() => hostProfile.cleanup());
+    after(() => guestProfile.cleanup());
+
+    const result = runTokenmon([
+      'friendly-battle',
+      'host',
+      '--session-code',
+      'alpha-product-join-host-123',
+      '--opponent-config-dir',
+      guestProfile.profileDir,
+      '--listen-host',
+      '0.0.0.0',
+      '--join-host',
+      '192.168.0.24',
+      '--timeout-ms',
+      '50',
+    ], {
+      configDir: hostProfile.profileDir,
+    });
+
+    assert.equal(result.status, 1, result.output);
+    assert.match(result.output, /JOIN_COMMAND: .+friendly-battle join --host 192\.168\.0\.24 /);
+    assert.match(result.output, /JOIN_INFO: .+"host":"192\.168\.0\.24"/);
+    assert.match(result.output, /JOIN_INFO: .+"listenHost":"0\.0\.0\.0"/);
     assert.match(result.output, /FAILED_STAGE: join/);
     assert.match(result.output, /CLEANUP: session_artifacts_removed/);
   });

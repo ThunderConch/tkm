@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { resolve } from 'node:path';
 import net from 'node:net';
-import { spawnShellCommand } from './helpers.js';
+import { connectFriendlyBattleSpikeGuest, createFriendlyBattleSpikeHost } from '../src/friendly-battle/spike/tcp-direct.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-spike.ts');
@@ -34,6 +34,7 @@ function spawnCli(args: string[]): SpawnedCli {
     env: {
       ...process.env,
       TOKENMON_TEST: '1',
+      TSX_DISABLE_CACHE: '1',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
@@ -100,58 +101,170 @@ async function terminate(spawned: SpawnedCli): Promise<void> {
 }
 
 describe('friendly battle spike CLI', { concurrency: false }, () => {
-  it('prints a copyable join command and completes the first action exchange with two terminals', async () => {
-    const host = spawnCli(['host', '--session-code', 'alpha-123', '--timeout-ms', '4000']);
+  it('prints a copyable join command and lets the host CLI finish the first action exchange', async () => {
+    const hostStartupTimeoutMs = 60_000;
+    const battleExchangeTimeoutMs = 15_000;
+    const host = spawnCli([
+      'host',
+      '--session-code',
+      'alpha-123',
+      '--timeout-ms',
+      String(battleExchangeTimeoutMs),
+    ]);
     after(async () => terminate(host));
 
-    const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, 4_000);
+    const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, hostStartupTimeoutMs);
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
+    assert.match(joinCommand, /friendly-battle-spike\.ts join --host 127\.0\.0\.1 --port \d+ --session-code alpha-123 --timeout-ms 15000/);
 
-    const guest = spawnShellCommand(joinCommand, {
-      cwd: REPO_ROOT,
-      env: {
-        ...process.env,
-        TOKENMON_TEST: '1',
-      },
+    const joinInfoJson = hostStdout.match(/^JOIN_INFO: (.+)$/m)?.[1];
+    assert.ok(joinInfoJson, `expected JOIN_INFO line in host stdout:\n${hostStdout}`);
+    const joinInfo = JSON.parse(joinInfoJson) as { host: string; port: number };
+
+    const guest = await connectFriendlyBattleSpikeGuest({
+      host: joinInfo.host,
+      port: joinInfo.port,
+      sessionCode: 'alpha-123',
+      guestPlayerName: 'Guest',
+      timeoutMs: battleExchangeTimeoutMs,
     });
+    after(async () => guest.close().catch(() => undefined));
 
-    let guestStdout = '';
-    let guestStderr = '';
-    guest.stdout.setEncoding('utf8');
-    guest.stderr.setEncoding('utf8');
-    guest.stdout.on('data', (chunk: string) => {
-      guestStdout += chunk;
-    });
-    guest.stderr.on('data', (chunk: string) => {
-      guestStderr += chunk;
-    });
+    const readyState = await guest.markReady();
+    assert.equal(readyState.guestReady, true);
 
-    const [hostResult, guestResult] = await Promise.all([
-      host.completion,
-      new Promise<{ exitCode: number | null; signal: NodeJS.Signals | null }>((resolveGuest, rejectGuest) => {
-        guest.once('error', rejectGuest);
-        guest.once('close', (exitCode, signal) => resolveGuest({ exitCode, signal }));
-      }),
-    ]);
+    await guest.waitForStarted(battleExchangeTimeoutMs);
+    const guestAction = await guest.submitAction('move:1');
+    const hostAction = await guest.waitForHostAction(battleExchangeTimeoutMs);
+    const hostResult = await host.completion;
 
+    assert.equal(guestAction.value, 'move:1');
+    assert.equal(hostAction.value, 'move:1');
     assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
     assert.equal(hostResult.exitCode, 0, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
-    assert.equal(guestResult.signal, null, `guest stderr:\n${guestStderr}`);
-    assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestStdout}\n--- stderr ---\n${guestStderr}`);
-
-    assert.match(hostResult.stdout, /STAGE: guest_joined/);
+    assert.match(hostResult.stdout, /STAGE: guest_joined \(Guest\)/);
     assert.match(hostResult.stdout, /STAGE: battle_started/);
     assert.match(hostResult.stdout, /GUEST_ACTION: move:1/);
     assert.match(hostResult.stdout, /HOST_ACTION: move:1/);
     assert.match(hostResult.stdout, /SUCCESS: first_action_exchange_completed/);
+  });
 
-    assert.match(guestStdout, /STAGE: connected/);
-    assert.match(guestStdout, /STAGE: ready/);
-    assert.match(guestStdout, /STAGE: battle_started/);
-    assert.match(guestStdout, /GUEST_ACTION: move:1/);
-    assert.match(guestStdout, /HOST_ACTION: move:1/);
-    assert.match(guestStdout, /SUCCESS: first_action_exchange_completed/);
+  it('lets the join CLI complete the first action exchange against an in-process host', async () => {
+    const guestStartupTimeoutMs = 60_000;
+    const battleExchangeTimeoutMs = 15_000;
+    const host = await createFriendlyBattleSpikeHost({
+      host: '127.0.0.1',
+      port: 0,
+      sessionCode: 'beta-123',
+      hostPlayerName: 'Host',
+    });
+    after(async () => host.close());
+
+    const guest = spawnCli([
+      'join',
+      '--host',
+      host.connectionInfo.host,
+      '--port',
+      String(host.connectionInfo.port),
+      '--session-code',
+      'beta-123',
+      '--timeout-ms',
+      String(battleExchangeTimeoutMs),
+    ]);
+    after(async () => terminate(guest));
+
+    await waitForStdout(guest, /STAGE: connected/, guestStartupTimeoutMs);
+
+    const joined = await host.waitForGuestJoin(battleExchangeTimeoutMs);
+    assert.equal(joined.guestPlayerName, 'Guest');
+
+    const readyState = host.markHostReady();
+    assert.equal(readyState.hostReady, true);
+    await host.waitUntilCanStart(battleExchangeTimeoutMs);
+    await host.startBattle();
+
+    const guestAction = await host.waitForGuestAction(battleExchangeTimeoutMs);
+    const hostAction = host.submitHostAction('move:1');
+    const guestResult = await guest.completion;
+
+    assert.equal(guestAction.value, 'move:1');
+    assert.equal(hostAction.value, 'move:1');
+    assert.equal(guestResult.signal, null, `guest stderr:\n${guestResult.stderr}`);
+    assert.equal(guestResult.exitCode, 0, `guest stdout:\n${guestResult.stdout}\n--- stderr ---\n${guestResult.stderr}`);
+    assert.match(guestResult.stdout, /STAGE: connected/);
+    assert.match(guestResult.stdout, /STAGE: ready/);
+    assert.match(guestResult.stdout, /STAGE: battle_started/);
+    assert.match(guestResult.stdout, /GUEST_ACTION: move:1/);
+    assert.match(guestResult.stdout, /HOST_ACTION: move:1/);
+    assert.match(guestResult.stdout, /SUCCESS: first_action_exchange_completed/);
+  });
+
+  it('prints a guest-facing join command from --join-host even when the host listens on 0.0.0.0', async () => {
+    const host = spawnCli([
+      'host',
+      '--listen-host',
+      '0.0.0.0',
+      '--join-host',
+      '192.168.0.24',
+      '--session-code',
+      'alpha-123',
+      '--timeout-ms',
+      '50',
+    ]);
+
+    const result = await host.completion;
+    assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
+    assert.notEqual(result.exitCode, 0, 'host should still time out without a guest');
+    assert.match(result.stdout, /JOIN_COMMAND: .+--host 192\.168\.0\.24 /);
+
+    const joinInfoJson = result.stdout.match(/^JOIN_INFO: (.+)$/m)?.[1];
+    assert.ok(joinInfoJson, `expected JOIN_INFO line in host stdout:\n${result.stdout}`);
+    const joinInfo = JSON.parse(joinInfoJson) as { host: string; listenHost: string };
+    assert.equal(joinInfo.host, '192.168.0.24');
+    assert.equal(joinInfo.listenHost, '0.0.0.0');
+  });
+
+  it('requires --join-host when the host listens on a wildcard address', async () => {
+    const host = spawnCli([
+      'host',
+      '--listen-host',
+      '0.0.0.0',
+      '--session-code',
+      'alpha-123',
+      '--timeout-ms',
+      '50',
+    ]);
+
+    const result = await host.completion;
+    assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
+    assert.notEqual(result.exitCode, 0, 'host should fail fast without a guest-facing join host');
+    assert.match(result.stderr, /FAILED_STAGE: listen/);
+    assert.match(result.stderr, /NEXT_ACTION: .*join host/i);
+    assert.match(result.stderr, /INPUT_HINT: .*listenHost=0\.0\.0\.0/);
+    assert.match(result.stderr, /RETRY_HINT: .*--listen-host 0\.0\.0\.0/);
+  });
+
+  it('rejects wildcard --join-host values so the printed guest command stays reachable', async () => {
+    const host = spawnCli([
+      'host',
+      '--listen-host',
+      '0.0.0.0',
+      '--join-host',
+      '0.0.0.0',
+      '--session-code',
+      'alpha-123',
+      '--timeout-ms',
+      '50',
+    ]);
+
+    const result = await host.completion;
+    assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
+    assert.notEqual(result.exitCode, 0, 'host should fail fast with a wildcard guest-facing join host');
+    assert.match(result.stderr, /FAILED_STAGE: listen/);
+    assert.match(result.stderr, /NEXT_ACTION: .*join host/i);
+    assert.match(result.stderr, /INPUT_HINT: .*joinHost=0\.0\.0\.0/);
+    assert.match(result.stderr, /RETRY_HINT: .*--join-host 0\.0\.0\.0/);
   });
 
   it('surfaces handshake failures with stage, next action, and retry hint', async () => {
@@ -465,7 +578,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
 
       const result = await guest.completion;
       assert.equal(result.signal, null, `guest stderr:\n${result.stderr}`);
-      assert.notEqual(result.exitCode, 0, 'guest should fail when host disconnects during battle stage');
+      assert.notEqual(result.exitCode, 0, 'guest should fail when host disconnects after ready completes');
       assert.match(result.stdout, /STAGE: connected/);
       assert.match(result.stdout, /STAGE: ready/);
       assert.doesNotMatch(result.stdout, /STAGE: battle_started/);

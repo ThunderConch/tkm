@@ -10,7 +10,7 @@ type ParsedArgs = {
 
 function usage(): never {
   console.error('Usage:');
-  console.error('  tokenmon friendly-battle spike host --session-code <code> [--host 127.0.0.1] [--port 0] [--timeout-ms 4000]');
+  console.error('  tokenmon friendly-battle spike host --session-code <code> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000]');
   console.error('  tokenmon friendly-battle spike join --host <host> --port <port> --session-code <code> [--timeout-ms 4000]');
   process.exit(1);
 }
@@ -88,26 +88,33 @@ function printFriendlyBattleFailure(args: {
 }
 
 async function runHost(values: Map<string, string>): Promise<void> {
-  const hostAddress = values.get('host') ?? '127.0.0.1';
+  const listenHost = values.get('listen-host') ?? values.get('host') ?? '127.0.0.1';
+  const joinHost = values.get('join-host');
   const port = getNumberArg(values, 'port', 0);
   const timeoutMs = getNumberArg(values, 'timeout-ms', 4_000);
   const sessionCode = getRequiredArg(values, 'session-code');
+  const hostHintLabel = values.has('listen-host') ? 'listenHost' : 'host';
+  const inputHint = `${hostHintLabel}=${listenHost}${joinHost ? ` joinHost=${joinHost}` : ''} port=${port} sessionCode=${sessionCode}`;
   let currentStage: 'listen' | 'join' | 'ready' | 'battle' = 'listen';
-  const retryCommand = [
+  const retryCommandParts = [
     process.execPath,
     '--import',
     'tsx',
     'src/cli/friendly-battle-spike.ts',
     'host',
-    '--host',
-    hostAddress,
+    '--listen-host',
+    listenHost,
     '--port',
     String(port),
     '--session-code',
     sessionCode,
     '--timeout-ms',
     String(timeoutMs),
-  ].map(shellEscape).join(' ');
+  ];
+  if (joinHost) {
+    retryCommandParts.push('--join-host', joinHost);
+  }
+  const retryCommand = retryCommandParts.map(shellEscape).join(' ');
 
   const withStageTimeout = async <T>(
     promise: Promise<T>,
@@ -126,6 +133,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
 
   const handleFriendlyBattleError = (error: FriendlyBattleTransportError): never => {
     const stage = error.code === 'listen_failed'
+      || error.code === 'advertise_host_required'
       ? 'listen'
       : error.code === 'join_timeout' || error.code === 'not_connected'
         ? 'join'
@@ -137,8 +145,10 @@ async function runHost(values: Map<string, string>): Promise<void> {
             ? 'battle'
             : 'host';
 
-    const nextAction = stage === 'listen'
-      ? '입력한 host/port를 확인하거나 이미 같은 포트를 쓰는 프로세스를 종료한 뒤 다시 host 하세요.'
+    const nextAction = stage === 'listen' && error.code === 'advertise_host_required'
+      ? 'guest가 접속할 실제 join host를 --join-host 로 지정한 뒤 다시 host 하세요.'
+      : stage === 'listen'
+        ? '입력한 host/port를 확인하거나 이미 같은 포트를 쓰는 프로세스를 종료한 뒤 다시 host 하세요.'
       : stage === 'ready'
         ? 'guest가 join 후 ready 단계까지 완료했는지 확인한 뒤 다시 host 하세요.'
         : stage === 'join'
@@ -150,7 +160,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
     printFriendlyBattleFailure({
       stage,
       nextAction,
-      inputHint: `host=${hostAddress} port=${port} sessionCode=${sessionCode}`,
+      inputHint,
       retryHint: retryCommand,
     });
     throw error;
@@ -159,7 +169,8 @@ async function runHost(values: Map<string, string>): Promise<void> {
   let host;
   try {
     host = await createFriendlyBattleSpikeHost({
-      host: hostAddress,
+      host: listenHost,
+      advertiseHost: joinHost,
       port,
       sessionCode,
       hostPlayerName: values.get('player-name') ?? 'Host',

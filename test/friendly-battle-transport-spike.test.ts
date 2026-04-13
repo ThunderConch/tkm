@@ -89,6 +89,39 @@ describe('friendly battle TCP direct transport spike', () => {
     }
   });
 
+  it('preserves a queued battle_started signal even if the guest waits slightly late', async () => {
+    const host = await createFriendlyBattleSpikeHost({
+      host: '127.0.0.1',
+      port: 0,
+      sessionCode: 'alpha-queued-start',
+      hostPlayerName: 'Host',
+    });
+
+    try {
+      const guest = await connectFriendlyBattleSpikeGuest({
+        host: '127.0.0.1',
+        port: host.connectionInfo.port,
+        sessionCode: 'alpha-queued-start',
+        guestPlayerName: 'Guest',
+      });
+
+      try {
+        await host.waitForGuestJoin(1_000);
+        host.markHostReady();
+        await guest.markReady();
+        await host.waitUntilCanStart(1_000);
+
+        await host.startBattle();
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        await guest.waitForStarted(1_000);
+      } finally {
+        await guest.close();
+      }
+    } finally {
+      await host.close();
+    }
+  });
+
   it('returns an actionable error when the host is unreachable', async () => {
     const unusedPort = await reserveUnusedPort();
 
@@ -222,6 +255,27 @@ describe('friendly battle TCP direct transport spike', () => {
     }
   });
 
+  it('rejects wildcard advertise hosts so the guest-facing join info stays concrete', async () => {
+    for (const advertiseHost of ['0.0.0.0', '::']) {
+      await assert.rejects(
+        createFriendlyBattleSpikeHost({
+          host: '127.0.0.1',
+          advertiseHost,
+          port: 0,
+          sessionCode: 'alpha-123',
+          hostPlayerName: 'Host',
+        }),
+        (error: unknown) => {
+          assert.ok(error instanceof FriendlyBattleTransportError);
+          assert.equal(error.code, 'advertise_host_required');
+          assert.match(error.message, /--join-host/i);
+          assert.match(error.message, /wildcard/i);
+          return true;
+        },
+      );
+    }
+  });
+
   it('rejects a join attempt with the wrong session code and explains what to fix', async () => {
     const host = await createFriendlyBattleSpikeHost({
       host: '127.0.0.1',
@@ -286,6 +340,42 @@ describe('friendly battle TCP direct transport spike', () => {
       } finally {
         await guest.close();
       }
+    } finally {
+      await host.close();
+    }
+  });
+
+  it('requires an advertised join host when listening on a wildcard address', async () => {
+    await assert.rejects(
+      createFriendlyBattleSpikeHost({
+        host: '0.0.0.0',
+        port: 0,
+        sessionCode: 'alpha-123',
+        hostPlayerName: 'Host',
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof FriendlyBattleTransportError);
+        assert.equal(error.code, 'advertise_host_required');
+        assert.match(error.message, /--join-host|advertise/i);
+        assert.match(error.message, /0\.0\.0\.0/);
+        return true;
+      },
+    );
+  });
+
+  it('advertises the guest-facing join host separately from the listen host', async () => {
+    const host = await createFriendlyBattleSpikeHost({
+      host: '0.0.0.0',
+      advertiseHost: '192.168.0.24',
+      port: 0,
+      sessionCode: 'alpha-123',
+      hostPlayerName: 'Host',
+    });
+
+    try {
+      assert.equal(host.connectionInfo.host, '192.168.0.24');
+      assert.equal(host.connectionInfo.listenHost, '0.0.0.0');
+      assert.match(host.connectionInfo.joinHint, /--host 192\.168\.0\.24 /);
     } finally {
       await host.close();
     }

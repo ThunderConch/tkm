@@ -116,3 +116,104 @@ export function spawnShellCommand(
     stdio: ['ignore', 'pipe', 'pipe'],
   });
 }
+
+type ParsedCommand = {
+  executable: string;
+  args: string[];
+  envAssignments: Record<string, string>;
+};
+
+function parseCopyPasteCommand(command: string): ParsedCommand {
+  const tokens: string[] = [];
+  let current = '';
+  let inSingleQuotes = false;
+
+  for (let index = 0; index < command.length; index += 1) {
+    const char = command[index];
+
+    if (inSingleQuotes) {
+      if (char === '\'') {
+        inSingleQuotes = false;
+      } else {
+        current += char;
+      }
+      continue;
+    }
+
+    if (char === '\'') {
+      inSingleQuotes = true;
+      continue;
+    }
+
+    if (char === '\\') {
+      const escaped = command[index + 1];
+      if (escaped !== undefined) {
+        current += escaped;
+        index += 1;
+        continue;
+      }
+    }
+
+    if (/\s/.test(char)) {
+      if (current.length > 0) {
+        tokens.push(current);
+        current = '';
+      }
+      continue;
+    }
+
+    current += char;
+  }
+
+  if (inSingleQuotes) {
+    throw new Error(`Unterminated single quote in copy/paste command: ${command}`);
+  }
+
+  if (current.length > 0) {
+    tokens.push(current);
+  }
+
+  const envAssignments: Record<string, string> = {};
+  let executableIndex = 0;
+  while (executableIndex < tokens.length) {
+    const token = tokens[executableIndex];
+    const assignmentMatch = token.match(/^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/);
+    if (!assignmentMatch) {
+      break;
+    }
+    envAssignments[assignmentMatch[1]] = assignmentMatch[2];
+    executableIndex += 1;
+  }
+
+  const executable = tokens[executableIndex];
+  if (!executable) {
+    throw new Error(`Expected an executable in copy/paste command: ${command}`);
+  }
+
+  return {
+    executable,
+    args: tokens.slice(executableIndex + 1),
+    envAssignments,
+  };
+}
+
+/**
+ * Execute a CLI command exactly as printed by the product, but without routing
+ * through an extra shell process. This preserves the emitted command contract
+ * while avoiding full-suite shell startup contention in integration tests.
+ */
+export function spawnPrintedCommand(
+  command: string,
+  options: SpawnOptionsWithoutStdio,
+): ChildProcessWithoutNullStreams {
+  const parsed = parseCopyPasteCommand(command);
+  return spawn(parsed.executable, parsed.args, {
+    ...options,
+    env: {
+      ...process.env,
+      ...parsed.envAssignments,
+      ...(options.env ?? {}),
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}

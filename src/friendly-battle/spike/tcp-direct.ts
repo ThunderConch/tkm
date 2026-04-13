@@ -23,6 +23,7 @@ export class FriendlyBattleTransportError extends Error {
 
 type HostOptions = {
   host: string;
+  advertiseHost?: string;
   port: number;
   sessionCode: string;
   hostPlayerName: string;
@@ -88,9 +89,8 @@ class AsyncQueue<T> {
   }
 
   shift(timeoutMs: number, label: string): Promise<T> {
-    const value = this.values.shift();
-    if (value !== undefined) {
-      return Promise.resolve(value);
+    if (this.values.length > 0) {
+      return Promise.resolve(this.values.shift() as T);
     }
 
     return new Promise<T>((resolve, reject) => {
@@ -123,6 +123,10 @@ function writeMessage(socket: net.Socket, payload: object): void {
 
 function toReadyState(hostReady: boolean, guestReady: boolean): FriendlyBattleReadyState {
   return { hostReady, guestReady, canStart: hostReady && guestReady };
+}
+
+function isWildcardHost(host: string): boolean {
+  return host === '0.0.0.0' || host === '::' || host === '::0';
 }
 
 export async function createFriendlyBattleSpikeHost(options: HostOptions) {
@@ -160,6 +164,28 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       resolve({ host: address.address, port: address.port });
     });
   });
+
+  if (isWildcardHost(listenAddress.host) && !options.advertiseHost) {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    throw new FriendlyBattleTransportError(
+      'advertise_host_required',
+      `host가 ${listenAddress.host} 같은 wildcard 주소로 listen할 때는 guest에게 전달할 --join-host(광고용 host)가 필요합니다.`,
+    );
+  }
+
+  if (options.advertiseHost && isWildcardHost(options.advertiseHost)) {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    throw new FriendlyBattleTransportError(
+      'advertise_host_required',
+      `--join-host는 guest가 실제로 접속할 수 있는 구체적인 host여야 합니다. ${options.advertiseHost} 같은 wildcard 주소는 사용할 수 없습니다.`,
+    );
+  }
+
+  const advertisedHost = options.advertiseHost ?? listenAddress.host;
 
   const destroyQueues = (error: Error) => {
     guestJoinQueue.fail(error);
@@ -289,10 +315,11 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
 
   return {
     connectionInfo: {
-      host: listenAddress.host,
+      host: advertisedHost,
+      listenHost: listenAddress.host,
       port: listenAddress.port,
       sessionCode: options.sessionCode,
-      joinHint: `tokenmon friendly-battle spike join --host ${listenAddress.host} --port ${listenAddress.port} --session-code ${options.sessionCode}`,
+      joinHint: `tokenmon friendly-battle spike join --host ${advertisedHost} --port ${listenAddress.port} --session-code ${options.sessionCode}`,
     },
     async waitForGuestJoin(timeoutMs: number): Promise<GuestJoinEvent> {
       return guestJoinQueue.shift(timeoutMs, 'guest join');

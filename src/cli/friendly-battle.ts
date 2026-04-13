@@ -26,14 +26,14 @@ type Copy = {
 
 const KO_COPY: Copy = {
   title: '친선 배틀 (로컬 v1)',
-  summary: '같은 컴퓨터에서 두 개의 Claude 프로필/터미널을 열고 즉석 친선전을 시작합니다.',
+  summary: '같은 네트워크에서 두 개의 Claude 프로필/터미널을 열고 인게임 감성의 즉석 친선전을 시작합니다.',
   steps: [
     '1) 호스트가 첫 번째 터미널에서 host 명령을 실행합니다.',
     '2) 출력된 JOIN_COMMAND를 상대 프로필 터미널에 그대로 붙여넣습니다.',
     '3) local v1에서는 두 쪽이 연결되면 ready가 자동으로 처리되고 바로 배틀이 시작됩니다.',
   ],
   commandsTitle: '명령:',
-  hostCommand: '  host --session-code <코드> --opponent-config-dir <상대 Claude 설정 경로> [--host 127.0.0.1] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
+  hostCommand: '  host --session-code <코드> --opponent-config-dir <상대 Claude 설정 경로> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
   joinCommand: '  join --host <host> --port <port> --session-code <코드> [--timeout-ms 4000] [--player-name Guest]',
   readyCommand: '  ready              현재 local v1에서 ready가 어떻게 동작하는지 설명',
   leaveCommand: '  leave              현재 local v1에서 세션을 빠져나오는 방법 설명',
@@ -52,14 +52,14 @@ const KO_COPY: Copy = {
 
 const EN_COPY: Copy = {
   title: 'Friendly Battle (local v1)',
-  summary: 'Start an in-game-style friendly battle from two Claude profiles/terminals on the same machine.',
+  summary: 'Start an in-game-style friendly battle from two Claude profiles/terminals on the same network.',
   steps: [
     '1) The host runs the host command from the first terminal.',
     '2) Copy the printed JOIN_COMMAND into the opponent profile terminal.',
     '3) In local v1, ready is automatic once both sides connect, so the battle starts immediately.',
   ],
   commandsTitle: 'Commands:',
-  hostCommand: '  host --session-code <code> --opponent-config-dir <opponent Claude config dir> [--host 127.0.0.1] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
+  hostCommand: '  host --session-code <code> --opponent-config-dir <opponent Claude config dir> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
   joinCommand: '  join --host <host> --port <port> --session-code <code> [--timeout-ms 4000] [--player-name Guest]',
   readyCommand: '  ready              Explain how ready works in local v1',
   leaveCommand: '  leave              Explain how to leave/cancel the current local session',

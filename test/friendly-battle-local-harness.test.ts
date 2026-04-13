@@ -10,7 +10,7 @@ import {
   loadFriendlyBattleProfileFromConfigDir,
   startFriendlyBattleLocalBattle,
 } from '../src/friendly-battle/local-harness.js';
-import { spawnShellCommand } from './helpers.js';
+import { spawnPrintedCommand } from './helpers.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-local.ts');
@@ -32,6 +32,7 @@ function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli 
     env: {
       ...process.env,
       TOKENMON_TEST: '1',
+      TSX_DISABLE_CACHE: '1',
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
     },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -210,6 +211,11 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
   });
 
   it('replays a same-machine two terminal battle smoke and cleans up persisted session artifacts', async () => {
+    // Like the spike CLI smoke, this boots two `node --import tsx` terminals.
+    // Full-suite contention can make startup dramatically slower than the happy
+    // path, so keep the smoke generous enough to avoid false negatives.
+    const battleExchangeTimeoutMs = 60_000;
+    const hostStartupTimeoutMs = 60_000;
     const hostProfile = createProfile('host', '387', 387, 16);
     const guestProfile = createProfile('guest', '390', 390, 18);
     after(() => hostProfile.cleanup());
@@ -220,7 +226,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       '--session-code',
       'alpha-local-123',
       '--timeout-ms',
-      '10000',
+      String(battleExchangeTimeoutMs),
       '--guest-config-dir',
       guestProfile.profileDir,
     ], {
@@ -228,15 +234,16 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     });
     after(async () => terminate(host));
 
-    const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, 10_000);
+    const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, hostStartupTimeoutMs);
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
 
-    const guest = spawnShellCommand(joinCommand, {
+    const guest = spawnPrintedCommand(joinCommand, {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
         TOKENMON_TEST: '1',
+        TSX_DISABLE_CACHE: '1',
       },
     });
 
@@ -289,6 +296,103 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     assert.equal(existsSync(hostSnapshotPath!), false, `expected cleaned host snapshot path ${hostSnapshotPath}`);
     assert.equal(existsSync(guestSnapshotPath!), false, `expected cleaned guest snapshot path ${guestSnapshotPath}`);
     assert.equal(existsSync(battlePath!), false, `expected cleaned battle path ${battlePath}`);
+  });
+
+  it('prints a guest-facing JOIN_COMMAND from --join-host even when the host listens on 0.0.0.0', async () => {
+    const hostProfile = createProfile('host-join-host', '387', 387, 16);
+    const guestProfile = createProfile('guest-join-host', '390', 390, 18);
+    after(() => hostProfile.cleanup());
+    after(() => guestProfile.cleanup());
+
+    const host = spawnCli([
+      'host',
+      '--session-code',
+      'join-host-local-123',
+      '--timeout-ms',
+      '50',
+      '--guest-config-dir',
+      guestProfile.profileDir,
+      '--listen-host',
+      '0.0.0.0',
+      '--join-host',
+      '192.168.0.24',
+    ], {
+      configDir: hostProfile.profileDir,
+    });
+
+    const hostResult = await host.completion;
+    assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
+    assert.equal(hostResult.exitCode, 1, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
+    assert.match(hostResult.stderr, /FAILED_STAGE: join/);
+    assert.match(hostResult.stdout, /JOIN_COMMAND: .+--host 192\.168\.0\.24 /);
+
+    const joinInfoJson = hostResult.stdout.match(/^JOIN_INFO: (.+)$/m)?.[1];
+    assert.ok(joinInfoJson, `expected JOIN_INFO line in host stdout:\n${hostResult.stdout}`);
+    const joinInfo = JSON.parse(joinInfoJson) as { host: string; listenHost: string; port: number };
+    assert.equal(joinInfo.host, '192.168.0.24');
+    assert.equal(joinInfo.listenHost, '0.0.0.0');
+    assert.ok(typeof joinInfo.port === 'number' && joinInfo.port > 0);
+  });
+
+  it('requires --join-host when the host listens on a wildcard address', async () => {
+    const hostProfile = createProfile('host-wildcard-missing-join', '387', 387, 16);
+    const guestProfile = createProfile('guest-wildcard-missing-join', '390', 390, 18);
+    after(() => hostProfile.cleanup());
+    after(() => guestProfile.cleanup());
+
+    const host = spawnCli([
+      'host',
+      '--session-code',
+      'wildcard-host-123',
+      '--timeout-ms',
+      '50',
+      '--guest-config-dir',
+      guestProfile.profileDir,
+      '--listen-host',
+      '0.0.0.0',
+    ], {
+      configDir: hostProfile.profileDir,
+    });
+
+    const hostResult = await host.completion;
+    assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
+    assert.equal(hostResult.exitCode, 1, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
+    assert.match(hostResult.stderr, /FAILED_STAGE: listen/);
+    assert.match(hostResult.stderr, /--join-host/i);
+    assert.match(hostResult.stderr, /0\.0\.0\.0/i);
+    assert.match(hostResult.stdout, /CLEANUP: session_artifacts_removed/);
+  });
+
+  it('rejects wildcard --join-host values before printing an unusable guest command', async () => {
+    const hostProfile = createProfile('host-wildcard-invalid-join', '387', 387, 16);
+    const guestProfile = createProfile('guest-wildcard-invalid-join', '390', 390, 18);
+    after(() => hostProfile.cleanup());
+    after(() => guestProfile.cleanup());
+
+    const host = spawnCli([
+      'host',
+      '--session-code',
+      'wildcard-invalid-join-123',
+      '--timeout-ms',
+      '50',
+      '--guest-config-dir',
+      guestProfile.profileDir,
+      '--listen-host',
+      '0.0.0.0',
+      '--join-host',
+      '0.0.0.0',
+    ], {
+      configDir: hostProfile.profileDir,
+    });
+
+    const hostResult = await host.completion;
+    assert.equal(hostResult.signal, null, `host stderr:\n${hostResult.stderr}`);
+    assert.equal(hostResult.exitCode, 1, `host stdout:\n${hostResult.stdout}\n--- stderr ---\n${hostResult.stderr}`);
+    assert.match(hostResult.stderr, /FAILED_STAGE: listen/);
+    assert.match(hostResult.stderr, /--join-host/i);
+    assert.match(hostResult.stderr, /wildcard/i);
+    assert.match(hostResult.stdout, /CLEANUP: session_artifacts_removed/);
+    assert.doesNotMatch(hostResult.stdout, /JOIN_COMMAND:/);
   });
 
   it('cleans up persisted session artifacts after a failed host handshake', async () => {

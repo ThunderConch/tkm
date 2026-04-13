@@ -30,7 +30,7 @@ export type FriendlyBattleLocalCliOptions = {
 
 function usage(): never {
   console.error('Usage:');
-  console.error('  tokenmon friendly-battle local host --session-code <code> --guest-config-dir <path> [--host 127.0.0.1] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]');
+  console.error('  tokenmon friendly-battle local host --session-code <code> --guest-config-dir <path> [--listen-host 127.0.0.1] [--join-host <host>] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]');
   console.error('  tokenmon friendly-battle local join --host <host> --port <port> --session-code <code> [--timeout-ms 4000] [--player-name Guest]');
   process.exit(1);
 }
@@ -113,7 +113,8 @@ async function runHost(
   values: Map<string, string>,
   options: FriendlyBattleLocalCliOptions = {},
 ): Promise<void> {
-  const hostAddress = values.get('host') ?? '127.0.0.1';
+  const listenHost = values.get('listen-host') ?? values.get('host') ?? '127.0.0.1';
+  const joinHost = values.get('join-host');
   const port = getNumberArg(values, 'port', 0, { min: 0, max: 65_535 });
   const timeoutMs = getNumberArg(values, 'timeout-ms', 4_000, { min: 1 });
   const sessionCode = getRequiredArg(values, 'session-code');
@@ -137,7 +138,8 @@ async function runHost(
 
   try {
     host = await createFriendlyBattleSpikeHost({
-      host: hostAddress,
+      host: listenHost,
+      advertiseHost: joinHost,
       port,
       sessionCode,
       hostPlayerName,
