@@ -1,3 +1,5 @@
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
+import type { SpawnOptionsWithoutStdio } from 'node:child_process';
 import type { State, Config } from '../src/core/types.js';
 import { setActiveGenerationCache } from '../src/core/paths.js';
 
@@ -97,4 +99,20 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     renderer: 'braille' as const,
     ...overrides,
   };
+}
+
+/**
+ * Run a copy/paste shell command through the platform default shell.
+ * This keeps integration tests portable across local shells and CI images
+ * that may not have zsh installed.
+ */
+export function spawnShellCommand(
+  command: string,
+  options: SpawnOptionsWithoutStdio,
+): ChildProcessWithoutNullStreams {
+  return spawn(command, {
+    ...options,
+    shell: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
 }

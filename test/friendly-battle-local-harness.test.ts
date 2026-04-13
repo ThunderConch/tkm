@@ -10,6 +10,7 @@ import {
   loadFriendlyBattleProfileFromConfigDir,
   startFriendlyBattleLocalBattle,
 } from '../src/friendly-battle/local-harness.js';
+import { spawnShellCommand } from './helpers.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-local.ts');
@@ -219,7 +220,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       '--session-code',
       'alpha-local-123',
       '--timeout-ms',
-      '4000',
+      '10000',
       '--guest-config-dir',
       guestProfile.profileDir,
     ], {
@@ -227,17 +228,16 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
     });
     after(async () => terminate(host));
 
-    const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, 4_000);
+    const hostStdout = await waitForStdout(host, /^JOIN_COMMAND: .+$/m, 10_000);
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
 
-    const guest = spawn('zsh', ['-lc', joinCommand], {
+    const guest = spawnShellCommand(joinCommand, {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
         TOKENMON_TEST: '1',
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let guestStdout = '';

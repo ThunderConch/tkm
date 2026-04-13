@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { resolve } from 'node:path';
 import net from 'node:net';
+import { spawnShellCommand } from './helpers.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-spike.ts');
@@ -107,13 +108,12 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
     const joinCommand = hostStdout.match(/^JOIN_COMMAND: (.+)$/m)?.[1];
     assert.ok(joinCommand, `expected JOIN_COMMAND line in host stdout:\n${hostStdout}`);
 
-    const guest = spawn('zsh', ['-lc', joinCommand], {
+    const guest = spawnShellCommand(joinCommand, {
       cwd: REPO_ROOT,
       env: {
         ...process.env,
         TOKENMON_TEST: '1',
       },
-      stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let guestStdout = '';

@@ -14,6 +14,7 @@ const sharedSessionTokenmonDir = join(sharedSessionClaudeDir, 'tokenmon');
 const sharedSessionGenDir = join(sharedSessionTokenmonDir, 'gen4');
 const sharedSessionBattleStatePath = join(sharedSessionTokenmonDir, 'battle-state.json');
 const sharedSessionStatePath = join(sharedSessionGenDir, 'state.json');
+const sessionStartEntry = resolve(REPO_ROOT, 'src/hooks/session-start.ts');
 let childRunCounter = 0;
 
 mkdirSync(sharedSessionGenDir, { recursive: true });
@@ -133,14 +134,13 @@ function makeSessionStartEnv(t: { after: (fn: () => void) => void }) {
 
 async function runSessionStart(env: NodeJS.ProcessEnv): Promise<string> {
   const run = entryScriptQueue.then(async () => {
-    const resolvedPath = resolve(REPO_ROOT, 'dist/hooks/session-start.js');
     return await new Promise<string>((resolveRun, rejectRun) => {
       const runId = childRunCounter++;
       const stdoutPath = join(sharedSessionTestRoot, `child-${runId}.stdout.log`);
       const stderrPath = join(sharedSessionTestRoot, `child-${runId}.stderr.log`);
       const stdoutFd = openSync(stdoutPath, 'w');
       const stderrFd = openSync(stderrPath, 'w');
-      const child = spawn(process.execPath, [resolvedPath], {
+      const child = spawn(process.execPath, ['--import', 'tsx', sessionStartEntry], {
         cwd: REPO_ROOT,
         env,
         stdio: ['pipe', stdoutFd, stderrFd],
@@ -151,7 +151,7 @@ async function runSessionStart(env: NodeJS.ProcessEnv): Promise<string> {
       let settled = false;
       const timeout = setTimeout(() => {
         child.kill('SIGKILL');
-        rejectRun(new Error('Timed out waiting for dist/hooks/session-start.js'));
+        rejectRun(new Error('Timed out waiting for src/hooks/session-start.ts'));
       }, 10_000);
 
       child.on('error', (error) => {

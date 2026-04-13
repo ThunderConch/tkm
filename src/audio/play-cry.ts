@@ -1,7 +1,7 @@
 import { spawn, execSync } from 'child_process';
-import { existsSync, readFileSync } from 'fs';
+import { accessSync, constants, existsSync, readFileSync } from 'fs';
 import * as http from 'http';
-import { join, relative } from 'path';
+import { delimiter, join, relative } from 'path';
 import { readConfig } from '../core/config.js';
 import { getPokemonDB } from '../core/pokemon-data.js';
 import { CRIES_DIR, PLUGIN_ROOT } from '../core/paths.js';
@@ -88,6 +88,51 @@ function wslPath(linuxPath: string): string {
   }
 }
 
+function isExecutable(path: string): boolean {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function findExecutableOnPath(command: string): string | null {
+  if (!command) return null;
+  if (command.includes('/')) {
+    return existsSync(command) && isExecutable(command) ? command : null;
+  }
+
+  const pathValue = process.env.PATH ?? '';
+  const pathEntries = pathValue.split(delimiter).filter(Boolean);
+  const extensions = process.platform === 'win32'
+    ? Array.from(new Set(['', ...(process.env.PATHEXT?.split(';').filter(Boolean) ?? ['.EXE', '.CMD', '.BAT'])]))
+    : [''];
+
+  for (const directory of pathEntries) {
+    for (const extension of extensions) {
+      const candidate = join(directory, `${command}${extension}`);
+      if (existsSync(candidate) && isExecutable(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return null;
+}
+
+function spawnDetached(command: string, args: string[]): boolean {
+  const executable = findExecutableOnPath(command);
+  if (!executable) {
+    return false;
+  }
+
+  const child = spawn(executable, args, { detached: true, stdio: 'ignore' });
+  child.on('error', () => {});
+  child.unref();
+  return true;
+}
+
 export function playSound(filePath: string, volume: number, relay?: RelayConfig): void {
   if (relay) {
     relaySound(filePath, volume, relay, () => {
@@ -107,6 +152,7 @@ export function playSound(filePath: string, volume: number, relay?: RelayConfig)
         '-NonInteractive', '-NoProfile', '-ExecutionPolicy', 'Bypass',
         '-File', winPs1, '-FilePath', winFile, '-Volume', String(volume),
       ], { detached: true, stdio: 'ignore' });
+      child.on('error', () => {});
       child.unref();
       return;
     }
@@ -114,11 +160,9 @@ export function playSound(filePath: string, volume: number, relay?: RelayConfig)
 
   // macOS
   if (process.platform === 'darwin') {
-    const child = spawn('afplay', ['-v', String(volume), filePath], {
-      detached: true, stdio: 'ignore',
-    });
-    child.unref();
-    return;
+    if (spawnDetached('afplay', ['-v', String(volume), filePath])) {
+      return;
+    }
   }
 
   // Linux fallback chain (aplay omitted — WAV-only, no OGG support)
@@ -131,12 +175,8 @@ export function playSound(filePath: string, volume: number, relay?: RelayConfig)
   ];
 
   for (const { cmd, args } of players) {
-    try {
-      const child = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-      child.unref();
+    if (spawnDetached(cmd, args)) {
       return;
-    } catch {
-      continue;
     }
   }
 }
