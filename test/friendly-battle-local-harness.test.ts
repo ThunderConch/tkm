@@ -36,7 +36,7 @@ type ProfilePokemon = {
   moves?: number[];
 };
 
-function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli {
+function spawnCli(args: string[], options?: { configDir?: string; env?: NodeJS.ProcessEnv }): SpawnedCli {
   const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
     cwd: REPO_ROOT,
     env: {
@@ -44,6 +44,7 @@ function spawnCli(args: string[], options?: { configDir?: string }): SpawnedCli 
       TOKENMON_TEST: '1',
       TSX_DISABLE_CACHE: '1',
       ...(options?.configDir ? { CLAUDE_CONFIG_DIR: options.configDir } : {}),
+      ...(options?.env ?? {}),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -488,16 +489,6 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       guest.once('error', rejectGuest);
       guest.once('close', (exitCode, signal) => resolveGuest({ stdout: guestStdout, stderr: guestStderr, exitCode, signal }));
     });
-    const guestSpawned: SpawnedCli = {
-      child: guest,
-      output: { get stdout() { return guestStdout; }, get stderr() { return guestStderr; } },
-      completion: guestCompletion,
-    };
-
-    await waitForStdout(host, /HOST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
-    await writeChoice(host, 'move:0');
-    await waitForStdout(guestSpawned, /GUEST_PROMPT: turn 1 .*move:0.*surrender/m, battleExchangeTimeoutMs);
-    guest.stdin.write('surrender\n');
 
     const [hostResult, guestResult] = await Promise.all([
       host.completion,
@@ -557,6 +548,9 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       String(battleExchangeTimeoutMs),
     ], {
       configDir: hostProfile.profileDir,
+      env: {
+        TOKENMON_FORCE_PROMPTS: '1',
+      },
     });
     after(async () => terminate(host));
 
@@ -569,6 +563,7 @@ describe('friendly battle local harness CLI', { concurrency: false }, () => {
       env: {
         ...process.env,
         TOKENMON_TEST: '1',
+        TOKENMON_FORCE_PROMPTS: '1',
         TSX_DISABLE_CACHE: '1',
         CLAUDE_CONFIG_DIR: guestProfile.profileDir,
       },
