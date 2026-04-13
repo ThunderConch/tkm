@@ -245,14 +245,28 @@ function eventToEnvelopeFields(
         currentFrameIndex: 0,
       };
     }
-    case 'battle_finished':
+    case 'battle_finished': {
+      // Distinguish voluntary leave (cancelled) and peer disconnect from a
+      // normal win/loss so the skill can render an accurate end-of-battle
+      // message without having to sniff stderr or the reason field.
+      let questionContext: string;
+      if (event.reason === 'cancelled') {
+        questionContext = 'You left the battle.';
+      } else if (event.reason === 'disconnect') {
+        questionContext = 'Opponent left the battle.';
+      } else if (event.winner === role) {
+        questionContext = 'You won!';
+      } else {
+        questionContext = 'You lost!';
+      }
       return {
-        questionContext: event.winner === role ? 'You won!' : 'You lost!',
+        questionContext,
         moveOptions: [],
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
         animationFrames: [],
         currentFrameIndex: 0,
       };
+    }
   }
 }
 
@@ -268,6 +282,12 @@ function eventStatus(
     case 'turn_resolved':
       return 'ongoing';
     case 'battle_finished':
+      // Voluntary leave (cancelled) and peer disconnect are aborted states,
+      // not a win/loss. Map them to 'aborted' so the skill's turn loop can
+      // branch cleanly without sniffing the reason field.
+      if (event.reason === 'cancelled' || event.reason === 'disconnect') {
+        return 'aborted';
+      }
       return event.winner === role ? 'victory' : 'defeat';
   }
 }

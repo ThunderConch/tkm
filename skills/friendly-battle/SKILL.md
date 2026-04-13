@@ -99,7 +99,10 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
    - **`fainted_switch`**: go directly to **Step 6** (forced switch — no move menu).
    - **`victory`**: show "승리! 배틀이 끝났습니다." and stop.
    - **`defeat`**: show "패배... 배틀이 끝났습니다." and stop.
-   - **`aborted`** (or `phase === 'aborted'`): if the envelope's `questionContext` contains "opponent" or the reason is `disconnect`, show "상대방이 배틀을 떠났습니다. (Opponent left the battle.)" and stop. Otherwise read REASON from stderr, show it, and stop.
+   - **`aborted`** (or `phase === 'aborted'`): the daemon now marks voluntary leave and peer disconnect with distinct `questionContext` strings so you can branch without sniffing stderr:
+     - `questionContext === 'You left the battle.'` → show "배틀을 떠났습니다." and stop.
+     - `questionContext === 'Opponent left the battle.'` → show "상대방이 배틀을 떠났습니다. (Opponent left the battle.)" and stop.
+     - Any other `aborted` envelope (timeout, handshake failure, etc.) → read REASON from stderr, show it, and stop.
    - Anything else: loop back to step 1.
 
 3. **Move-select AskUserQuestion** (when `status === 'select_action'`):

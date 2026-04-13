@@ -181,16 +181,42 @@ async function drainUntilAbortedOrDone(
 
 const liveChildren: ChildProcess[] = [];
 
-afterEach(() => {
-  for (const child of liveChildren.splice(0)) {
-    if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
+async function reapChildren(children: ChildProcess[]): Promise<void> {
+  // Phase 1: SIGTERM anything still running, collect pids to wait on.
+  const pids: number[] = [];
+  for (const child of children) {
+    if (child.exitCode === null && !child.killed) {
+      child.kill('SIGTERM');
+    }
+    if (typeof child.pid === 'number' && child.pid > 0) {
+      pids.push(child.pid);
+    }
   }
+
+  // Phase 2: wait up to 500ms for each pid to actually exit.
+  const termDeadline = Date.now() + 500;
+  while (Date.now() < termDeadline) {
+    const alive = pids.filter((pid) => {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    });
+    if (alive.length === 0) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  }
+
+  // Phase 3: SIGKILL stragglers and give them 200ms to disappear from the
+  // process table so subsequent rmSync does not race socket unlink.
+  for (const pid of pids) {
+    try { process.kill(pid, 'SIGKILL'); } catch { /* ESRCH: already gone */ }
+  }
+  await new Promise<void>((resolve) => setTimeout(resolve, 200));
+}
+
+afterEach(async () => {
+  await reapChildren(liveChildren.splice(0));
 });
 
-after(() => {
-  for (const child of liveChildren) {
-    if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
-  }
+after(async () => {
+  await reapChildren(liveChildren);
 });
 
 // ---------------------------------------------------------------------------
