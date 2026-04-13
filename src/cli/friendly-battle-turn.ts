@@ -1,12 +1,14 @@
 #!/usr/bin/env -S npx tsx
 import { parseArgs } from 'node:util';
 import { randomUUID } from 'node:crypto';
-import { createFriendlyBattleSpikeHost } from '../friendly-battle/spike/tcp-direct.js';
+import { createFriendlyBattleSpikeHost, connectFriendlyBattleSpikeGuest } from '../friendly-battle/spike/tcp-direct.js';
 import {
   type FriendlyBattleSessionRecord,
   writeFriendlyBattleSessionRecord,
 } from '../friendly-battle/session-store.js';
 import { formatFriendlyBattleTurnJson } from '../friendly-battle/turn-json.js';
+import { loadFriendlyBattleCurrentProfile } from '../friendly-battle/local-harness.js';
+import { buildFriendlyBattlePartySnapshot } from '../friendly-battle/snapshot.js';
 
 type Subcommand =
   | 'init-host'
@@ -142,12 +144,20 @@ async function runInitHost(flags: Record<string, string | undefined>): Promise<v
 
   try {
     const joined = await host.waitForGuestJoin(timeoutMs);
+    process.stderr.write(`STAGE: guest_joined (${joined.guestPlayerName})\n`);
+
+    // Mark host ready, wait for guest ready, then start the battle so the
+    // guest's waitForStarted() can resolve.
+    host.markHostReady();
+    await host.waitUntilCanStart(timeoutMs);
+    await host.startBattle(randomUUID());
+
     record.phase = 'battle';
     record.status = 'select_action';
     record.opponent = { playerName: joined.guestPlayerName };
     record.updatedAt = nowIso();
     writeFriendlyBattleSessionRecord(record);
-    process.stderr.write(`STAGE: guest_joined (${joined.guestPlayerName})\n`);
+
     // PR43 scope: emit the ready envelope and exit 0. Turn loop (wait-next-event)
     // is PR44.
     process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
@@ -171,8 +181,70 @@ async function runInitHost(flags: Record<string, string | undefined>): Promise<v
   }
   await host.close().catch(() => undefined);
 }
-async function runInitJoin(_flags: Record<string, string | boolean | undefined>): Promise<void> {
-  throw new Error('not implemented: --init-join');
+async function runInitJoin(flags: Record<string, string | boolean | undefined>): Promise<void> {
+  const stringFlags = flags as Record<string, string | undefined>;
+  const sessionCode = requireFlag(stringFlags, 'session-code');
+  const hostAddr = requireFlag(stringFlags, 'host');
+  const port = Number.parseInt(requireFlag(stringFlags, 'port'), 10);
+  const timeoutMs = Number.parseInt(stringFlags['timeout-ms'] ?? '4000', 10);
+  const generation = stringFlags.generation ?? 'gen4';
+  const playerName = stringFlags['player-name'] ?? 'Guest';
+
+  const guestProfile = loadFriendlyBattleCurrentProfile(generation);
+  const guestSnapshot = buildFriendlyBattlePartySnapshot(guestProfile);
+
+  const guest = await connectFriendlyBattleSpikeGuest({
+    host: hostAddr,
+    port,
+    sessionCode,
+    guestPlayerName: playerName,
+    generation,
+    guestSnapshot,
+    timeoutMs,
+  });
+
+  const sessionId = `fb-${randomUUID()}`;
+  const nowIso = () => new Date().toISOString();
+  const record: FriendlyBattleSessionRecord = {
+    sessionId,
+    role: 'guest',
+    generation,
+    sessionCode,
+    phase: 'handshake',
+    status: 'connecting',
+    transport: { host: hostAddr, port },
+    opponent: { playerName: 'Host' },
+    pid: process.pid,
+    createdAt: nowIso(),
+    updatedAt: nowIso(),
+  };
+  writeFriendlyBattleSessionRecord(record);
+  process.stderr.write(`STAGE: connected\n`);
+
+  await guest.markReady();
+  record.phase = 'ready';
+  record.status = 'connecting';
+  record.updatedAt = nowIso();
+  writeFriendlyBattleSessionRecord(record);
+  process.stderr.write(`STAGE: ready\n`);
+
+  await guest.waitForStarted(timeoutMs);
+  record.phase = 'battle';
+  record.status = 'select_action';
+  record.updatedAt = nowIso();
+  writeFriendlyBattleSessionRecord(record);
+  process.stderr.write(`STAGE: battle_started\n`);
+
+  process.stdout.write(`${JSON.stringify(formatFriendlyBattleTurnJson({
+    record,
+    questionContext: `🤝 vs Host`,
+    moveOptions: [],
+    partyOptions: [],
+    animationFrames: [],
+    currentFrameIndex: 0,
+  }))}\n`);
+
+  await guest.close().catch(() => undefined);
 }
 async function runAction(_flags: Record<string, string | boolean | undefined>): Promise<void> {
   throw new Error('not implemented: --action');

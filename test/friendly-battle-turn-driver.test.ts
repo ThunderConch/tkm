@@ -3,10 +3,18 @@ import assert from 'node:assert/strict';
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join as joinPath } from 'node:path';
 
 const execFileP = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const CLI = resolve(REPO_ROOT, 'src/cli/friendly-battle-turn.ts');
+
+type SpawnedDriver = {
+  completion: Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
+  stderrLines: string[];
+};
 
 function spawnDriver(args: string[]): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
   return new Promise((resolvePromise, rejectPromise) => {
@@ -21,6 +29,69 @@ function spawnDriver(args: string[]): Promise<{ stdout: string; stderr: string; 
     child.once('error', rejectPromise);
     child.once('close', (exitCode) => resolvePromise({ stdout, stderr, exitCode }));
   });
+}
+
+function spawnDriverWithClaudeDir(claudeDir: string, args: string[]): SpawnedDriver {
+  const stderrLines: string[] = [];
+  const completion = new Promise<{ stdout: string; stderr: string; exitCode: number | null }>((resolvePromise, rejectPromise) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args], {
+      env: { ...process.env, TOKENMON_TEST: '1', TSX_DISABLE_CACHE: '1', CLAUDE_CONFIG_DIR: claudeDir },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c: Buffer) => { stdout += c.toString(); });
+    child.stderr.on('data', (c: Buffer) => {
+      const text = c.toString();
+      stderr += text;
+      stderrLines.push(...text.split('\n').filter(Boolean));
+    });
+    child.once('error', rejectPromise);
+    child.once('close', (exitCode) => resolvePromise({ stdout, stderr, exitCode }));
+  });
+  return { completion, stderrLines };
+}
+
+function readPortFromHostStderr(spawned: SpawnedDriver): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      for (const line of spawned.stderrLines) {
+        const match = /^PORT:\s*(\d+)/.exec(line);
+        if (match) {
+          resolve(Number.parseInt(match[1], 10));
+          return;
+        }
+      }
+      // Poll until host emits the PORT line or completion resolves (failure)
+      spawned.completion.then((result) => {
+        if (result.exitCode !== null && result.exitCode !== 0) {
+          reject(new Error(`host exited with code ${result.exitCode} before emitting PORT`));
+        }
+      }).catch(reject);
+      setTimeout(check, 20);
+    };
+    check();
+  });
+}
+
+function withSeededClaudeConfigDir<T>(fn: (dir: string) => Promise<T>): Promise<T> {
+  const dir = mkdtempSync(joinPath(tmpdir(), 'tkm-fb-init-join-'));
+  const genDir = joinPath(dir, 'tokenmon', 'gen4');
+  mkdirSync(genDir, { recursive: true });
+  writeFileSync(
+    joinPath(genDir, 'config.json'),
+    JSON.stringify({ party: ['387'], starter_chosen: true }),
+  );
+  writeFileSync(
+    joinPath(genDir, 'state.json'),
+    JSON.stringify({
+      pokemon: {
+        '387': { id: 387, xp: 100, level: 16, friendship: 0, ev: 0, moves: [33, 45] },
+      },
+    }),
+  );
+  const cleanup = () => rmSync(dir, { recursive: true, force: true });
+  return fn(dir).finally(cleanup);
 }
 
 describe('friendly-battle-turn CLI', () => {
@@ -64,5 +135,41 @@ describe('friendly-battle-turn --init-host', () => {
     // waiting line should have been printed before we gave up
     assert.match(result.stdout, /"phase":\s*"waiting_for_guest"/);
     assert.match(result.stderr, /STAGE:\s*waiting_for_guest/);
+  });
+});
+
+describe('friendly-battle-turn init handshake', () => {
+  it('init-join connects to an init-host and both exit 0 with battle phase', async () => {
+    await withSeededClaudeConfigDir(async (claudeDir) => {
+      const sessionCode = 'handshake-321';
+      const host = spawnDriverWithClaudeDir(claudeDir, [
+        '--init-host',
+        '--session-code', sessionCode,
+        '--listen-host', '127.0.0.1',
+        '--port', '0',
+        '--timeout-ms', '10000',
+        '--generation', 'gen4',
+        '--player-name', 'Host',
+      ]);
+
+      const hostPort = await readPortFromHostStderr(host);
+
+      const join = spawnDriverWithClaudeDir(claudeDir, [
+        '--init-join',
+        '--session-code', sessionCode,
+        '--host', '127.0.0.1',
+        '--port', String(hostPort),
+        '--timeout-ms', '10000',
+        '--generation', 'gen4',
+        '--player-name', 'Guest',
+      ]);
+
+      const [hostResult, joinResult] = await Promise.all([host.completion, join.completion]);
+      assert.equal(joinResult.exitCode, 0, `join stderr:\n${joinResult.stderr}`);
+      assert.equal(hostResult.exitCode, 0, `host stderr:\n${hostResult.stderr}`);
+      assert.match(hostResult.stdout, /"phase":\s*"battle"/);
+      assert.match(joinResult.stdout, /"phase":\s*"battle"/);
+      assert.match(joinResult.stdout, /"role":\s*"guest"/);
+    });
   });
 });
