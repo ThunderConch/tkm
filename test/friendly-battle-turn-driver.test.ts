@@ -102,7 +102,6 @@ describe('friendly-battle-turn CLI', () => {
     assert.match(combined, /--init-host/);
     assert.match(combined, /--init-join/);
     assert.match(combined, /--action/);
-    assert.match(combined, /--refresh/);
     assert.match(combined, /--status/);
   });
 
@@ -350,9 +349,9 @@ function spawnFbDaemon(
   return new Promise((resolveP, rejectP) => {
     const child = spawn(
       process.execPath,
-      ['--import', 'tsx', DAEMON_ENTRY_FB, '--role', role, '--options-json', encodeDaemonOptionsB64(options)],
+      ['--import', 'tsx', DAEMON_ENTRY_FB, '--role', role],
       {
-        env: { ...process.env, CLAUDE_CONFIG_DIR: claudeDir, TSX_DISABLE_CACHE: '1', TOKENMON_TEST: '1' },
+        env: { ...process.env, CLAUDE_CONFIG_DIR: claudeDir, TSX_DISABLE_CACHE: '1', TOKENMON_TEST: '1', TKM_FB_OPTIONS_B64: encodeDaemonOptionsB64(options) },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
       },
@@ -465,8 +464,15 @@ async function killAllDaemons(claudeDir: string, generation: string): Promise<vo
   for (const pid of pids) {
     try { process.kill(pid, 'SIGKILL'); } catch { /* ESRCH */ }
   }
-  // Brief wait after SIGKILL so the process table clears before rmSync
-  await new Promise<void>((resolve) => setTimeout(resolve, 100));
+  // Poll up to 500ms for SIGKILL to take effect rather than a fixed sleep.
+  const killDeadline = Date.now() + 500;
+  while (Date.now() < killDeadline) {
+    const stillAlive = pids.filter((pid) => {
+      try { process.kill(pid, 0); return true; } catch { return false; }
+    });
+    if (stillAlive.length === 0) return;
+    await new Promise<void>((resolve) => setTimeout(resolve, 25));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -568,6 +574,8 @@ describe('friendly-battle-turn per-action subcommands', () => {
     cleanupDirs.push(claudeDir);
 
     const sessionId = `test-dead-${Date.now()}`;
+    // socketPath must be inside the sessions dir to pass isValidRecord containment check.
+    const socketPath = joinPath(claudeDir, 'tokenmon', 'gen4', 'friendly-battle', 'sessions', `${sessionId}.sock`);
     writeRecordInDir(claudeDir, {
       sessionId,
       role: 'host',
@@ -579,7 +587,7 @@ describe('friendly-battle-turn per-action subcommands', () => {
       opponent: { playerName: 'Ghost' },
       pid: process.pid,
       daemonPid: 1 << 22, // non-running PID
-      socketPath: '/tmp/nonexistent-socket-fb.sock',
+      socketPath,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -814,7 +822,7 @@ describe('friendly-battle-turn per-action subcommands', () => {
       opponent: { playerName: 'Guest' },
       pid: process.pid,
       daemonPid: 1 << 22,
-      socketPath: '/tmp/nonexistent-switch.sock',
+      socketPath: joinPath(claudeDir, 'tokenmon', 'gen4', 'friendly-battle', 'sessions', `${sessionId}.sock`),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });
@@ -845,7 +853,7 @@ describe('friendly-battle-turn per-action subcommands', () => {
       opponent: { playerName: 'Guest' },
       pid: process.pid,
       daemonPid: 1 << 22,
-      socketPath: '/tmp/nonexistent-surrender.sock',
+      socketPath: joinPath(claudeDir, 'tokenmon', 'gen4', 'friendly-battle', 'sessions', `${sessionId}.sock`),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     });

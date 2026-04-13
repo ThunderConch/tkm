@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   friendlyBattleSessionRecordPath,
+  friendlyBattleSessionsDir,
   readFriendlyBattleSessionRecord,
   writeFriendlyBattleSessionRecord,
   listFriendlyBattleSessionRecords,
@@ -25,11 +26,18 @@ function withTempClaudeDir(fn: (dir: string) => void): void {
   }
 }
 
+/** Compute the canonical socket path for a session (must be called inside withTempClaudeDir). */
+function makeSocketPath(sessionId: string, generation = 'gen4'): string {
+  return join(friendlyBattleSessionsDir(generation), `${sessionId}.sock`);
+}
+
 function makeRecord(overrides: Partial<FriendlyBattleSessionRecord> = {}): FriendlyBattleSessionRecord {
+  const sessionId = overrides.sessionId ?? 'fb-session-001';
+  const generation = overrides.generation ?? 'gen4';
   return {
-    sessionId: 'fb-session-001',
+    sessionId,
     role: 'host',
-    generation: 'gen4',
+    generation,
     sessionCode: 'alpha-123',
     phase: 'waiting_for_guest',
     status: 'waiting_for_guest',
@@ -37,7 +45,7 @@ function makeRecord(overrides: Partial<FriendlyBattleSessionRecord> = {}): Frien
     opponent: null,
     pid: process.pid,
     daemonPid: process.pid,
-    socketPath: '/tmp/fb-test.sock',
+    socketPath: makeSocketPath(sessionId, generation),
     createdAt: '2026-04-14T00:00:00.000Z',
     updatedAt: '2026-04-14T00:00:00.000Z',
     ...overrides,
@@ -71,10 +79,10 @@ describe('friendly-battle session store', () => {
     });
   });
 
-  it('reaps records whose pids are no longer running', () => {
+  it('reaps records whose daemonPids are no longer running', () => {
     withTempClaudeDir(() => {
-      const liveRecord = makeRecord({ sessionId: 'alive', pid: process.pid });
-      const deadRecord = makeRecord({ sessionId: 'dead', pid: 1 << 22 });
+      const liveRecord = makeRecord({ sessionId: 'alive', pid: process.pid, daemonPid: process.pid });
+      const deadRecord = makeRecord({ sessionId: 'dead', pid: process.pid, daemonPid: 1 << 22 });
       writeFriendlyBattleSessionRecord(liveRecord);
       writeFriendlyBattleSessionRecord(deadRecord);
 
@@ -130,6 +138,42 @@ describe('friendly-battle session store', () => {
       writeFileSync(path, JSON.stringify(withoutDaemonPid), 'utf8');
       const loaded = readFriendlyBattleSessionRecord('no-daemon-pid', 'gen4');
       assert.equal(loaded, null);
+    });
+  });
+
+  it('reap uses daemonPid: does not reap when daemonPid is alive even if parent pid is dead', () => {
+    withTempClaudeDir(() => {
+      // pid = dead CLI parent (1 << 22), daemonPid = live process — should NOT be reaped
+      const liveRecord = makeRecord({ sessionId: 'live-daemon', pid: 1 << 22, daemonPid: process.pid });
+      writeFriendlyBattleSessionRecord(liveRecord);
+
+      const reaped = reapStaleFriendlyBattleSessions('gen4');
+      assert.deepEqual(reaped, [], 'live daemonPid should not be reaped');
+
+      const remaining = listFriendlyBattleSessionRecords('gen4').map((r) => r.sessionId);
+      assert.deepEqual(remaining, ['live-daemon'], 'record should still exist');
+
+      // Now write a second record with a dead daemonPid — it SHOULD be reaped
+      const deadRecord = makeRecord({ sessionId: 'dead-daemon', pid: process.pid, daemonPid: 1 << 22 });
+      writeFriendlyBattleSessionRecord(deadRecord);
+
+      const reaped2 = reapStaleFriendlyBattleSessions('gen4');
+      assert.deepEqual(reaped2, ['dead-daemon'], 'dead daemonPid should be reaped');
+      const remaining2 = listFriendlyBattleSessionRecords('gen4').map((r) => r.sessionId);
+      assert.deepEqual(remaining2, ['live-daemon'], 'only the dead-daemon record should be removed');
+    });
+  });
+
+  it('returns null when socketPath is outside the sessions directory (path traversal)', () => {
+    withTempClaudeDir(() => {
+      const valid = makeRecord({ sessionId: 'tampered' });
+      writeFriendlyBattleSessionRecord(valid);
+      const path = friendlyBattleSessionRecordPath('tampered', 'gen4');
+      // Overwrite with a tampered socketPath pointing outside the sessions dir
+      const tampered = { ...valid, socketPath: '/tmp/evil.sock' };
+      writeFileSync(path, JSON.stringify(tampered), 'utf8');
+      const loaded = readFriendlyBattleSessionRecord('tampered', 'gen4');
+      assert.equal(loaded, null, 'tampered socketPath should be rejected');
     });
   });
 });

@@ -59,13 +59,14 @@ function spawnDaemon(
   return new Promise((resolve, reject) => {
     const child = spawn(
       process.execPath,
-      ['--import', 'tsx', DAEMON_ENTRY, '--role', role, '--options-json', encodeOptionsJson(options)],
+      ['--import', 'tsx', DAEMON_ENTRY, '--role', role],
       {
         env: {
           ...process.env,
           CLAUDE_CONFIG_DIR: claudeDir,
           TSX_DISABLE_CACHE: '1',
           TOKENMON_TEST: '1',
+          TKM_FB_OPTIONS_B64: encodeOptionsJson(options),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,

@@ -20,7 +20,6 @@ type Subcommand =
   | 'init-join'
   | 'wait-next-event'
   | 'action'
-  | 'refresh'
   | 'status';
 
 interface ParsedCliArgs {
@@ -36,7 +35,6 @@ const USAGE = [
   '  --init-join --session-code <code> --host <host> --port <port> [--timeout-ms 4000] [--generation gen4] [--player-name Guest]',
   '  --wait-next-event --session <id> --generation <gen> [--timeout-ms 60000]',
   '  --action <move:N|switch:N|surrender> --session <id> --generation <gen>',
-  '  --refresh (--frame <i> | --finalize) --session <id>',
   '  --status --session <id> --generation <gen>',
   '',
 ].join('\n');
@@ -46,7 +44,6 @@ const SUBCOMMAND_FLAGS = new Set<string>([
   '--init-join',
   '--wait-next-event',
   // '--action' is intentionally absent: it carries a value and is parsed by parseArgs directly
-  '--refresh',
   '--status',
 ]);
 
@@ -59,8 +56,6 @@ const CLI_FLAG_SCHEMA = {
   'timeout-ms': { type: 'string' as const },
   'generation': { type: 'string' as const },
   'player-name': { type: 'string' as const },
-  'frame': { type: 'string' as const },
-  'finalize': { type: 'boolean' as const },
   'action': { type: 'string' as const },
 };
 
@@ -138,7 +133,6 @@ function resolveSubcommand(argv: string[]): Subcommand | null {
   if (argv.includes('--init-join')) return 'init-join';
   if (argv.includes('--wait-next-event')) return 'wait-next-event';
   if (argv.includes('--action')) return 'action';
-  if (argv.includes('--refresh')) return 'refresh';
   if (argv.includes('--status')) return 'status';
   return null;
 }
@@ -252,11 +246,11 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
   // Fork the daemon as a detached child
   const child = spawn(
     process.execPath,
-    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'host', '--options-json', optionsB64],
+    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'host'],
     {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: { ...process.env, TKM_FB_OPTIONS_B64: optionsB64 },
     },
   );
 
@@ -276,7 +270,8 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
     );
   } catch (err) {
     // Daemon failed to start — emit aborted envelope and exit 1
-    child.kill();
+    child.kill('SIGTERM');
+    child.unref();
     const record: FriendlyBattleSessionRecord = {
       sessionId,
       role: 'host',
@@ -382,11 +377,11 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
   // Fork the daemon as a detached child
   const child = spawn(
     process.execPath,
-    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'guest', '--options-json', optionsB64],
+    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'guest'],
     {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
-      env: { ...process.env },
+      env: { ...process.env, TKM_FB_OPTIONS_B64: optionsB64 },
     },
   );
 
@@ -405,7 +400,8 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
     );
   } catch (err) {
     // Daemon failed to start — emit aborted envelope and exit 1
-    child.kill();
+    child.kill('SIGTERM');
+    child.unref();
     const record: FriendlyBattleSessionRecord = {
       sessionId,
       role: 'guest',
@@ -546,10 +542,6 @@ async function runAction(flags: Record<string, string | boolean | undefined>): P
   }
 }
 
-async function runRefresh(_flags: Record<string, string | boolean | undefined>): Promise<void> {
-  throw new Error('not implemented: --refresh');
-}
-
 async function runStatus(flags: Record<string, string | boolean | undefined>): Promise<void> {
   const sessionId = validateSafeId(requireFlag(flags, 'session'), 'session');
   const generation = validateGeneration(asStringFlag(flags, 'generation'));
@@ -606,9 +598,6 @@ async function main(argv: string[]): Promise<void> {
       return;
     case 'action':
       await runAction(parsed.flags);
-      return;
-    case 'refresh':
-      await runRefresh(parsed.flags);
       return;
     case 'status':
       await runStatus(parsed.flags);

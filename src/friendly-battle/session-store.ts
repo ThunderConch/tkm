@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 export type FriendlyBattlePhase =
   | 'waiting_for_guest'
@@ -32,8 +32,8 @@ export interface FriendlyBattleSessionRecord {
   transport: { host: string; port: number };
   opponent: { playerName: string } | null;
   pid: number;
-  daemonPid?: number;
-  socketPath?: string;
+  daemonPid: number;
+  socketPath: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -55,6 +55,17 @@ function isValidRecord(value: unknown): value is FriendlyBattleSessionRecord {
   if (typeof r.pid !== 'number' || !Number.isInteger(r.pid) || r.pid <= 0) return false;
   if (typeof r.daemonPid !== 'number' || !Number.isInteger(r.daemonPid) || r.daemonPid <= 0) return false;
   if (typeof r.socketPath !== 'string' || r.socketPath.length === 0) return false;
+  // Security: socketPath must be contained within the generation's sessions dir
+  // and its basename must be <sessionId>.sock to prevent path traversal.
+  try {
+    const expectedDir = friendlyBattleSessionsDir(r.generation as string);
+    const resolvedSocket = resolve(r.socketPath as string);
+    const resolvedDir = resolve(expectedDir);
+    if (!resolvedSocket.startsWith(resolvedDir + sep)) return false;
+    if (!resolvedSocket.endsWith(`${sep}${r.sessionId as string}.sock`)) return false;
+  } catch {
+    return false;
+  }
   if (typeof r.phase !== 'string') return false;
   if (typeof r.status !== 'string') return false;
   if (typeof r.sessionCode !== 'string') return false;
@@ -80,7 +91,7 @@ export function friendlyBattleSessionRecordPath(sessionId: string, generation: s
 
 export function writeFriendlyBattleSessionRecord(record: FriendlyBattleSessionRecord): void {
   const path = friendlyBattleSessionRecordPath(record.sessionId, record.generation);
-  mkdirSync(dirname(path), { recursive: true });
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
   const tmpPath = `${path}.tmp`;
   writeFileSync(tmpPath, JSON.stringify(record, null, 2), 'utf8');
   renameSync(tmpPath, path);
@@ -116,7 +127,8 @@ export function reapFriendlyBattleSessionRecord(sessionId: string, generation: s
 export function reapStaleFriendlyBattleSessions(generation: string): string[] {
   const reaped: string[] = [];
   for (const record of listFriendlyBattleSessionRecords(generation)) {
-    if (!isPidAlive(record.pid)) {
+    const pidToCheck = record.daemonPid ?? record.pid;
+    if (!isPidAlive(pidToCheck)) {
       reapFriendlyBattleSessionRecord(record.sessionId, generation);
       reaped.push(record.sessionId);
     }

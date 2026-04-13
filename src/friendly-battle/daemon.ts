@@ -298,6 +298,10 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   const localEventQueue = new AsyncQueue<FriendlyBattleBattleEvent>();
   const localActionQueue = new AsyncQueue<FriendlyBattleChoiceEnvelope>();
 
+  // Sentinel set during clean shutdown: late wait_next_event callers get this
+  // finished envelope immediately instead of hanging until their own timeout.
+  let queueClosedEnvelope: ReturnType<typeof formatFriendlyBattleTurnJson> | null = null;
+
   // ---------------------------------------------------------------------------
   // Session record — written every time phase changes
   // ---------------------------------------------------------------------------
@@ -351,6 +355,10 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       }
 
       case 'wait_next_event': {
+        // If the queue was closed cleanly, return the finished envelope immediately.
+        if (queueClosedEnvelope !== null) {
+          return { op: 'event', envelope: queueClosedEnvelope };
+        }
         const event = await localEventQueue.shift(req.timeoutMs, 'wait_next_event');
         const fields = eventToEnvelopeFields(event, role, runtime, ownSnapshot);
         // Update record status based on the event
@@ -402,6 +410,16 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       while (localEventQueue.size > 0 && Date.now() < drainDeadline) {
         await new Promise<void>((resolve) => setTimeout(resolve, 20));
       }
+      // Arm the sentinel so late wait_next_event callers get the finished
+      // envelope immediately instead of hanging until their own timeout fires.
+      queueClosedEnvelope = formatFriendlyBattleTurnJson({
+        record,
+        questionContext: record.status === 'victory' ? 'You won!' : 'You lost!',
+        moveOptions: [],
+        partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
+        animationFrames: [],
+        currentFrameIndex: 0,
+      });
     }
     await ipcServer.close().catch(() => undefined);
     process.exit(exitCode);
@@ -612,7 +630,6 @@ export async function startDaemon(role: FriendlyBattleRole, options: DaemonOptio
 
 function parseCliOptions(argv: string[]): { role: FriendlyBattleRole; options: DaemonOptions } {
   let role: FriendlyBattleRole | undefined;
-  let optionsJson: string | undefined;
 
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--role' && argv[i + 1]) {
@@ -622,8 +639,6 @@ function parseCliOptions(argv: string[]): { role: FriendlyBattleRole; options: D
         process.exit(1);
       }
       role = r as FriendlyBattleRole;
-    } else if (argv[i] === '--options-json' && argv[i + 1]) {
-      optionsJson = argv[++i];
     }
   }
 
@@ -631,17 +646,19 @@ function parseCliOptions(argv: string[]): { role: FriendlyBattleRole; options: D
     process.stderr.write('daemon: missing --role\n');
     process.exit(1);
   }
-  if (!optionsJson) {
-    process.stderr.write('daemon: missing --options-json\n');
+
+  const optionsB64 = process.env.TKM_FB_OPTIONS_B64;
+  if (!optionsB64) {
+    process.stderr.write('daemon: missing TKM_FB_OPTIONS_B64 environment variable\n');
     process.exit(1);
   }
 
   let options: DaemonOptions;
   try {
-    const decoded = Buffer.from(optionsJson, 'base64').toString('utf8');
+    const decoded = Buffer.from(optionsB64, 'base64').toString('utf8');
     options = JSON.parse(decoded) as DaemonOptions;
   } catch (err) {
-    process.stderr.write(`daemon: failed to decode --options-json: ${(err as Error).message}\n`);
+    process.stderr.write(`daemon: failed to decode TKM_FB_OPTIONS_B64: ${(err as Error).message}\n`);
     process.exit(1);
   }
 

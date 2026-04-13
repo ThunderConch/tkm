@@ -1,6 +1,6 @@
 // src/friendly-battle/daemon-ipc.ts
 import net from 'node:net';
-import { existsSync, unlinkSync } from 'node:fs';
+import { chmodSync, existsSync, unlinkSync } from 'node:fs';
 import {
   decodeDaemonMessage,
   encodeDaemonMessage,
@@ -17,6 +17,12 @@ export interface DaemonIpcServer {
   close(): Promise<void>;
 }
 
+/**
+ * Create a UNIX socket IPC server for the daemon.
+ *
+ * The server accepts exactly one request-response per connection — clients
+ * must not pipeline multiple requests on the same connection.
+ */
 export async function createDaemonIpcServer(
   socketPath: string,
   handler: DaemonIpcHandler,
@@ -31,6 +37,9 @@ export async function createDaemonIpcServer(
     let buffer = '';
     let handled = false;
 
+    // 5-second idle timeout — destroy the socket if no newline arrives in time.
+    socket.setTimeout(5000, () => socket.destroy());
+
     const cleanup = (): void => {
       if (!socket.destroyed) {
         socket.end();
@@ -40,6 +49,11 @@ export async function createDaemonIpcServer(
     socket.on('data', (chunk: string) => {
       if (handled) return;
       buffer += chunk;
+      // DoS cap: reject clients that send more than 64 KiB without a newline.
+      if (buffer.length > 64 * 1024) {
+        socket.destroy();
+        return;
+      }
       const newlineIdx = buffer.indexOf('\n');
       if (newlineIdx < 0) return;
 
@@ -84,6 +98,13 @@ export async function createDaemonIpcServer(
       resolve();
     });
   });
+
+  // Restrict socket access to owner only (security H1).
+  try {
+    chmodSync(socketPath, 0o600);
+  } catch {
+    // best effort — socket may be on a filesystem that ignores permissions
+  }
 
   return {
     socketPath,

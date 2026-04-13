@@ -69,6 +69,37 @@ describe('friendly-battle daemon IPC', () => {
     );
   });
 
+  it('rejects a client that writes 128 KiB without a newline', async () => {
+    const socketPath = tempSocketPath();
+    const server = await createDaemonIpcServer(socketPath, () => {
+      throw new Error('handler should not run on oversized request');
+    });
+    servers.push(server);
+
+    // Send 128 KiB of data with no newline — the server should destroy the socket.
+    const bigBuf = Buffer.alloc(128 * 1024, 'x');
+    await new Promise<void>((resolve, reject) => {
+      const client = net.createConnection(socketPath, () => {
+        client.write(bigBuf);
+      });
+      client.on('close', () => resolve());
+      client.on('error', (err: NodeJS.ErrnoException) => {
+        // ECONNRESET or EPIPE is expected when the server destroys the socket
+        if (err.code === 'ECONNRESET' || err.code === 'EPIPE') {
+          resolve();
+        } else {
+          reject(err);
+        }
+      });
+      // Safety timeout
+      const timer = setTimeout(() => {
+        client.destroy();
+        reject(new Error('server did not close the connection after 2s'));
+      }, 2000);
+      if (timer.unref) timer.unref();
+    });
+  });
+
   it('rejects a bad request with op=error code=bad_request', async () => {
     const socketPath = tempSocketPath();
     const server = await createDaemonIpcServer(socketPath, () => {
