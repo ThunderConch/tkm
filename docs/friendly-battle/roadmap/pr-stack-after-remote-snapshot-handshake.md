@@ -231,9 +231,36 @@ master
 3. **`TOKENMON_FORCE_DETERMINISTIC` 레거시 경로**: 기존 `friendly-battle-local.ts` deterministic 경로를 지우면 #42 의 기존 테스트가 깨질 수 있음. PR43 에서는 지우지 말고 flag 뒤로 격리.
 4. **Two-machine smoke**: 로컬 WSL2 + 별도 머신 조합이 없으면 VM 두 개로 대체. PR47 미완 상태로 PR46 까지 머지하는 건 허용.
 
-## 7. 한 줄 결론
+## 7. 한 줄 결론 (PR43 시점)
 
 **데몬 없음. gym 패턴 그대로. PR43(드라이버) → PR44(skill) → PR45(faint/surrender) → PR46(leave) → PR47(smoke). PR44/PR45 는 visual QA 필수.**
+
+> **⚠️ PR44에서 이 결론 일부가 수정됨** — §8 참고.
+
+## 8. Architecture revision (PR44 daemon reversal)
+
+PR43까지는 "데몬 없음, gym 패턴 그대로, 단일 프로세스 foreground-blocking" 을 전제로 작업했다. PR44 실행에 들어가자마자 이 전제가 깨졌다.
+
+### 8-1. 발견한 모순
+`src/friendly-battle/spike/tcp-direct.ts` 의 호스트/게스트 API 는 전부 **라이브 소켓 기반** 이다 (`waitForGuestJoin`, `markHostReady`, `waitUntilCanStart`, `startBattle`, `waitForGuestChoice`, `sendBattleEvents`, `submitChoice`, `waitForBattleEvent`). TCP 파일 디스크립터는 **tsx 프로세스 경계를 넘어갈 수 없다** — 디스크로 직렬화되지 않기 때문이다.
+
+gym 의 "단발 CLI + 디스크 state" 패턴은 gym 의 모든 state 가 로컬이기 때문에 성립한다. 친선전은 state 의 절반이 상대 머신에 있고 TCP 소켓으로 묶여 있어서 이 패턴이 성립하지 않는다.
+
+### 8-2. PR44 에서 반영한 최소 데몬 모델
+- `--init-host` / `--init-join` 는 `src/friendly-battle/daemon.ts` 를 **detached 자식 프로세스로 fork** 한다. 이 자식(데몬)이 TCP 소켓과 배틀 런타임을 붙잡고 있는다.
+- 데몬은 로컬 전용 UNIX 소켓을 `$CLAUDE_CONFIG_DIR/tokenmon/<gen>/friendly-battle/sessions/<id>.sock` 에 연다.
+- 액션 서브커맨드 (`--wait-next-event`, `--action move:N`, `--status`) 는 **gym 과 똑같이 단발 tsx 호출** 이다 — UNIX 소켓 열어서 JSON 한 줄 쓰고 한 줄 읽고 닫는다.
+- 세션 레코드가 PR43 의 `reapStaleFriendlyBattleSessions` 인프라를 그대로 쓰면서 `daemonPid` + `socketPath` 필드로 확장됐다. 고아 데몬은 다음 스캔 때 치워진다.
+- **유저 관점에서는 바뀐 게 없다.** `/tkm:friendly-battle open` 은 여전히 한 번의 연속적인 배틀 세션처럼 보인다. 데몬은 쉘 파이프처럼 보이지 않는 구현 디테일이다.
+
+### 8-3. 로드맵이 "데몬 금지"라고 말한 건 사실 이걸 말하는 게 아니었다
+§2 의 데몬 반대는 실제로는 **유저에게 노출되는 persistence / reconnect / "방 열고 딴 데 가서 놀다 와"** 시맨틱을 겨냥한 것이었다. 이 세 가지는 PR44 에서도 그대로 비범위다 — reconnect 없음, "열어두고 나가기" 없음, 데몬은 배틀이 끝나면 스스로 종료한다. 데몬을 유저 관점의 서비스가 아니라 단일 배틀 세션의 수명과 정확히 일치하는 자식 프로세스로 제한했다.
+
+### 8-4. 수정된 한 줄 결론
+**PR44 에서 숨겨진 최소 데몬 도입. 유저 경험은 그대로 gym 패턴. PR43(드라이버) → PR44(daemon + skill) → PR45(faint/surrender) → PR46(leave) → PR47(smoke). PR44/PR45 는 visual QA 필수.**
+
+### 8-5. 상세 계획 위치
+PR44 의 task 별 TDD 계획은 `docs/friendly-battle/roadmap/pr44-skill-and-turn-loop-plan.md` 에 있다. Daemon lifecycle, IPC protocol, 각 task 의 파일/테스트 구성은 그 문서에서 확인할 것.
 
 ## 관련 문서
 
