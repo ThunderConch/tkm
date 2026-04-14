@@ -251,6 +251,24 @@ Current source of truth for that narrowed scope: [`pr47-smoke-evidence-plan.md`]
 
 In the stacked checklist, treat this as **PR47 Option A**: document the manual two-machine smoke procedure and collect evidence after LAN mode has already shipped.
 
+## 10. PR48 — Friendly-battle heuristic + AI auto-pick modes
+
+PR48 layers two non-manual control modes onto the existing daemon/skill surface without changing engine core:
+
+- `heuristic` mode: daemon-side pure `pickHeuristicAction(state, role)` in `src/friendly-battle/heuristic.ts`
+- `ai` mode: skill-side inline prompt/render/parse loop using envelope `liveState` + `fogState`
+- `fogState`: derived in `src/friendly-battle/fog.ts`, emitted alongside `liveState` on battle envelopes
+
+Scope is intentionally narrow:
+
+- per-battle, per-player fixed mode selection
+- `open [heuristic|ai|local]`
+- `join [heuristic|ai] <code>@<host>:<port>`
+- no Anthropic SDK
+- no engine-core changes
+
+Authoritative implementation/decomposition document: [`pr48-auto-modes-plan.md`](./pr48-auto-modes-plan.md). Behavioral source of truth: `.omc/specs/deep-interview-pr48-heuristic-ai-modes.md`.
+
 PR43까지는 "데몬 없음, gym 패턴 그대로, 단일 프로세스 foreground-blocking" 을 전제로 작업했다. PR44 실행에 들어가자마자 이 전제가 깨졌다.
 
 ### 8-1. 발견한 모순

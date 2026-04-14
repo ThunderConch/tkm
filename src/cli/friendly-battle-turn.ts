@@ -54,8 +54,8 @@ const USAGE = [
   'Usage: friendly-battle-turn [subcommand] [flags]',
   '',
   'Subcommands:',
-  '  --init-host --session-code <code> [--listen-host 127.0.0.1] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host]',
-  '  --init-join --session-code <code> --host <host> --port <port> [--timeout-ms 4000] [--generation gen4] [--player-name Guest]',
+  '  --init-host --session-code <code> [--listen-host 127.0.0.1] [--port 0] [--timeout-ms 4000] [--generation gen4] [--player-name Host] [--player-mode manual|heuristic|ai]',
+  '  --init-join --session-code <code> --host <host> --port <port> [--timeout-ms 4000] [--generation gen4] [--player-name Guest] [--player-mode manual|heuristic|ai]',
   '  --wait-next-event --session <id> --generation <gen> [--timeout-ms 60000]',
   '  --action <move:N|switch:N|surrender> --session <id> --generation <gen>',
   '  --status --session <id> --generation <gen>',
@@ -245,12 +245,12 @@ function readLineUntil(
   });
 }
 
-function validatePlayerMode(raw: string | undefined): 'manual' | 'heuristic' | 'ai' | 'local' {
+function validatePlayerMode(raw: string | undefined): 'manual' | 'heuristic' | 'ai' {
   const value = (raw ?? 'manual').trim().toLowerCase();
-  if (value === 'manual' || value === 'heuristic' || value === 'ai' || value === 'local') {
+  if (value === 'manual' || value === 'heuristic' || value === 'ai') {
     return value;
   }
-  throw new Error(`invalid --player-mode: ${JSON.stringify(raw)} (expected manual|heuristic|ai|local)`);
+  throw new Error(`invalid --player-mode: ${JSON.stringify(raw)} (expected manual|heuristic|ai)`);
 }
 
 async function runInitHost(flags: Record<string, string | boolean | undefined>): Promise<void> {
@@ -311,6 +311,7 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
     const record: FriendlyBattleSessionRecord = {
       sessionId,
       role: 'host',
+      playerMode,
       generation,
       sessionCode,
       phase: 'aborted',
@@ -356,6 +357,7 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
   const record: FriendlyBattleSessionRecord = {
     sessionId,
     role: 'host',
+    playerMode,
     generation,
     sessionCode,
     phase: 'waiting_for_guest',
@@ -443,6 +445,7 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
     const record: FriendlyBattleSessionRecord = {
       sessionId,
       role: 'guest',
+      playerMode,
       generation,
       sessionCode,
       phase: 'aborted',
@@ -484,6 +487,7 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
   const record: FriendlyBattleSessionRecord = {
     sessionId,
     role: 'guest',
+    playerMode,
     generation,
     sessionCode,
     phase: 'handshake',

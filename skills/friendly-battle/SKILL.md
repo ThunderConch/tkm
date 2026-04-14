@@ -113,7 +113,7 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 **Player mode branches** (set once at open/join time, fixed for the battle):
 - **`manual`** (default): original flow below. You show AskUserQuestion, user picks, you submit.
 - **`heuristic`**: the daemon auto-submits actions via `pickHeuristicAction` inside its host turn loop. Skill side does **nothing** except poll `--wait-next-event` in a tight loop and relay terminal envelopes to the user. **Do NOT call AskUserQuestion.** **Do NOT call `--action`.** Just wait_next_event until `victory` / `defeat` / `aborted`. Effective only when the host side chose heuristic at `open`; on the guest side heuristic is a no-op in PR48 (daemon falls back to waiting for skill actions — so if the guest requested heuristic it behaves like manual).
-- **`ai`**: You (Claude) pick the action inline from the envelope's `questionContext` + `moveOptions` + `partyOptions`, using your own judgement with only the information visible in the envelope. **Do NOT call AskUserQuestion.** Instead, for each `select_action` event, reason briefly in the conversation ("turn N: I'll use move:2 because...") and immediately call `--action` with `move:N` / `switch:N` / `surrender`. Treat move indexes as 1-based from `moveOptions`, party indexes as 1-based from `partyOptions`. For `fainted_switch` events, pick from `partyOptions` (non-fainted) and call `--action switch:N`. The rest of the turn loop (frame display, status dispatch) is identical to manual.
+- **`ai`**: You (Claude) pick the action inline from the envelope's `questionContext` + `moveOptions` + `partyOptions`, using your own judgement with only the information visible in the envelope. **Do NOT call AskUserQuestion.** Instead, for each `select_action` event, reason briefly in the conversation ("turn N: I'll pick move slot 2 because...") and immediately call the `--action` subcommand (see Step 3 for the exact bash form) with a concrete token like `move:1`, `switch:2`, or `surrender`. Treat move indexes as 1-based from `moveOptions`, party indexes as 1-based from `partyOptions`. For `fainted_switch` events, pick a non-fainted party slot from `partyOptions` and call the switch form in Step 4. The rest of the turn loop (frame display, status dispatch) is identical to manual.
 
 **Turn loop:**
 
@@ -132,7 +132,7 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
    - **`fainted_switch`**:
      - `manual`: go directly to **Step 6** (forced switch — no move menu).
      - `heuristic`: loop back to step 1.
-     - `ai`: Claude picks a non-fainted index from `partyOptions` and calls `--action switch:N`. Loop back to step 1.
+     - `ai`: Claude picks a non-fainted party slot from `partyOptions` and calls the switch form of `--action` (see Step 4 for the bash block). Loop back to step 1.
    - **`victory`**: show "승리! 배틀이 끝났습니다." and stop.
    - **`defeat`**: show "패배... 배틀이 끝났습니다." and stop.
    - **`aborted`** (or `phase === 'aborted'`): the daemon now marks voluntary leave and peer disconnect with distinct `questionContext` strings so you can branch without sniffing stderr:

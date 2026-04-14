@@ -24,6 +24,7 @@ import {
 } from './spike/tcp-direct.js';
 import {
   createFriendlyBattleBattleRuntime,
+  buildFriendlyBattleLiveBattleState,
   getFriendlyBattleWaitingForRoles,
   submitFriendlyBattleChoice,
 } from './battle-adapter.js';
@@ -37,13 +38,13 @@ import {
   formatFriendlyBattleChoice,
 } from './local-harness.js';
 import { getLoadedMovesDB } from '../core/battle-setup.js';
-import { getPokemonDB } from '../core/pokemon-data.js';
 import { createBattlePokemon } from '../core/turn-battle.js';
-import { getDisplayName as getPokemonDisplayName } from '../core/pokemon-data.js';
+import { getDisplayName as getPokemonDisplayName, getPokemonDB } from '../core/pokemon-data.js';
 import { getLocale, initLocale } from '../i18n/index.js';
 import { readGlobalConfig } from '../core/config.js';
 import { pickHeuristicAction } from './heuristic.js';
 import { accumulateFogState, deriveFogState } from './fog.js';
+import type { MoveData } from '../core/types.js';
 import type { FogState, PlayerMode } from './contracts.js';
 import {
   friendlyBattleSessionsDir,
@@ -58,14 +59,6 @@ import {
   type FriendlyBattleTurnPartyOption,
   type FriendlyBattleTurnAnimationFrame,
 } from './turn-json.js';
-import type {
-  BattlePokemon,
-  BattleState,
-  MoveData,
-  StatStages,
-  VolatileStatus,
-  StatusCondition,
-} from '../core/types.js';
 import type {
   FriendlyBattleBattleEvent,
   FriendlyBattleChoiceEnvelope,
@@ -363,8 +356,6 @@ function eventToEnvelopeFields(
   partyOptions: FriendlyBattleTurnPartyOption[];
   animationFrames: FriendlyBattleTurnAnimationFrame[];
   currentFrameIndex: number;
-  liveState?: FriendlyBattleLiveBattleState;
-  fogState?: FogState;
 } {
   switch (event.type) {
     case 'battle_initialized': {
@@ -382,8 +373,6 @@ function eventToEnvelopeFields(
         return {
           ...fromLive,
           animationFrames: [{ kind: 'message', text: 'Battle started!', durationMs: 300 }],
-          liveState: event.liveState,
-          fogState: event.fogState,
         };
       }
       return {
@@ -392,8 +381,6 @@ function eventToEnvelopeFields(
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : (ownSnapshot ? buildPartyOptionsFromSnapshot(ownSnapshot) : []),
         animationFrames: [{ kind: 'message', text: 'Battle started!', durationMs: 300 }],
         currentFrameIndex: 0,
-        liveState: event.liveState,
-        fogState: event.fogState,
       };
     }
     case 'choices_requested': {
@@ -435,8 +422,6 @@ function eventToEnvelopeFields(
         partyOptions,
         animationFrames: [],
         currentFrameIndex: 0,
-        liveState: event.liveState,
-        fogState: event.fogState,
       };
     }
     case 'turn_resolved': {
@@ -459,8 +444,6 @@ function eventToEnvelopeFields(
         return {
           ...fromLive,
           animationFrames: frames,
-          liveState: event.liveState,
-          fogState: event.fogState,
         };
       }
       return {
@@ -469,8 +452,6 @@ function eventToEnvelopeFields(
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
         animationFrames: frames,
         currentFrameIndex: 0,
-        liveState: event.liveState,
-        fogState: event.fogState,
       };
     }
     case 'battle_finished': {
@@ -496,143 +477,6 @@ function eventToEnvelopeFields(
       };
     }
   }
-}
-
-function cloneEmptyStatStages(): StatStages {
-  return {
-    attack: 0,
-    defense: 0,
-    spAttack: 0,
-    spDefense: 0,
-    speed: 0,
-    accuracy: 0,
-    evasion: 0,
-  };
-}
-
-function buildBattlePokemonFromLiveEntry(input: {
-  generation: string;
-  pokemonId: number;
-  level: number;
-  hp: number;
-  maxHp: number;
-  fainted: boolean;
-  name: string;
-  moveIds?: number[];
-  movePp?: Array<{ current: number; max: number }>;
-}): BattlePokemon {
-  const pokemonData = getPokemonDB(input.generation).pokemon[String(input.pokemonId)];
-  if (!pokemonData) {
-    throw new Error(`Missing pokemon data for species ${input.pokemonId} in ${input.generation}`);
-  }
-
-  const movesDb = getLoadedMovesDB();
-  const moves: MoveData[] = (input.moveIds ?? [])
-    .map((moveId) => movesDb?.[String(moveId)] ?? null)
-    .filter((move): move is MoveData => move !== null);
-
-  const battlePokemon = createBattlePokemon(
-    {
-      id: input.pokemonId,
-      types: pokemonData.types,
-      level: input.level,
-      baseStats: pokemonData.base_stats,
-      displayName: input.name,
-    },
-    moves,
-  );
-
-  battlePokemon.currentHp = input.hp;
-  battlePokemon.maxHp = input.maxHp;
-  battlePokemon.fainted = input.fainted || input.hp <= 0;
-  battlePokemon.statusCondition = null as StatusCondition | null;
-  battlePokemon.toxicCounter = 0;
-  battlePokemon.sleepCounter = 0;
-  battlePokemon.volatileStatuses = [] as VolatileStatus[];
-  battlePokemon.statStages = cloneEmptyStatStages();
-
-  for (let i = 0; i < battlePokemon.moves.length; i++) {
-    const pp = input.movePp?.[i];
-    if (!pp) continue;
-    battlePokemon.moves[i].currentPp = pp.current;
-    battlePokemon.moves[i].data.pp = pp.max;
-  }
-
-  return battlePokemon;
-}
-
-function deriveBattleStateFromLiveState(
-  liveState: FriendlyBattleLiveBattleState,
-  role: FriendlyBattleRole,
-  generation: string,
-): BattleState {
-  const self = role === 'host' ? liveState.host : liveState.guest;
-  const opp = role === 'host' ? liveState.guest : liveState.host;
-
-  const selfActiveIdx = self.party.findIndex((entry) => entry.index === self.active.moves[0]?.index ? -1 : self.party.find((candidate) => candidate.pokemonId === self.active.pokemonId && candidate.level === self.active.level && candidate.hp === self.active.hp && candidate.maxHp === self.active.maxHp)?.index);
-  const playerActiveIndex = self.party.findIndex((entry) =>
-    entry.pokemonId === self.active.pokemonId &&
-    entry.level === self.active.level &&
-    entry.hp === self.active.hp &&
-    entry.maxHp === self.active.maxHp,
-  );
-  const opponentActiveIndex = opp.party.findIndex((entry) =>
-    entry.pokemonId === opp.active.pokemonId &&
-    entry.level === opp.active.level &&
-    entry.hp === opp.active.hp &&
-    entry.maxHp === opp.active.maxHp,
-  );
-
-  const playerTeam = self.party.map((entry) =>
-    buildBattlePokemonFromLiveEntry({
-      generation,
-      pokemonId: entry.pokemonId,
-      level: entry.level,
-      hp: entry.hp,
-      maxHp: entry.maxHp,
-      fainted: entry.fainted,
-      name: entry.name,
-      moveIds: entry.index === (playerActiveIndex >= 0 ? self.party[playerActiveIndex]?.index : -1)
-        ? self.active.moves.map((move) => move.moveId)
-        : [],
-      movePp: entry.index === (playerActiveIndex >= 0 ? self.party[playerActiveIndex]?.index : -1)
-        ? self.active.moves.map((move) => ({ current: move.pp, max: move.maxPp }))
-        : [],
-    }),
-  );
-
-  const opponentTeam = opp.party.map((entry) =>
-    buildBattlePokemonFromLiveEntry({
-      generation,
-      pokemonId: entry.pokemonId,
-      level: entry.level,
-      hp: entry.hp,
-      maxHp: entry.maxHp,
-      fainted: entry.fainted,
-      name: entry.name,
-      moveIds: entry.index === (opponentActiveIndex >= 0 ? opp.party[opponentActiveIndex]?.index : -1)
-        ? opp.active.moves.map((move) => move.moveId)
-        : [],
-      movePp: entry.index === (opponentActiveIndex >= 0 ? opp.party[opponentActiveIndex]?.index : -1)
-        ? opp.active.moves.map((move) => ({ current: move.pp, max: move.maxPp }))
-        : [],
-    }),
-  );
-
-  return {
-    player: {
-      pokemon: playerTeam,
-      activeIndex: playerActiveIndex >= 0 ? playerActiveIndex : 0,
-    },
-    opponent: {
-      pokemon: opponentTeam,
-      activeIndex: opponentActiveIndex >= 0 ? opponentActiveIndex : 0,
-    },
-    turn: 0,
-    log: [],
-    phase: 'select_action',
-    winner: null,
-  };
 }
 
 function eventStatus(
@@ -680,6 +524,160 @@ function serializeDaemonAction(action: DaemonAction): string {
     case 'switch': return `switch:${action.pokemonIndex}`;
     case 'surrender': return 'surrender';
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function supportsDerivedState(
+  event: FriendlyBattleBattleEvent,
+): event is Extract<FriendlyBattleBattleEvent, { type: 'battle_initialized' | 'choices_requested' | 'turn_resolved' }> {
+  return event.type === 'battle_initialized' || event.type === 'choices_requested' || event.type === 'turn_resolved';
+}
+
+function findLiveActiveIndex(
+  liveTeam: FriendlyBattleLiveBattleState['host'],
+): number {
+  const partyIndex = liveTeam.party.findIndex((entry) => entry.index === 1);
+  if (partyIndex >= 0) {
+    const candidate = liveTeam.party[partyIndex];
+    if (
+      candidate.pokemonId === liveTeam.active.pokemonId
+      && candidate.level === liveTeam.active.level
+      && candidate.hp === liveTeam.active.hp
+      && candidate.fainted === liveTeam.active.fainted
+    ) {
+      return partyIndex;
+    }
+  }
+
+  const exactIndex = liveTeam.party.findIndex((entry) =>
+    entry.pokemonId === liveTeam.active.pokemonId
+    && entry.level === liveTeam.active.level
+    && entry.hp === liveTeam.active.hp
+    && entry.fainted === liveTeam.active.fainted);
+  if (exactIndex >= 0) return exactIndex;
+
+  const speciesIndex = liveTeam.party.findIndex((entry) => entry.pokemonId === liveTeam.active.pokemonId && !entry.fainted);
+  return speciesIndex >= 0 ? speciesIndex : 0;
+}
+
+function buildMoveDataFromLiveMove(
+  move: FriendlyBattleLiveBattleState['host']['active']['moves'][number],
+): MoveData {
+  const loadedMoves = getLoadedMovesDB();
+  return loadedMoves?.[String(move.moveId)] ?? {
+    id: move.moveId,
+    name: move.nameKo,
+    nameKo: move.nameKo,
+    nameEn: move.nameKo,
+    type: 'normal',
+    category: 'physical',
+    power: 50,
+    accuracy: 100,
+    pp: move.maxPp,
+  };
+}
+
+function buildOpponentTeamFromLiveState(
+  liveTeam: FriendlyBattleLiveBattleState['host'],
+  generation: string,
+) {
+  const pokemonDb = getPokemonDB(generation);
+  const activeIndex = findLiveActiveIndex(liveTeam);
+  const pokemon = liveTeam.party.map((entry, index) => {
+    const species = pokemonDb.pokemon[String(entry.pokemonId)];
+    const moves = index === activeIndex ? liveTeam.active.moves.map(buildMoveDataFromLiveMove) : [];
+    const mon = createBattlePokemon({
+      id: entry.pokemonId,
+      types: species?.types ?? ['normal'],
+      level: entry.level,
+      baseStats: species?.base_stats ?? {
+        hp: Math.max(1, entry.maxHp),
+        attack: 65,
+        defense: 65,
+        speed: 65,
+        sp_attack: 65,
+        sp_defense: 65,
+      },
+      displayName: entry.name,
+    }, moves);
+    mon.currentHp = entry.hp;
+    mon.maxHp = entry.maxHp;
+    mon.fainted = entry.fainted;
+    return mon;
+  });
+  return { pokemon, activeIndex };
+}
+
+function syncOwnTeamFromSnapshot(
+  snapshot: FriendlyBattlePartySnapshot,
+  liveTeam: FriendlyBattleLiveBattleState['host'],
+) {
+  const team = createBattleTeamFromFriendlyBattleSnapshot(snapshot);
+  const activeIndex = findLiveActiveIndex(liveTeam);
+  for (let i = 0; i < team.length; i++) {
+    const liveEntry = liveTeam.party[i];
+    if (!liveEntry) continue;
+    team[i].currentHp = liveEntry.hp;
+    team[i].maxHp = liveEntry.maxHp;
+    team[i].fainted = liveEntry.fainted;
+    team[i].level = liveEntry.level;
+    team[i].displayName = liveEntry.name;
+    if (i === activeIndex) {
+      team[i].moves = liveTeam.active.moves.map((move) => ({
+        data: buildMoveDataFromLiveMove(move),
+        currentPp: move.pp,
+      }));
+    }
+  }
+  return { pokemon: team, activeIndex };
+}
+
+function buildHeuristicStateFromLiveState(
+  liveState: FriendlyBattleLiveBattleState,
+  role: FriendlyBattleRole,
+  ownSnapshot: FriendlyBattlePartySnapshot,
+  generation: string,
+) {
+  const selfTeam = role === 'host' ? liveState.host : liveState.guest;
+  const oppTeam = role === 'host' ? liveState.guest : liveState.host;
+  const own = syncOwnTeamFromSnapshot(ownSnapshot, selfTeam);
+  const opponent = buildOpponentTeamFromLiveState(oppTeam, generation);
+  return role === 'host'
+    ? { player: own, opponent, turn: 0, log: [], phase: 'select_action' as const, winner: null }
+    : { player: opponent, opponent: own, turn: 0, log: [], phase: 'select_action' as const, winner: null };
+}
+
+function pickForcedSwitchFromLiveState(
+  liveState: FriendlyBattleLiveBattleState,
+  role: FriendlyBattleRole,
+): DaemonAction {
+  const selfTeam = role === 'host' ? liveState.host : liveState.guest;
+  const activeIndex = findLiveActiveIndex(selfTeam);
+  const replacement = selfTeam.party.find((entry, index) => index !== activeIndex && !entry.fainted);
+  return replacement
+    ? { kind: 'switch', pokemonIndex: replacement.index - 1 }
+    : { kind: 'surrender' };
+}
+
+function buildAutoActionKey(
+  liveState: FriendlyBattleLiveBattleState | null,
+  role: FriendlyBattleRole,
+  status: FriendlyBattleSessionRecord['status'],
+): string | null {
+  if (!liveState || (status !== 'select_action' && status !== 'fainted_switch')) {
+    return null;
+  }
+  const self = role === 'host' ? liveState.host : liveState.guest;
+  const opp = role === 'host' ? liveState.guest : liveState.host;
+  return JSON.stringify({
+    status,
+    selfActive: self.active,
+    oppActive: opp.active,
+    selfParty: self.party.map((entry) => ({ index: entry.index, hp: entry.hp, fainted: entry.fainted })),
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -783,6 +781,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   const record: FriendlyBattleSessionRecord = {
     sessionId,
     role,
+    playerMode,
     generation,
     sessionCode,
     phase: role === 'host' ? 'waiting_for_guest' : 'handshake',
@@ -809,6 +808,51 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   let runtime: FriendlyBattleBattleRuntime | null = null;
   // Own snapshot (for guest-side move option construction before first event)
   let ownSnapshot: FriendlyBattlePartySnapshot | null = null;
+  let lastLiveState: FriendlyBattleLiveBattleState | null = null;
+  let lastFogState: FogState | null = null;
+
+  function syncDerivedState(event: FriendlyBattleBattleEvent): FriendlyBattleBattleEvent {
+    if (!supportsDerivedState(event)) {
+      return event;
+    }
+
+    const liveState = event.liveState
+      ?? (runtime ? buildFriendlyBattleLiveBattleState(runtime.state) : lastLiveState)
+      ?? null;
+    let fogState = event.fogState ?? lastFogState;
+    if (runtime) {
+      fogState = lastFogState
+        ? accumulateFogState(lastFogState, event, runtime.state, role)
+        : deriveFogState(runtime.state, role);
+    }
+
+    const nextEvent = {
+      ...event,
+      ...(liveState ? { liveState } : {}),
+      ...(fogState ? { fogState } : {}),
+    } satisfies FriendlyBattleBattleEvent;
+
+    if (liveState) lastLiveState = liveState;
+    if (fogState) lastFogState = fogState;
+    return nextEvent;
+  }
+
+  function buildEnvelope(
+    input: {
+      questionContext: string;
+      moveOptions: FriendlyBattleTurnMoveOption[];
+      partyOptions: FriendlyBattleTurnPartyOption[];
+      animationFrames: FriendlyBattleTurnAnimationFrame[];
+      currentFrameIndex: number;
+    },
+  ) {
+    return formatFriendlyBattleTurnJson({
+      record,
+      ...input,
+      liveState: lastLiveState ?? undefined,
+      fogState: lastFogState ?? undefined,
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // IPC handler
@@ -826,7 +870,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
           animationFrames: [] as FriendlyBattleTurnAnimationFrame[],
           currentFrameIndex: 0,
         };
-        return { op: 'status', envelope: formatFriendlyBattleTurnJson({ record, ...fields }) };
+        return { op: 'status', envelope: buildEnvelope(fields) };
       }
 
       case 'wait_next_event': {
@@ -849,7 +893,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // Update record status based on the event
         record.status = eventStatus(event, role);
         writeRecord();
-        return { op: 'event', envelope: formatFriendlyBattleTurnJson({ record, ...fields }) };
+        return { op: 'event', envelope: buildEnvelope(fields) };
       }
 
       case 'submit_action': {
@@ -863,7 +907,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
           animationFrames: [] as FriendlyBattleTurnAnimationFrame[],
           currentFrameIndex: 0,
         };
-        return { op: 'ack', envelope: formatFriendlyBattleTurnJson({ record, ...fields }) };
+        return { op: 'ack', envelope: buildEnvelope(fields) };
       }
 
       case 'leave': {
@@ -873,8 +917,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         record.phase = 'aborted';
         record.status = 'aborted';
         writeRecord();
-        const leaveEnvelope = formatFriendlyBattleTurnJson({
-          record,
+        const leaveEnvelope = buildEnvelope({
           questionContext: 'You left the battle.',
           moveOptions: [],
           partyOptions: [],
@@ -926,8 +969,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       // wait_next_event caller that was already blocked in shift() falls
       // through to the sentinel check in the IPC catch branch instead of
       // bubbling up a generic 'handler_error'.
-      queueClosedEnvelope = formatFriendlyBattleTurnJson({
-        record,
+      queueClosedEnvelope = buildEnvelope({
         questionContext: fallbackContext,
         moveOptions: [],
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
@@ -947,8 +989,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       // queue. Any waiter that was blocked on shift() during drain gets
       // unblocked by the subsequent localEventQueue.fail(); the IPC handler
       // catches that rejection and returns the sentinel.
-      queueClosedEnvelope = formatFriendlyBattleTurnJson({
-        record,
+      queueClosedEnvelope = buildEnvelope({
         questionContext: fallbackContext,
         moveOptions: [],
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
@@ -1024,10 +1065,11 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       writeRecord();
 
       // Send initial events to guest over TCP
-      host_transport.sendBattleEvents(initEvents);
+      const syncedInitEvents = initEvents.map((event) => syncDerivedState(event));
+      host_transport.sendBattleEvents(syncedInitEvents);
 
       // Push init events to local queue
-      for (const event of initEvents) {
+      for (const event of syncedInitEvents) {
         localEventQueue.push(event);
       }
 
@@ -1041,9 +1083,6 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // "not waiting for X" error that the unconditional Promise.all caused.
         const waitingFor = getFriendlyBattleWaitingForRoles(runtime);
 
-        // Heuristic mode: synthesize the host choice from pickHeuristicAction
-        // instead of waiting for a skill-side IPC submission. Resolves the
-        // promise immediately so the turn loop keeps ticking at daemon speed.
         const hostPromise = waitingFor.includes('host')
           ? (playerMode === 'heuristic'
               ? Promise.resolve(
@@ -1075,13 +1114,14 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // turn's events — eventually causing the battle-adapter to reject a
         // stale guest envelope with "not waiting for X". (Codex adversarial
         // review Q1 RISK.)
-        host_transport.sendBattleEvents(resolvedEvents);
-        for (const event of resolvedEvents) {
+        const syncedResolvedEvents = resolvedEvents.map((event) => syncDerivedState(event));
+        host_transport.sendBattleEvents(syncedResolvedEvents);
+        for (const event of syncedResolvedEvents) {
           localEventQueue.push(event);
         }
 
         // Check if battle is over
-        const finished = resolvedEvents.find((e) => e.type === 'battle_finished');
+        const finished = syncedResolvedEvents.find((e) => e.type === 'battle_finished');
         if (finished) {
           record.phase = 'finished';
           record.status = eventStatus(finished, role);
@@ -1165,7 +1205,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     {
       let initDone = false;
       while (!initDone) {
-        const initEvent = await guest_transport.waitForBattleEvent(timeoutMs);
+        const initEvent = syncDerivedState(await guest_transport.waitForBattleEvent(timeoutMs));
         localEventQueue.push(initEvent);
         if (initEvent.type === 'choices_requested' || initEvent.type === 'battle_finished') {
           initDone = true;
@@ -1192,10 +1232,14 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     // (clean battle end OR error), and the existing catch handles both cases.
     // ---------------------------------------------------------------------------
     let battleFinished = false;
+    let lastAutoActionKey: string | null = null;
     const tcpPump = (async () => {
       while (!battleFinished) {
-        const event = await guest_transport.waitForBattleEvent(TURN_LOOP_TIMEOUT_MS);
+        const event = syncDerivedState(await guest_transport.waitForBattleEvent(TURN_LOOP_TIMEOUT_MS));
         localEventQueue.push(event);
+        if (event.type === 'choices_requested') {
+          lastAutoActionKey = null;
+        }
         if (event.type === 'battle_finished') {
           battleFinished = true;
           // Route through eventStatus so voluntary leave / peer disconnect
@@ -1214,6 +1258,27 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
 
     const actionPump = (async () => {
       while (!battleFinished) {
+        if (playerMode === 'heuristic') {
+          const actionKey = buildAutoActionKey(lastLiveState, 'guest', record.status);
+          if (!actionKey || actionKey === lastAutoActionKey) {
+            await sleep(20);
+            continue;
+          }
+          if (!lastLiveState || !ownSnapshot) {
+            await sleep(20);
+            continue;
+          }
+          const action = record.status === 'fainted_switch'
+            ? pickForcedSwitchFromLiveState(lastLiveState, 'guest')
+            : pickHeuristicAction(
+              buildHeuristicStateFromLiveState(lastLiveState, 'guest', ownSnapshot, generation),
+              'guest',
+            );
+          await guest_transport.submitChoice(serializeDaemonAction(action));
+          lastAutoActionKey = actionKey;
+          continue;
+        }
+
         let myAction: FriendlyBattleChoiceEnvelope;
         try {
           myAction = await localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'guest action');
