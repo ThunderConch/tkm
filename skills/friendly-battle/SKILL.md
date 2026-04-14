@@ -27,7 +27,7 @@ Read the first token of `$ARGUMENTS`:
 P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
 GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
 SESSION_CODE=$(node -e "process.stdout.write(require('crypto').randomBytes(3).toString('hex'))")
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --init-host --session-code "$SESSION_CODE" --generation "$GEN" --listen-host 127.0.0.1 --port 0 --timeout-ms 300000 --player-name Host
+"$P/bin/run-friendly-battle-turn.sh" --init-host --session-code "$SESSION_CODE" --generation "$GEN" --listen-host 127.0.0.1 --port 0 --timeout-ms 300000 --player-name Host
 ```
 
 Parse the JSON envelope on stdout. Store `sessionId` and `questionContext`. Also read the `PORT:` line from stderr to get the bound port.
@@ -36,17 +36,18 @@ Tell the user:
 - "세션 코드: `<SESSION_CODE>`"
 - "호스트 주소: `127.0.0.1:<PORT>`"
 - "상대방에게 위 코드와 주소를 공유하고, 상대방이 `/tkm:friendly-battle join <code>@127.0.0.1:<port>` 를 실행하도록 안내하세요."
+- "💡 친선전 턴 진행은 거의 mechanical 한 작업이라 더 작은 모델로 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model haiku` 또는 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구)"
 - "게스트가 접속할 때까지 잠시 기다립니다..."
 
 Then enter the **wait-for-guest polling loop**:
 
 All subsequent friendly-battle-turn invocations use the same launcher:
-`"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" <flags>` — keep `$P`, `GEN`, and `sessionId` in scope.
+`"$P/bin/run-friendly-battle-turn.sh" <flags>` — keep `$P`, `GEN`, and `sessionId` in scope.
 
 Poll loop:
 
 ```bash
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --wait-next-event --session "$SESSION_ID" --generation "$GEN" --timeout-ms 60000
+"$P/bin/run-friendly-battle-turn.sh" --wait-next-event --session "$SESSION_ID" --generation "$GEN" --timeout-ms 60000
 ```
 
 - If the returned envelope has `phase === 'battle'`: transition to **Step 2** (turn loop).
@@ -68,12 +69,14 @@ Once you have the three parts (`SESSION_CODE`, `HOST`, `PORT`):
 ```bash
 P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
 GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --init-join --session-code "$SESSION_CODE" --host "$HOST" --port "$PORT" --generation "$GEN" --timeout-ms 30000 --player-name Guest
+"$P/bin/run-friendly-battle-turn.sh" --init-join --session-code "$SESSION_CODE" --host "$HOST" --port "$PORT" --generation "$GEN" --timeout-ms 30000 --player-name Guest
 ```
 
 Parse the JSON envelope on stdout. Store `sessionId`.
 
-Tell the user: "호스트에 접속 중입니다... 잠시 기다려 주세요."
+Tell the user:
+- "호스트에 접속 중입니다... 잠시 기다려 주세요."
+- "💡 친선전 턴 진행은 거의 mechanical 한 작업이라 더 작은 모델로 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model haiku` 또는 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구)"
 
 Then poll with `--wait-next-event` (same loop as Step 1a) until `phase === 'battle'`, then transition to **Step 2**.
 
@@ -90,7 +93,7 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 1. Call `--wait-next-event`:
 
 ```bash
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --wait-next-event --session "$SESSION_ID" --generation "$GEN" --timeout-ms 60000
+"$P/bin/run-friendly-battle-turn.sh" --wait-next-event --session "$SESSION_ID" --generation "$GEN" --timeout-ms 60000
 ```
 
 2. Parse the returned envelope. Dispatch on `status` (also check `phase`):
@@ -120,7 +123,7 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
    - Button 1-4 on a shown move slot: call `--action`:
 
 ```bash
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action "move:$N" --session "$SESSION_ID" --generation "$GEN"
+"$P/bin/run-friendly-battle-turn.sh" --action "move:$N" --session "$SESSION_ID" --generation "$GEN"
 ```
 
    - `Other` text matching `/^(교체|switch|change|s)$/i`: enter **Step 4** (switch menu).
@@ -144,7 +147,7 @@ If the user's AskUserQuestion Other response matches `/^(교체|switch|change|s)
 On button pick (index N, 1-based): run:
 
 ```bash
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action "switch:$N" --session "$SESSION_ID" --generation "$GEN"
+"$P/bin/run-friendly-battle-turn.sh" --action "switch:$N" --session "$SESSION_ID" --generation "$GEN"
 ```
 
 On invalid Other (no name match): re-ask the switch AskUserQuestion.
@@ -164,7 +167,7 @@ Show a confirm AskUserQuestion:
 On `항복 확정`: run:
 
 ```bash
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action surrender --session "$SESSION_ID" --generation "$GEN"
+"$P/bin/run-friendly-battle-turn.sh" --action surrender --session "$SESSION_ID" --generation "$GEN"
 ```
 
 On `취소`: return to the move AskUserQuestion (Step 3).
@@ -183,7 +186,7 @@ When `--wait-next-event` returns an envelope with `status === 'fainted_switch'`,
 - On pick (index N, 1-based): run:
 
 ```bash
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --action "switch:$N" --session "$SESSION_ID" --generation "$GEN"
+"$P/bin/run-friendly-battle-turn.sh" --action "switch:$N" --session "$SESSION_ID" --generation "$GEN"
 ```
 
 After `--action switch:$N` returns an ack, loop back to Step 2. The daemon handles the forced switch without an extra AI turn.
@@ -197,7 +200,7 @@ Requires a stored `sessionId` from the current session. If no session is active,
 ```bash
 P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
 GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --status --session "$SESSION_ID" --generation "$GEN"
+"$P/bin/run-friendly-battle-turn.sh" --status --session "$SESSION_ID" --generation "$GEN"
 ```
 
 Parse the JSON envelope and report `phase` and `status` to the user. This command never fails — if the daemon is dead it returns a frozen snapshot from disk.
@@ -211,7 +214,7 @@ Requires a stored `sessionId` from the current session. If no session is active,
 ```bash
 P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
 GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
-"$P/bin/tsx-resolve.sh" "$P/src/cli/friendly-battle-turn.ts" --leave --session "$SESSION_ID" --generation "$GEN"
+"$P/bin/run-friendly-battle-turn.sh" --leave --session "$SESSION_ID" --generation "$GEN"
 ```
 
 Read the ack envelope. The daemon transitions to `phase='aborted'` and shuts down. The peer sees a `battle_finished{reason:'disconnect'}` envelope on its next `wait_next_event` and should stop its own turn loop.
