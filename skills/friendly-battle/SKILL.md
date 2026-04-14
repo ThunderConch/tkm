@@ -154,7 +154,11 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 
 2. Parse the returned envelope. Dispatch on `status` (also check `phase`).
 
-   **NON-NEGOTIABLE OUTCOME RULE**: The battle result (who won, who lost, whether the battle ended) is determined **EXCLUSIVELY** by `envelope.status` and `envelope.questionContext`. You MUST NOT infer the winner from `animationFrames[].text`, `messages[]`, or from reading "X 쓰러졌다" lines. The daemon already ran the full battle engine and knows the ground truth; the envelope's `status` is that ground truth. In particular:
+   **NON-NEGOTIABLE OUTCOME RULE**: The battle result (who won, who lost, whether the battle ended) is determined **EXCLUSIVELY** by `envelope.status` and `envelope.questionContext`. You MUST NOT infer the winner from `animationFrames[].text`, `messages[]`, or from reading "X 쓰러졌다" lines. **CRITICAL**: battle engine messages DO NOT include owner prefixes — a "디아루가은(는) 쓰러졌다!" line may refer to either your own Dialga or the opponent's Dialga (both teams may field the same species), so ANY narrative built from those messages is unreliable. Use `envelope.liveState[yourRole].party[i].fainted` for your own team, `envelope.liveState[oppositeRole].party[i].fainted` or (in AI mode) `envelope.fogState.opponentBenchRevealed` for opponent status — and TRUST `envelope.status` as the winner signal.
+
+   **DO NOT GENERATE A 배틀 결과 요약 TABLE** on battle end. Just render the `envelope.questionContext` literal ("승리!" / "패배..." / "배틀을 떠났습니다." / "상대방이 배틀을 떠났습니다.") and stop. No post-game commentary, no fainted-pokemon table, no "엠페르트의 회전부리가 멋졌습니다" narrative — those invariably drift into owner-attribution mistakes and contradict the real outcome. If the user explicitly asks for a recap AFTER the terminal line, build it strictly from `envelope.liveState` (never from `messages[]`).
+
+   The daemon already ran the full battle engine and knows the ground truth; the envelope's `status` is that ground truth. In particular:
    - Ambiguous last-turn messages like "상대 X가 쓰러졌다" at the same time as "내 Y가 쓰러졌다" or "이판사판태클 반동" do NOT tell you who won — only `status` does.
    - If `status === 'victory'`, you won, period. Ignore any message that seems to say otherwise.
    - If `status === 'defeat'`, you lost, period. Ignore any message that seems to say otherwise.
