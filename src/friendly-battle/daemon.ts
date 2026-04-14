@@ -16,7 +16,7 @@
 // battle_finished  → write phase='finished', exit 0
 
 import { randomUUID } from 'node:crypto';
-import { mkdirSync } from 'node:fs';
+import { closeSync as fsCloseSync, mkdirSync, openSync as fsOpenSync, writeSync as fsWriteSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import {
   createFriendlyBattleSpikeHost,
@@ -356,6 +356,54 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   const sessionsDir = friendlyBattleSessionsDir(generation);
   mkdirSync(sessionsDir, { recursive: true });
   const socketPath = join(sessionsDir, `${sessionId}.sock`);
+
+  // ---------------------------------------------------------------------------
+  // Crash log — captures stderr + uncaughtException + unhandledRejection so we
+  // can actually see why the daemon died. The parent CLI destroys its read end
+  // of child.stderr right after DAEMON_READY so stderr writes would otherwise
+  // be silently discarded. Writing to a file here gives us a post-mortem even
+  // when the parent is long gone.
+  const crashLogPath = join(sessionsDir, `${sessionId}.crash.log`);
+  const crashLogFd = fsOpenSync(crashLogPath, 'a');
+  const logLine = (line: string): void => {
+    try {
+      fsWriteSync(crashLogFd, `[${new Date().toISOString()}] ${line}\n`);
+    } catch {
+      // swallow — logging must never crash the daemon
+    }
+  };
+  logLine(`daemon-start role=${role} pid=${process.pid} sessionId=${sessionId}`);
+
+  // Mirror process.stderr.write into the crash log too so regular error
+  // messages ("daemon host error: …") are captured alongside the stack.
+  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  process.stderr.write = ((
+    chunk: string | Uint8Array,
+    encodingOrCb?: BufferEncoding | ((err?: Error) => void),
+    cb?: (err?: Error) => void,
+  ): boolean => {
+    try {
+      const text = typeof chunk === 'string'
+        ? chunk
+        : Buffer.from(chunk).toString('utf8');
+      fsWriteSync(crashLogFd, text);
+    } catch {
+      // swallow
+    }
+    return originalStderrWrite(chunk, encodingOrCb as BufferEncoding, cb);
+  }) as typeof process.stderr.write;
+
+  process.on('uncaughtException', (err: Error) => {
+    logLine(`uncaughtException: ${err.stack ?? err.message ?? String(err)}`);
+    try { fsCloseSync(crashLogFd); } catch { /* swallow */ }
+    process.exit(1);
+  });
+  process.on('unhandledRejection', (reason: unknown) => {
+    const stack = reason instanceof Error ? (reason.stack ?? reason.message) : String(reason);
+    logLine(`unhandledRejection: ${stack}`);
+    try { fsCloseSync(crashLogFd); } catch { /* swallow */ }
+    process.exit(1);
+  });
 
   const nowIso = () => new Date().toISOString();
 
