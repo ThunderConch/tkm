@@ -788,11 +788,17 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         if (hostEnvelope) resolvedEvents = submitFriendlyBattleChoice(runtime, hostEnvelope);
         if (guestEnvelope) resolvedEvents = submitFriendlyBattleChoice(runtime, guestEnvelope);
 
-        // Push events to local queue and send to guest
+        // Send to guest BEFORE pushing locally so the guest is no later than
+        // the host on event arrival. Pushing locally first allowed the host
+        // skill's wait_next_event to surface the new envelope and prompt for
+        // a fresh action while the guest still hadn't received the previous
+        // turn's events — eventually causing the battle-adapter to reject a
+        // stale guest envelope with "not waiting for X". (Codex adversarial
+        // review Q1 RISK.)
+        host_transport.sendBattleEvents(resolvedEvents);
         for (const event of resolvedEvents) {
           localEventQueue.push(event);
         }
-        host_transport.sendBattleEvents(resolvedEvents);
 
         // Check if battle is over
         const finished = resolvedEvents.find((e) => e.type === 'battle_finished');
