@@ -152,7 +152,16 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 "$P/bin/run-friendly-battle-turn.sh" --wait-next-event --session "$SESSION_ID" --generation "$GEN" --timeout-ms 60000
 ```
 
-2. Parse the returned envelope. Dispatch on `status` (also check `phase`):
+2. Parse the returned envelope. Dispatch on `status` (also check `phase`).
+
+   **NON-NEGOTIABLE OUTCOME RULE**: The battle result (who won, who lost, whether the battle ended) is determined **EXCLUSIVELY** by `envelope.status` and `envelope.questionContext`. You MUST NOT infer the winner from `animationFrames[].text`, `messages[]`, or from reading "X 쓰러졌다" lines. The daemon already ran the full battle engine and knows the ground truth; the envelope's `status` is that ground truth. In particular:
+   - Ambiguous last-turn messages like "상대 X가 쓰러졌다" at the same time as "내 Y가 쓰러졌다" or "이판사판태클 반동" do NOT tell you who won — only `status` does.
+   - If `status === 'victory'`, you won, period. Ignore any message that seems to say otherwise.
+   - If `status === 'defeat'`, you lost, period. Ignore any message that seems to say otherwise.
+   - If `status === 'aborted'`, the battle was interrupted — use the `questionContext` to decide which abort text to show (Step 2's aborted branch below).
+   - Never synthesize a "전멸했습니다 / 수고하셨습니다 / 승리했습니다" summary from messages — show the literal terminal line from the envelope's `questionContext` (e.g. `'You won!'` → "승리! 배틀이 끝났습니다." / `'You lost!'` → "패배... 배틀이 끝났습니다.").
+
+   Status dispatch:
 
    - **`select_action`**:
      - `$PLAYER_MODE === 'manual'`: build a move-select AskUserQuestion (see **Step 3** below).
