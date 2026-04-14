@@ -798,6 +798,13 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   // finished envelope immediately instead of hanging until their own timeout.
   let queueClosedEnvelope: ReturnType<typeof formatFriendlyBattleTurnJson> | null = null;
 
+  // Committed terminal outcome. The host turn loop / guest tcpPump set this
+  // to the true 'victory' / 'defeat' / 'aborted' the instant battle_finished
+  // resolves, and shutdown()'s fallbackContext uses it instead of trusting
+  // record.status — which skill polls for trailing turn_resolved events can
+  // still overwrite to 'ongoing' while the daemon is mid-shutdown-drain.
+  let committedTerminalStatus: 'victory' | 'defeat' | 'aborted' | null = null;
+
   // Transport closer: set by the host/guest path once a transport is created.
   // The leave IPC handler uses this to tear down the TCP connection so the
   // peer gets an EOF and can shut down on its own.
@@ -926,7 +933,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
           throw err;
         }
         const fields = eventToEnvelopeFields(event, role, runtime, ownSnapshot);
-        // Update record status based on the event
+        // Update record status based on the event.
         record.status = eventStatus(event, role);
         writeRecord();
         // Round-trip sync for auto modes. If this envelope surfaces a
@@ -1008,9 +1015,15 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     // wait_next_event caller gets a message consistent with the actual
     // outcome — including 'aborted' (voluntary leave / peer disconnect),
     // which used to contradictorily render as "You lost!".
-    const fallbackContext = record.status === 'victory'
+    // Prefer the committed terminal status over record.status. Trailing
+    // wait_next_event polls for late turn_resolved events can overwrite
+    // record.status back to 'ongoing' after the turn loop already committed
+    // the true outcome — if we fell back to record.status here, the skill's
+    // final terminal envelope would render "You lost!" even after a victory.
+    const resolvedStatus = committedTerminalStatus ?? record.status;
+    const fallbackContext = resolvedStatus === 'victory'
       ? 'You won!'
-      : record.status === 'aborted'
+      : resolvedStatus === 'aborted'
         ? 'Battle ended.'
         : 'You lost!';
     if (exitCode !== 0) {
@@ -1202,8 +1215,12 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // Check if battle is over
         const finished = syncedResolvedEvents.find((e) => e.type === 'battle_finished');
         if (finished) {
-          record.phase = 'finished';
-          record.status = eventStatus(finished, role);
+          const terminalStatus = eventStatus(finished, role);
+          record.phase = terminalStatus === 'aborted' ? 'aborted' : 'finished';
+          record.status = terminalStatus;
+          if (terminalStatus === 'victory' || terminalStatus === 'defeat' || terminalStatus === 'aborted') {
+            committedTerminalStatus = terminalStatus;
+          }
           writeRecord();
           break;
         }
@@ -1315,23 +1332,23 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     // (clean battle end OR error), and the existing catch handles both cases.
     // ---------------------------------------------------------------------------
     let battleFinished = false;
-    let lastAutoActionKey: string | null = null;
     const tcpPump = (async () => {
       while (!battleFinished) {
         const event = syncDerivedState(await guest_transport.waitForBattleEvent(TURN_LOOP_TIMEOUT_MS));
         logEvent(event);
         localEventQueue.push(event);
-        if (event.type === 'choices_requested') {
-          lastAutoActionKey = null;
-        }
         if (event.type === 'battle_finished') {
           battleFinished = true;
           // Route through eventStatus so voluntary leave / peer disconnect
           // map to 'aborted' instead of being silently downgraded to 'defeat'
           // (disconnect has winner=null, which the old strict-equality check
           // treated as a loss for the guest).
-          record.phase = eventStatus(event, 'guest') === 'aborted' ? 'aborted' : 'finished';
-          record.status = eventStatus(event, 'guest');
+          const guestTerminal = eventStatus(event, 'guest');
+          record.phase = guestTerminal === 'aborted' ? 'aborted' : 'finished';
+          record.status = guestTerminal;
+          if (guestTerminal === 'victory' || guestTerminal === 'defeat' || guestTerminal === 'aborted') {
+            committedTerminalStatus = guestTerminal;
+          }
           writeRecord();
           // Unblock any pending action shift so actionPump can exit.
           localActionQueue.fail(new Error('guest battle finished'));
