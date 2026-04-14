@@ -152,6 +152,35 @@ const TURN_LOOP_TIMEOUT_MS = (() => {
   return Number.isInteger(override) && override > 0 ? override : 30 * 60 * 1000;
 })();
 
+// Owner tags injected by battle-adapter.withOwnerTaggedDisplayNames before
+// handing a turn to the engine. Each engine-generated message contains one
+// of these sentinels wrapped around the acting pokemon's displayName so we
+// can later rewrite it to a per-viewer "내 <name>" / "상대 <name>" string.
+// Keep in sync with battle-adapter.ts.
+const HOST_OWNER_TAG = '\u0001HOST\u0001';
+const GUEST_OWNER_TAG = '\u0001GUEST\u0001';
+
+function rewriteMessageForRole(message: string, role: FriendlyBattleRole): string {
+  // Self-owned pokemon → "내 ", opponent-owned → "상대 ".
+  const selfTag = role === 'host' ? HOST_OWNER_TAG : GUEST_OWNER_TAG;
+  const oppTag = role === 'host' ? GUEST_OWNER_TAG : HOST_OWNER_TAG;
+  // Replace all occurrences (each message may mention multiple pokemon).
+  return message
+    .split(selfTag).join('내 ')
+    .split(oppTag).join('상대 ');
+}
+
+function rewriteEventMessagesForRole<T extends FriendlyBattleBattleEvent>(
+  event: T,
+  role: FriendlyBattleRole,
+): T {
+  if (event.type !== 'turn_resolved' || !Array.isArray(event.messages)) {
+    return event;
+  }
+  const rewritten = event.messages.map((m) => rewriteMessageForRole(m, role));
+  return { ...event, messages: rewritten } satisfies FriendlyBattleBattleEvent as T;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers: convert BattleEvents → turn-json fields
 // ---------------------------------------------------------------------------
@@ -1134,12 +1163,12 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
 
       // Send initial events to guest over TCP
       const syncedInitEvents = initEvents.map((event) => syncDerivedState(event));
-      host_transport.sendBattleEvents(syncedInitEvents);
+      host_transport.sendBattleEvents(syncedInitEvents.map((e) => rewriteEventMessagesForRole(e, 'guest')));
 
       // Push init events to local queue
       for (const event of syncedInitEvents) {
         logEvent(event);
-        localEventQueue.push(event);
+        localEventQueue.push(rewriteEventMessagesForRole(event, 'host'));
       }
 
       // ---------------------------------------------------------------------------
@@ -1201,10 +1230,16 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // stale guest envelope with "not waiting for X". (Codex adversarial
         // review Q1 RISK.)
         const syncedResolvedEvents = resolvedEvents.map((event) => syncDerivedState(event));
-        host_transport.sendBattleEvents(syncedResolvedEvents);
+        // Rewrite owner-tagged messages to per-viewer form BEFORE sending.
+        // Guest gets the 'guest'-relative view over TCP; host pushes the
+        // 'host'-relative view onto its own IPC queue. Event log stays as
+        // the raw (already-tagged) events so the disk log is role-agnostic
+        // and can be replayed for either perspective later.
+        const guestViewEvents = syncedResolvedEvents.map((e) => rewriteEventMessagesForRole(e, 'guest'));
+        host_transport.sendBattleEvents(guestViewEvents);
         for (const event of syncedResolvedEvents) {
           logEvent(event);
-          localEventQueue.push(event);
+          localEventQueue.push(rewriteEventMessagesForRole(event, 'host'));
         }
 
         // No artificial throttle. The round-trip pacing is now provided by

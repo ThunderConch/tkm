@@ -269,7 +269,7 @@ describe('friendly battle battle adapter', () => {
       {
         type: 'turn_resolved',
         turn: 1,
-        messages: ['GuestBench(으)로 교체!'],
+        messages: ['\u0001GUEST\u0001GuestBench(으)로 교체!'],
         waitingFor: ['host', 'guest'],
         nextPhase: 'waiting_for_choices',
         winner: null,

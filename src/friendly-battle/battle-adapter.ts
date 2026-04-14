@@ -119,6 +119,38 @@ export function submitFriendlyBattleChoice(
   return resolveFaintedSwitchTurn(runtime);
 }
 
+// Role-owner tag injected into displayName while resolveTurn runs so the
+// engine's string-interpolated messages ("${pokemon.displayName}의 지진!")
+// come out tagged. We then strip the tag into role-neutral form
+// "$$HOST$$디아루가" / "$$GUEST$$디아루가" so daemon.ts can rewrite it to
+// per-viewer "내 디아루가" / "상대 디아루가" when rendering the envelope.
+// Using a rare sentinel avoids clashing with any legitimate Pokemon name.
+const HOST_OWNER_TAG = '\u0001HOST\u0001';
+const GUEST_OWNER_TAG = '\u0001GUEST\u0001';
+
+function withOwnerTaggedDisplayNames<T>(
+  runtime: FriendlyBattleBattleRuntime,
+  fn: () => T,
+): T {
+  const originals = new Map<BattlePokemon, string>();
+  const tagTeam = (team: BattleState['player'], tag: string): void => {
+    for (const p of team.pokemon) {
+      originals.set(p, p.displayName ?? p.name ?? '');
+      const baseName = p.displayName ?? p.name ?? '';
+      p.displayName = `${tag}${baseName}`;
+    }
+  };
+  tagTeam(runtime.state.player, HOST_OWNER_TAG);
+  tagTeam(runtime.state.opponent, GUEST_OWNER_TAG);
+  try {
+    return fn();
+  } finally {
+    for (const [p, original] of originals) {
+      p.displayName = original;
+    }
+  }
+}
+
 function resolveChoiceTurn(runtime: FriendlyBattleBattleRuntime): FriendlyBattleBattleEvent[] {
   const hostChoice = runtime.pendingChoices.host;
   const guestChoice = runtime.pendingChoices.guest;
@@ -126,10 +158,12 @@ function resolveChoiceTurn(runtime: FriendlyBattleBattleRuntime): FriendlyBattle
     throw new Error('Friendly battle requires both host and guest choices before resolving');
   }
 
-  const result = resolveTurn(
-    runtime.state,
-    toTurnAction(hostChoice.choice),
-    toTurnAction(guestChoice.choice),
+  const result = withOwnerTaggedDisplayNames(runtime, () =>
+    resolveTurn(
+      runtime.state,
+      toTurnAction(hostChoice.choice),
+      toTurnAction(guestChoice.choice),
+    ),
   );
 
   return finalizeResolution(runtime, {
@@ -139,6 +173,11 @@ function resolveChoiceTurn(runtime: FriendlyBattleBattleRuntime): FriendlyBattle
     submittedAt: latestSubmittedAt(runtime.pendingChoices),
   });
 }
+
+export const FRIENDLY_BATTLE_OWNER_TAGS = {
+  host: HOST_OWNER_TAG,
+  guest: GUEST_OWNER_TAG,
+};
 
 function resolveFaintedSwitchTurn(runtime: FriendlyBattleBattleRuntime): FriendlyBattleBattleEvent[] {
   const switchWaiters = computeRequiredSwitchWaiters(runtime.state);
@@ -170,22 +209,25 @@ function resolveFaintedSwitchTurn(runtime: FriendlyBattleBattleRuntime): Friendl
     if (!envelope || envelope.choice.type !== 'switch') {
       throw new Error(`Friendly battle ${role} must submit a switch choice`);
     }
+    const pokemonIndex = envelope.choice.pokemonIndex;
 
-    const switched = role === 'host'
-      ? applyBattleSwitch(
-        runtime.state.player,
-        envelope.choice.pokemonIndex,
-        messages,
-        runtime.state.opponent,
-        'player',
-      )
-      : applyBattleSwitch(
-        runtime.state.opponent,
-        envelope.choice.pokemonIndex,
-        messages,
-        runtime.state.player,
-        'opponent',
-      );
+    const switched = withOwnerTaggedDisplayNames(runtime, () =>
+      role === 'host'
+        ? applyBattleSwitch(
+          runtime.state.player,
+          pokemonIndex,
+          messages,
+          runtime.state.opponent,
+          'player',
+        )
+        : applyBattleSwitch(
+          runtime.state.opponent,
+          pokemonIndex,
+          messages,
+          runtime.state.player,
+          'opponent',
+        ),
+    );
 
     if (!switched) {
       throw new Error(`Friendly battle ${role} submitted an invalid switch target`);
