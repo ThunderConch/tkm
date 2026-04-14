@@ -25,8 +25,8 @@ Read the first token of `$ARGUMENTS`:
   - **Mode flag aliases**: `-h`/`heuristic`, `-a`/`ai`. (`-l`/`local` is a host-side listen-mode flag and has no meaning on join — silently ignored if passed.)
   - Examples:
     - `/tkm:friendly-battle join abc123@192.168.0.5:54321` → manual
-    - `/tkm:friendly-battle join -a abc123@192.168.0.5:54321` or `join ai abc123@...` → guest-side Claude pick
-    - `/tkm:friendly-battle join -h abc123@192.168.0.5:54321` or `join heuristic abc123@...` → currently no-op on guest (PR48 limitation; behaves like manual)
+    - `/tkm:friendly-battle join -a abc123@192.168.0.5:54321` or `join ai abc123@...` → guest-side Claude picks (skill-layer)
+    - `/tkm:friendly-battle join -h abc123@192.168.0.5:54321` or `join heuristic abc123@...` → guest-side daemon auto-picks. The guest forwards its player mode to the host via the hello handshake, and the host's authoritative runtime computes `pickHeuristicAction(state, 'guest')` each turn. The guest skill stays in poll-only mode — no AskUserQuestion, no manual input.
 - `status` → go to **Step 7** (status flow)
 - `leave` → go to **Step 9** (leave flow)
 - `help` or empty → go to **Step 8** (help flow)
@@ -95,13 +95,16 @@ Poll loop:
 
 ### Step 1b — Join flow (guest)
 
-Parse `$ARGUMENTS` as `[mode] <code>@<host>:<port>`, where `mode` is optional and may be `heuristic` or `ai`.
+Parse `$ARGUMENTS` as `[mode] <code>@<host>:<port>`, where `mode` is optional. Mode token can appear BEFORE or AFTER the `<code>@<host>:<port>` string (both orders accepted). The short-flag aliases from Step 0 are also accepted here.
 
 - No mode token → `PLAYER_MODE=manual`
-- `heuristic` → `PLAYER_MODE=heuristic`
-- `ai` → `PLAYER_MODE=ai`
+- `heuristic` OR `-h` → `PLAYER_MODE=heuristic` (daemon auto-picks via host hello handshake — **fully supported, not a no-op**)
+- `ai` OR `-a` → `PLAYER_MODE=ai` (Claude picks from envelope with strict fog)
 
-For example: `abc123@192.168.1.5:54321`, `heuristic abc123@192.168.1.5:54321`, or `ai abc123@192.168.1.5:54321`.
+For example (all equivalent pairs):
+- `abc123@192.168.1.5:54321` (manual)
+- `heuristic abc123@192.168.1.5:54321` or `abc123@192.168.1.5:54321 -h`
+- `ai abc123@192.168.1.5:54321` or `abc123@192.168.1.5:54321 -a`
 
 If the format is missing or malformed, use AskUserQuestion to ask:
 - Question: "접속 정보를 `<code>@<host>:<port>` 형식으로 입력해 주세요."
