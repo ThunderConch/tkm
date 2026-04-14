@@ -10,11 +10,13 @@ Open a friendly battle session and fight another player in real-time turn-based 
 
 Read the first token of `$ARGUMENTS`:
 
-- `open` → go to **Step 1a** (open flow). **Default is LAN mode + manual**. The **second** token can independently select a **listen mode** and a **player mode**:
-  - Listen mode: `local` → loopback (`127.0.0.1`). Any other second token → LAN (`0.0.0.0`).
-  - Player mode: `heuristic` or `ai` — these are **player decision modes** for the host side. `heuristic` makes the daemon auto-pick the best move greedy-style (sub-second, no LLM). `ai` makes Claude pick inline from the envelope, skipping AskUserQuestion. `manual` (default) keeps the normal AskUserQuestion flow.
-  - Examples: `/tkm:friendly-battle open` (LAN + manual), `/tkm:friendly-battle open local` (loopback + manual), `/tkm:friendly-battle open heuristic` (LAN + heuristic auto-pick), `/tkm:friendly-battle open ai` (LAN + Claude picks), `/tkm:friendly-battle open local ai` (loopback + Claude picks).
-- `join` → go to **Step 1b** (join flow); the second token must be `<code>@<host>:<port>`. Optional third token: `heuristic` or `ai` to delegate the guest side's decisions. `heuristic` on guest is accepted by the CLI but currently no-ops (host-side only in PR48) — use `manual` or `ai` on the guest side.
+- `open` → go to **Step 1a** (open flow). Optional second token: `heuristic`, `ai`, or `local`.
+  - `heuristic` / `ai` set the **player decision mode** for the host side.
+  - `local` keeps the existing loopback-only local behavior from PR46.
+  - Omitting the token means **manual** mode.
+  - Examples: `/tkm:friendly-battle open`, `/tkm:friendly-battle open heuristic`, `/tkm:friendly-battle open ai`, `/tkm:friendly-battle open local`.
+- `join` → go to **Step 1b** (join flow). Optional second token: `heuristic` or `ai`, and the next token must be `<code>@<host>:<port>`.
+  - Examples: `/tkm:friendly-battle join abc123@192.168.0.5:54321`, `/tkm:friendly-battle join heuristic abc123@192.168.0.5:54321`, `/tkm:friendly-battle join ai abc123@192.168.0.5:54321`.
 - `status` → go to **Step 7** (status flow)
 - `leave` → go to **Step 9** (leave flow)
 - `help` or empty → go to **Step 8** (help flow)
@@ -24,10 +26,11 @@ Read the first token of `$ARGUMENTS`:
 
 ### Step 1a — Open flow (host)
 
-**Pick listen mode from the second `$ARGUMENTS` token:**
+**Pick mode from the optional second `$ARGUMENTS` token:**
 
-- Default (no second token, or anything besides `local`): **LAN mode** — bind `0.0.0.0`, advertise the machine's detected LAN IP. Works for two players on the **same local network** (e.g. same WiFi). The host's firewall must allow inbound TCP on the chosen port.
-- Second token `local`: **loopback mode** — bind `127.0.0.1`, advertise `127.0.0.1:<port>`. Only works when host and guest are on the **same machine**.
+- Default (no mode token, or `heuristic`, or `ai`): **LAN mode** — bind `0.0.0.0`, advertise the machine's detected LAN IP. Works for two players on the **same local network** (e.g. same WiFi). The host's firewall must allow inbound TCP on the chosen port.
+- Token `local`: **loopback mode** — bind `127.0.0.1`, advertise `127.0.0.1:<port>`. Only works when host and guest are on the **same machine**.
+- `PLAYER_MODE` must be one of `manual`, `heuristic`, or `ai`. `local` is a transport-mode token, not a player mode.
 
 **Initialize the host daemon:**
 
@@ -37,8 +40,8 @@ GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path')
 SESSION_CODE=$(node -e "process.stdout.write(require('crypto').randomBytes(3).toString('hex'))")
 # Default LAN mode binds 0.0.0.0 so same-network peers can reach this host;
 # only the explicit `local` second token switches back to 127.0.0.1.
-LISTEN_HOST=0.0.0.0  # set to 127.0.0.1 when a second token is `local`
-PLAYER_MODE=manual   # set to heuristic / ai when a second token requests one
+LISTEN_HOST=0.0.0.0  # set to 127.0.0.1 when the optional mode token is `local`
+PLAYER_MODE=manual   # set to heuristic / ai when the optional mode token requests one
 "$P/bin/run-friendly-battle-turn.sh" --init-host --session-code "$SESSION_CODE" --generation "$GEN" --listen-host "$LISTEN_HOST" --port 0 --timeout-ms 300000 --player-name Host --player-mode "$PLAYER_MODE"
 ```
 
@@ -55,6 +58,7 @@ Use `ADVERTISED_HOST=$LAN_IP` in LAN mode (default), `ADVERTISED_HOST=127.0.0.1`
 Tell the user:
 - "세션 코드: `<SESSION_CODE>`"
 - "호스트 주소: `<ADVERTISED_HOST>:<PORT>`"
+- "플레이어 모드: `<PLAYER_MODE>`"
 - "상대방에게 위 코드와 주소를 공유하고, 상대방이 `/tkm:friendly-battle join <code>@<ADVERTISED_HOST>:<port>` 를 실행하도록 안내하세요."
 - **In LAN mode (default) only**, add: "⚠️ LAN 모드는 호스트 머신의 방화벽이 해당 TCP 포트(`<PORT>`)의 인바운드 연결을 허용해야 합니다. WSL2 호스트의 경우 Windows 방화벽도 확인하세요. 같은 WiFi/LAN 에 있는 상대방만 접속 가능합니다 (인터넷 경유 X). 같은 머신에서 두 터미널로 테스트하려면 `/tkm:friendly-battle open local` 을 사용하세요."
 - "💡 친선전 턴 진행은 거의 mechanical 한 작업이니 Opus 대신 Sonnet 을 쓰면 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구. Haiku는 UI 입력 파싱이 불안정해서 비추천.)"
@@ -79,7 +83,13 @@ Poll loop:
 
 ### Step 1b — Join flow (guest)
 
-Parse the second token of `$ARGUMENTS` as `<code>@<host>:<port>`. For example: `abc123@192.168.1.5:54321`.
+Parse `$ARGUMENTS` as `[mode] <code>@<host>:<port>`, where `mode` is optional and may be `heuristic` or `ai`.
+
+- No mode token → `PLAYER_MODE=manual`
+- `heuristic` → `PLAYER_MODE=heuristic`
+- `ai` → `PLAYER_MODE=ai`
+
+For example: `abc123@192.168.1.5:54321`, `heuristic abc123@192.168.1.5:54321`, or `ai abc123@192.168.1.5:54321`.
 
 If the format is missing or malformed, use AskUserQuestion to ask:
 - Question: "접속 정보를 `<code>@<host>:<port>` 형식으로 입력해 주세요."
@@ -90,7 +100,7 @@ Once you have the three parts (`SESSION_CODE`, `HOST`, `PORT`):
 ```bash
 P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
 GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
-PLAYER_MODE=manual   # set to heuristic / ai when the third arg requests one
+PLAYER_MODE=manual   # set to heuristic / ai when the optional mode token requests one
 "$P/bin/run-friendly-battle-turn.sh" --init-join --session-code "$SESSION_CODE" --host "$HOST" --port "$PORT" --generation "$GEN" --timeout-ms 30000 --player-name Guest --player-mode "$PLAYER_MODE"
 ```
 
@@ -98,6 +108,7 @@ Parse the JSON envelope on stdout. Store `sessionId`.
 
 Tell the user:
 - "호스트에 접속 중입니다... 잠시 기다려 주세요."
+- "플레이어 모드: `<PLAYER_MODE>`"
 - "💡 친선전 턴 진행은 거의 mechanical 한 작업이니 Opus 대신 Sonnet 을 쓰면 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구. Haiku는 UI 입력 파싱이 불안정해서 비추천.)"
 
 Then poll with `--wait-next-event` (same loop as Step 1a) until `phase === 'battle'`, then transition to **Step 2**.
@@ -112,8 +123,8 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 
 **Player mode branches** (set once at open/join time, fixed for the battle):
 - **`manual`** (default): original flow below. You show AskUserQuestion, user picks, you submit.
-- **`heuristic`**: the daemon auto-submits actions via `pickHeuristicAction` inside its host turn loop. Skill side does **nothing** except poll `--wait-next-event` in a tight loop and relay terminal envelopes to the user. **Do NOT call AskUserQuestion.** **Do NOT call `--action`.** Just wait_next_event until `victory` / `defeat` / `aborted`. Effective only when the host side chose heuristic at `open`; on the guest side heuristic is a no-op in PR48 (daemon falls back to waiting for skill actions — so if the guest requested heuristic it behaves like manual).
-- **`ai`**: You (Claude) pick the action inline from the envelope's `questionContext` + `moveOptions` + `partyOptions`, using your own judgement with only the information visible in the envelope. **Do NOT call AskUserQuestion.** Instead, for each `select_action` event, reason briefly in the conversation ("turn N: I'll pick move slot 2 because...") and immediately call the `--action` subcommand (see Step 3 for the exact bash form) with a concrete token like `move:1`, `switch:2`, or `surrender`. Treat move indexes as 1-based from `moveOptions`, party indexes as 1-based from `partyOptions`. For `fainted_switch` events, pick a non-fainted party slot from `partyOptions` and call the switch form in Step 4. The rest of the turn loop (frame display, status dispatch) is identical to manual.
+- **`heuristic`**: the daemon auto-submits actions internally. Skill side does **nothing** except poll `--wait-next-event` in a tight loop and relay terminal envelopes to the user. **Do NOT call AskUserQuestion.** **Do NOT call `--action`.** Just wait_next_event until `victory` / `defeat` / `aborted`.
+- **`ai`**: You (Claude) pick the action inline from the envelope's `liveState`, `fogState`, `moveOptions`, and `partyOptions`. **Do NOT call AskUserQuestion.** Build an explicit prompt from those fields using the PR48 template, require the reply to be exactly one token (`move:N`, `switch:N`, or `surrender`), parse it, then call the `--action` subcommand with the parsed token. Retry once on malformed output; if parsing still fails, fall back to `move:1`.
 
 **Turn loop:**
 
@@ -128,11 +139,11 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
    - **`select_action`**:
      - `$PLAYER_MODE === 'manual'`: build a move-select AskUserQuestion (see **Step 3** below).
      - `$PLAYER_MODE === 'heuristic'`: loop back to step 1 (daemon will submit the action; the next event arrives). Do not prompt.
-     - `$PLAYER_MODE === 'ai'`: Claude picks a `move:N` / `switch:N` / `surrender` from the envelope (1-based indexes, must be in range), writes the choice + a 1-sentence reason to the conversation, then calls `--action` with the chosen token. Loop back to step 1 after the ack envelope.
+     - `$PLAYER_MODE === 'ai'`: build the explicit PR48 action-selection prompt from the envelope, ask Claude to answer with exactly one token, parse only `move:N` / `switch:N` / `surrender`, retry once on malformed output, and fall back to `move:1` if the second parse still fails. Then call `--action` with the parsed token. Loop back to step 1 after the ack envelope.
    - **`fainted_switch`**:
      - `manual`: go directly to **Step 6** (forced switch — no move menu).
      - `heuristic`: loop back to step 1.
-     - `ai`: Claude picks a non-fainted party slot from `partyOptions` and calls the switch form of `--action` (see Step 4 for the bash block). Loop back to step 1.
+     - `ai`: use the same explicit prompt flow, but constrain the valid outputs to `switch:N` or `surrender`; parse, retry once, and fall back to the first legal switch if parsing still fails. Then call the switch form of `--action` (see Step 4 for the bash block). Loop back to step 1.
    - **`victory`**: show "승리! 배틀이 끝났습니다." and stop.
    - **`defeat`**: show "패배... 배틀이 끝났습니다." and stop.
    - **`aborted`** (or `phase === 'aborted'`): the daemon now marks voluntary leave and peer disconnect with distinct `questionContext` strings so you can branch without sniffing stderr:
