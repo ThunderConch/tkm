@@ -305,18 +305,18 @@ describe('friendly-battle daemon leave (end-to-end)', () => {
           );
         }
 
-        // ── Step 3: guest's next wait_next_event sees aborted/disconnect/defeat ──
-        // When the host leaves, the TCP connection drops. The guest daemon's action
-        // queue times out, the catch block fires a synthetic battle_finished event
-        // (winner: null → status='defeat'), then shutdown(1,'aborted') closes the
-        // IPC server. So the guest will see either 'aborted' status/phase, or
-        // 'defeat' (the disconnect-synthetic event), depending on timing.
+        // ── Step 3: guest's next wait_next_event sees an aborted terminal state ──
+        // Peer disconnect is NOT a defeat — it's an aborted session. The guest
+        // tcpPump routes battle_finished through eventStatus(), which maps
+        // reason='disconnect' | 'cancelled' to 'aborted'. This assertion guards
+        // the H1 regression from the PR46 Codex review: previously
+        // `event.winner === 'guest' ? 'victory' : 'defeat'` silently downgraded
+        // a peer leave to a loss on the guest side.
         const guestResult = await drainUntilAbortedOrDone(guestInfo.socketPath, DAEMON_TIMEOUT_MS + 1_000);
-        assert.ok(
-          guestResult.phase === 'aborted' ||
-          guestResult.status === 'aborted' ||
-          guestResult.status === 'defeat',
-          `guest should see aborted or defeat after host leaves, got phase=${guestResult.phase} status=${guestResult.status}`,
+        assert.equal(
+          guestResult.status,
+          'aborted',
+          `guest should see status='aborted' after host leaves (not defeat), got phase=${guestResult.phase} status=${guestResult.status}`,
         );
 
         // ── Step 4: both daemons exit ──

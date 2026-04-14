@@ -36,7 +36,7 @@ Tell the user:
 - "세션 코드: `<SESSION_CODE>`"
 - "호스트 주소: `127.0.0.1:<PORT>`"
 - "상대방에게 위 코드와 주소를 공유하고, 상대방이 `/tkm:friendly-battle join <code>@127.0.0.1:<port>` 를 실행하도록 안내하세요."
-- "💡 친선전 턴 진행은 거의 mechanical 한 작업이라 더 작은 모델로 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model haiku` 또는 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구)"
+- "💡 친선전 턴 진행은 거의 mechanical 한 작업이니 Opus 대신 Sonnet 을 쓰면 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구. Haiku는 UI 입력 파싱이 불안정해서 비추천.)"
 - "게스트가 접속할 때까지 잠시 기다립니다..."
 
 Then enter the **wait-for-guest polling loop**:
@@ -76,7 +76,7 @@ Parse the JSON envelope on stdout. Store `sessionId`.
 
 Tell the user:
 - "호스트에 접속 중입니다... 잠시 기다려 주세요."
-- "💡 친선전 턴 진행은 거의 mechanical 한 작업이라 더 작은 모델로 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model haiku` 또는 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구)"
+- "💡 친선전 턴 진행은 거의 mechanical 한 작업이니 Opus 대신 Sonnet 을 쓰면 훨씬 빠릅니다. 배틀 속도가 답답하면 `/model sonnet` 으로 전환하세요. (배틀 끝난 뒤 `/model` 로 원래 모델 복구. Haiku는 UI 입력 파싱이 불안정해서 비추천.)"
 
 Then poll with `--wait-next-event` (same loop as Step 1a) until `phase === 'battle'`, then transition to **Step 2**.
 

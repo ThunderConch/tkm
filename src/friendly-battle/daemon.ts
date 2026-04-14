@@ -701,8 +701,28 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     writeRecord();
     // Fail action queue to unblock any turn-loop waiter.
     localActionQueue.fail(new Error('daemon shutting down'));
+    // Build the fallback message from the final record status so a late
+    // wait_next_event caller gets a message consistent with the actual
+    // outcome — including 'aborted' (voluntary leave / peer disconnect),
+    // which used to contradictorily render as "You lost!".
+    const fallbackContext = record.status === 'victory'
+      ? 'You won!'
+      : record.status === 'aborted'
+        ? 'Battle ended.'
+        : 'You lost!';
     if (exitCode !== 0) {
-      // On error/abort, also fail the event queue so callers get an error.
+      // On error/abort: arm the sentinel BEFORE failing the queue so any
+      // wait_next_event caller that was already blocked in shift() falls
+      // through to the sentinel check in the IPC catch branch instead of
+      // bubbling up a generic 'handler_error'.
+      queueClosedEnvelope = formatFriendlyBattleTurnJson({
+        record,
+        questionContext: fallbackContext,
+        moveOptions: [],
+        partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
+        animationFrames: [],
+        currentFrameIndex: 0,
+      });
       localEventQueue.fail(new Error('daemon shutting down'));
     } else {
       // On clean finish: drain any already-buffered events first so legitimate
@@ -718,7 +738,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       // catches that rejection and returns the sentinel.
       queueClosedEnvelope = formatFriendlyBattleTurnJson({
         record,
-        questionContext: record.status === 'victory' ? 'You won!' : 'You lost!',
+        questionContext: fallbackContext,
         moveOptions: [],
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
         animationFrames: [],
@@ -957,8 +977,12 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         localEventQueue.push(event);
         if (event.type === 'battle_finished') {
           battleFinished = true;
-          record.phase = 'finished';
-          record.status = event.winner === 'guest' ? 'victory' : 'defeat';
+          // Route through eventStatus so voluntary leave / peer disconnect
+          // map to 'aborted' instead of being silently downgraded to 'defeat'
+          // (disconnect has winner=null, which the old strict-equality check
+          // treated as a loss for the guest).
+          record.phase = eventStatus(event, 'guest') === 'aborted' ? 'aborted' : 'finished';
+          record.status = eventStatus(event, 'guest');
           writeRecord();
           // Unblock any pending action shift so actionPump can exit.
           localActionQueue.fail(new Error('guest battle finished'));
@@ -1042,6 +1066,22 @@ function parseCliOptions(argv: string[]): { role: FriendlyBattleRole; options: D
   } catch (err) {
     process.stderr.write(`daemon: failed to decode TKM_FB_OPTIONS_B64: ${(err as Error).message}\n`);
     process.exit(1);
+  }
+
+  // Re-validate filesystem-sensitive identifiers even though the CLI wrapper
+  // already does so. The daemon is normally launched by our own CLI, but
+  // validating here keeps the path-containment story intact if anything
+  // ever spawns the daemon directly with a crafted TKM_FB_OPTIONS_B64.
+  const SAFE_ID = /^[A-Za-z0-9_.-]{1,128}$/;
+  for (const [field, value] of [
+    ['sessionId', options.sessionId],
+    ['generation', options.generation],
+    ['sessionCode', options.sessionCode],
+  ] as const) {
+    if (typeof value !== 'string' || !SAFE_ID.test(value)) {
+      process.stderr.write(`daemon: invalid ${field} in decoded options\n`);
+      process.exit(1);
+    }
   }
 
   return { role, options };
