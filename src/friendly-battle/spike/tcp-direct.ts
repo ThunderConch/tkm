@@ -12,6 +12,7 @@ import {
   type FriendlyBattleReadyStateMessage,
   type FriendlyBattleStartedMessage,
   type FriendlyBattleSubmitChoiceMessage,
+  type PlayerMode,
 } from '../contracts.js';
 import {
   createFriendlyBattleChoiceEnvelope,
@@ -44,12 +45,14 @@ type GuestOptions = {
   generation: string;
   guestPlayerName: string;
   guestSnapshot: FriendlyBattlePartySnapshot;
+  guestPlayerMode?: PlayerMode;
   timeoutMs?: number;
 };
 
 type GuestJoinEvent = {
   guestPlayerName: string;
   guestSnapshot: FriendlyBattlePartySnapshot;
+  guestPlayerMode?: PlayerMode;
 };
 
 type GuestReadyMessage = {
@@ -286,6 +289,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
           guestJoinQueue.push({
             guestPlayerName: message.guestPlayerName,
             guestSnapshot: structuredClone(message.guestSnapshot),
+            guestPlayerMode: message.guestPlayerMode,
           });
           writeMessage(incomingSocket, {
             type: 'hello_ack',
@@ -581,6 +585,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     generation: options.generation,
     guestPlayerName: options.guestPlayerName,
     guestSnapshot: options.guestSnapshot,
+    guestPlayerMode: options.guestPlayerMode,
   });
 
   try {

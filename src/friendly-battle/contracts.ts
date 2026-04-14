@@ -292,6 +292,14 @@ export interface FriendlyBattleHelloMessage {
   generation: string;
   guestPlayerName: string;
   guestSnapshot: FriendlyBattlePartySnapshot;
+  /**
+   * Optional player decision mode the guest selected at `--init-join` time.
+   * Surfaced to the host so the host turn loop can compute heuristic actions
+   * on the guest's behalf when guestPlayerMode === 'heuristic' (the guest
+   * daemon does not maintain its own BattleState, so the heuristic must run
+   * on the host's authoritative runtime).
+   */
+  guestPlayerMode?: PlayerMode;
 }
 
 export interface FriendlyBattleHelloAckMessage {

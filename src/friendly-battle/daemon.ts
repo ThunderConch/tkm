@@ -1037,6 +1037,12 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       record.phase = 'handshake';
       record.status = 'ongoing';
       writeRecord();
+      // The guest tells the host its player mode in the hello message so that
+      // host can run pickHeuristicAction(state, 'guest') on its own runtime —
+      // guest's daemon does not maintain a BattleState and cannot make the
+      // decision locally. Falls back to 'manual' for older guests / missing
+      // field.
+      const guestPlayerMode: PlayerMode = joined.guestPlayerMode ?? 'manual';
 
       // Load host profile & build teams
       const hostProfile = loadFriendlyBattleCurrentProfile(generation);
@@ -1094,8 +1100,20 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
               : localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'host action'))
           : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
 
+        // When the guest is in heuristic mode, the host computes the guest's
+        // action locally from the host-authoritative runtime — the guest
+        // daemon never sends an action over TCP because its skill stays in
+        // poll-only mode. This is the same per-side decision contract as the
+        // host heuristic branch above, but evaluated on the guest team.
         const guestPromise = waitingFor.includes('guest')
-          ? host_transport.waitForGuestChoice(TURN_LOOP_TIMEOUT_MS)
+          ? (guestPlayerMode === 'heuristic'
+              ? Promise.resolve(
+                  createFriendlyBattleChoiceEnvelope(
+                    'guest',
+                    serializeDaemonAction(pickHeuristicAction(runtime.state, 'guest')),
+                  ),
+                )
+              : host_transport.waitForGuestChoice(TURN_LOOP_TIMEOUT_MS))
           : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
 
         const [hostEnvelope, guestEnvelope] = await Promise.all([hostPromise, guestPromise]);
@@ -1167,6 +1185,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     guestPlayerName: playerName,
     generation,
     guestSnapshot,
+    guestPlayerMode: playerMode,
     timeoutMs,
   });
 

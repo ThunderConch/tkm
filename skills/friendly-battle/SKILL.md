@@ -136,7 +136,7 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 **Player mode branches** (set once at open/join time, fixed for the battle):
 - **`manual`** (default): original flow below. You show AskUserQuestion, user picks, you submit.
 - **`heuristic`**: the daemon auto-submits actions internally. Skill side does **nothing** except poll `--wait-next-event` in a tight loop and relay terminal envelopes to the user. **Do NOT call AskUserQuestion.** **Do NOT call `--action`.** Just wait_next_event until `victory` / `defeat` / `aborted`.
-- **`ai`**: You (Claude) pick the action inline from the envelope's `liveState`, `fogState`, `moveOptions`, and `partyOptions`. **Do NOT call AskUserQuestion.** Build an explicit prompt from those fields using the PR48 template, require the reply to be exactly one token (`move:N`, `switch:N`, or `surrender`), parse it, then call the `--action` subcommand with the parsed token. Retry once on malformed output; if parsing still fails, fall back to `move:1`.
+- **`ai`**: You (Claude) pick the action inline. **Do NOT call AskUserQuestion.** **STRICT FOG RULE**: for OPPONENT info, you may ONLY look at `envelope.fogState` (`opponentActive.species`, `level`, `hpPercent`, `visibleStatus`, `revealedMoves[]`, plus `opponentBenchRevealed[]` and `opponentBenchHidden`). You MUST NOT read `envelope.liveState.guest` (when you are host) or `envelope.liveState.host` (when you are guest) — that field contains the opponent's full unfogged state and reading it is cheating per the PR48 spec. For YOUR OWN side, use `liveState[yourRole]` + `moveOptions` + `partyOptions`. Build an explicit prompt from these fields, require the reply to be exactly one token (`move:N`, `switch:N`, or `surrender`), parse it, then call the `--action` subcommand with the parsed token. Retry once on malformed output; if parsing still fails, fall back to `move:1`.
 
 **Turn loop:**
 
@@ -151,7 +151,7 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
    - **`select_action`**:
      - `$PLAYER_MODE === 'manual'`: build a move-select AskUserQuestion (see **Step 3** below).
      - `$PLAYER_MODE === 'heuristic'`: loop back to step 1 (daemon will submit the action; the next event arrives). Do not prompt.
-     - `$PLAYER_MODE === 'ai'`: build the explicit PR48 action-selection prompt from the envelope, ask Claude to answer with exactly one token, parse only `move:N` / `switch:N` / `surrender`, retry once on malformed output, and fall back to `move:1` if the second parse still fails. Then call `--action` with the parsed token. Loop back to step 1 after the ack envelope.
+     - `$PLAYER_MODE === 'ai'`: build the explicit PR48 action-selection prompt from the envelope **per the strict fog rule above** — opponent info MUST come from `envelope.fogState` only, NEVER from `envelope.liveState[oppositeRole]`. Own side info comes from `envelope.liveState[yourRole]` + `moveOptions` + `partyOptions`. Ask Claude to answer with exactly one token, parse only `move:N` / `switch:N` / `surrender`, retry once on malformed output, and fall back to `move:1` if the second parse still fails. Then call `--action` with the parsed token. Loop back to step 1 after the ack envelope.
    - **`fainted_switch`**:
      - `manual`: go directly to **Step 6** (forced switch — no move menu).
      - `heuristic`: loop back to step 1.
