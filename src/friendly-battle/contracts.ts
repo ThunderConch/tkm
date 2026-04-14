@@ -152,11 +152,58 @@ export interface FriendlyBattleBattleInitializedEvent {
   turn: number;
 }
 
+export interface FriendlyBattleLiveActiveMove {
+  index: number;       // 1-based slot index for SKILL.md / CLI
+  nameKo: string;
+  pp: number;
+  maxPp: number;
+  disabled: boolean;
+}
+
+export interface FriendlyBattleLivePartyEntry {
+  index: number;       // 1-based slot index for SKILL.md / CLI
+  name: string;
+  level: number;
+  hp: number;
+  maxHp: number;
+  fainted: boolean;
+}
+
+export interface FriendlyBattleLiveTeam {
+  active: {
+    name: string;
+    level: number;
+    hp: number;
+    maxHp: number;
+    fainted: boolean;
+    moves: FriendlyBattleLiveActiveMove[];
+  };
+  party: FriendlyBattleLivePartyEntry[];
+}
+
+/**
+ * Authoritative battle state snapshot built by the host's battle-adapter
+ * runtime and embedded into choices_requested events. Guests do NOT compute
+ * their own state — they render whatever the host published in the event.
+ */
+export interface FriendlyBattleLiveBattleState {
+  host: FriendlyBattleLiveTeam;
+  guest: FriendlyBattleLiveTeam;
+}
+
 export interface FriendlyBattleChoicesRequestedEvent {
   type: 'choices_requested';
   turn: number;
   waitingFor: FriendlyBattleRole[];
   phase: Extract<FriendlyBattleTurnPhase, 'waiting_for_choices' | 'awaiting_fainted_switch'>;
+  /**
+   * Optional authoritative live state. Populated by the host's battle-adapter
+   * runtime so the guest daemon can render real HP / PP / fainted info without
+   * maintaining its own runtime. Older event producers (existing tests, legacy
+   * code) may omit this field — daemons fall back to local snapshot in that
+   * case.
+   */
+  liveState?: FriendlyBattleLiveBattleState;
 }
 
 export interface FriendlyBattleTurnResolvedEvent {

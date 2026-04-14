@@ -33,6 +33,7 @@ import { join, resolve } from 'node:path';
 import { spawn, type ChildProcess } from 'node:child_process';
 
 import { sendDaemonIpcRequest } from '../src/friendly-battle/daemon-ipc.js';
+import type { DaemonResponse } from '../src/friendly-battle/daemon-protocol.js';
 
 const REPO_ROOT = resolve(import.meta.dirname, '..');
 const DAEMON_ENTRY = resolve(REPO_ROOT, 'src/friendly-battle/daemon.ts');
@@ -285,25 +286,46 @@ describe('friendly-battle daemon fainted forced-switch (end-to-end)', () => {
 
         // ── Step 3: drain events until fainted_switch appears on at least one side ──
         // Both sides get turn_resolved (ongoing) first, then choices_requested
-        // with phase=awaiting_fainted_switch (status=fainted_switch).
+        // with phase=awaiting_fainted_switch. Daemon eventStatus only flips to
+        // 'fainted_switch' on the side actually in waitingFor — the spectator
+        // side stays 'ongoing' and runs out of events while the daemon waits
+        // for the fainted side to submit its switch. So a side that hits the
+        // wait_next_event inner timeout with no fainted_switch is the spectator,
+        // and we resolve it as `false` rather than throwing.
         async function drainUntilFaintedSwitch(socketPath: string, label: string): Promise<boolean> {
           for (let i = 0; i < 10; i++) {
-            const ev = await sendDaemonIpcRequest(
-              socketPath,
-              { op: 'wait_next_event', timeoutMs: 4_000 },
-              5_000,
-            );
-            if (ev.op === 'error') throw new Error(`${label} IPC error at attempt ${i}: ${(ev as { message: string }).message}`);
+            let ev: DaemonResponse;
+            try {
+              ev = await sendDaemonIpcRequest(
+                socketPath,
+                { op: 'wait_next_event', timeoutMs: 1_500 },
+                3_000,
+              );
+            } catch (err) {
+              // Inner timeout: this side has no more events queued because the
+              // daemon's turn loop is paused waiting on the *other* side's
+              // forced switch. That makes us the spectator → not in fainted_switch.
+              if ((err as Error).message.includes('timed out') || (err as Error).message.includes('timeout')) {
+                return false;
+              }
+              throw err;
+            }
+            if (ev.op === 'error') {
+              const msg = (ev as { message?: string }).message ?? '';
+              if (msg.includes('timed out') || msg.includes('timeout')) return false;
+              throw new Error(`${label} IPC error at attempt ${i}: ${msg}`);
+            }
             assert.equal(ev.op, 'event', `${label}: expected event op after moves, got ${ev.op}`);
             if (ev.op === 'event') {
               const status = ev.envelope.status;
               if (status === 'fainted_switch') return true;
               // If both sides fainted simultaneously the battle may end immediately
               if (status === 'victory' || status === 'defeat') return false;
-              // 'ongoing' (turn_resolved) — keep draining
+              // 'ongoing' (turn_resolved or spectator-view of fainted_switch) — keep draining
             }
           }
-          throw new Error(`${label}: never reached fainted_switch or terminal within 10 events`);
+          // 10 events drained without fainted_switch → must be the spectator side
+          return false;
         }
 
         const [hostFainted, guestFainted] = await Promise.all([

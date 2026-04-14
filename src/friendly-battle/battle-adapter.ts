@@ -4,13 +4,17 @@ import {
   hasAlivePokemon,
   resolveTurn,
 } from '../core/turn-battle.js';
-import type { BattlePokemon, BattleState, TurnAction } from '../core/types.js';
+import type { BattlePokemon, BattleState, BattleTeam, TurnAction } from '../core/types.js';
 import type {
   FriendlyBattleBattleEvent,
   FriendlyBattleBattleRef,
   FriendlyBattleChoice,
   FriendlyBattleChoiceEnvelope,
   FriendlyBattleCompletionReason,
+  FriendlyBattleLiveActiveMove,
+  FriendlyBattleLiveBattleState,
+  FriendlyBattleLivePartyEntry,
+  FriendlyBattleLiveTeam,
   FriendlyBattleRole,
   FriendlyBattleTurnPhase,
 } from './contracts.js';
@@ -60,6 +64,7 @@ export function createFriendlyBattleBattleRuntime(
         turn: runtime.state.turn + 1,
         waitingFor: ['host', 'guest'],
         phase: 'waiting_for_choices',
+        liveState: buildFriendlyBattleLiveBattleState(runtime.state),
       },
     ],
   };
@@ -242,6 +247,7 @@ function finalizeResolution(
       turn: runtime.state.turn,
       waitingFor: waiters,
       phase: 'awaiting_fainted_switch',
+      liveState: buildFriendlyBattleLiveBattleState(runtime.state),
     });
     return events;
   }
@@ -251,6 +257,7 @@ function finalizeResolution(
     turn: runtime.state.turn + 1,
     waitingFor: ['host', 'guest'],
     phase: 'waiting_for_choices',
+    liveState: buildFriendlyBattleLiveBattleState(runtime.state),
   });
   return events;
 }
@@ -385,4 +392,49 @@ function latestSubmittedAt(
     .sort();
 
   return submittedAt.at(-1) ?? new Date().toISOString();
+}
+
+/**
+ * Build the authoritative live battle state from the host's runtime. The
+ * resulting object is embedded into choices_requested events so the guest
+ * daemon can render real HP / PP / fainted info without maintaining its own
+ * runtime. Host = state.player, guest = state.opponent (matches the role
+ * mapping used everywhere else in the friendly-battle module).
+ */
+export function buildFriendlyBattleLiveBattleState(state: BattleState): FriendlyBattleLiveBattleState {
+  return {
+    host: buildLiveTeam(state.player),
+    guest: buildLiveTeam(state.opponent),
+  };
+}
+
+function buildLiveTeam(team: BattleTeam): FriendlyBattleLiveTeam {
+  const active = team.pokemon[team.activeIndex];
+  const moves: FriendlyBattleLiveActiveMove[] = active
+    ? active.moves.map((m, i) => ({
+        index: i + 1,
+        nameKo: m.data.nameKo ?? m.data.name ?? `Move ${i + 1}`,
+        pp: m.currentPp,
+        maxPp: m.data.pp,
+        disabled: m.currentPp <= 0,
+      }))
+    : [];
+  return {
+    active: {
+      name: active?.displayName ?? active?.name ?? 'Unknown',
+      level: active?.level ?? 1,
+      hp: active?.currentHp ?? 0,
+      maxHp: active?.maxHp ?? 0,
+      fainted: active?.fainted ?? false,
+      moves,
+    },
+    party: team.pokemon.map((p, i): FriendlyBattleLivePartyEntry => ({
+      index: i + 1,
+      name: p.displayName ?? p.name ?? `Pokemon ${i + 1}`,
+      level: p.level,
+      hp: p.currentHp,
+      maxHp: p.maxHp,
+      fainted: p.fainted,
+    })),
+  };
 }

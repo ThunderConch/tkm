@@ -52,6 +52,7 @@ import {
 import type {
   FriendlyBattleBattleEvent,
   FriendlyBattleChoiceEnvelope,
+  FriendlyBattleLiveBattleState,
   FriendlyBattleRole,
   FriendlyBattlePartySnapshot,
 } from './contracts.js';
@@ -241,6 +242,62 @@ function buildBattleContext(
   return headline;
 }
 
+/**
+ * Build the envelope display fields directly from the host-authored live
+ * battle state. This is the canonical path: guest daemons consume it without
+ * needing their own runtime, and host daemons get the same accurate render
+ * as a side effect. The legacy buildXxxFromRuntime / FromSnapshot helpers
+ * are kept only for old test events that don't carry liveState.
+ */
+function buildEnvelopeFieldsFromLiveState(input: {
+  headline: string;
+  liveState: FriendlyBattleLiveBattleState;
+  role: FriendlyBattleRole;
+  showMoveOptions: boolean;
+  showPartyOptions: boolean;
+}): {
+  questionContext: string;
+  moveOptions: FriendlyBattleTurnMoveOption[];
+  partyOptions: FriendlyBattleTurnPartyOption[];
+  animationFrames: FriendlyBattleTurnAnimationFrame[];
+  currentFrameIndex: number;
+} {
+  const self = input.role === 'host' ? input.liveState.host : input.liveState.guest;
+  const opp  = input.role === 'host' ? input.liveState.guest : input.liveState.host;
+
+  const moveOptions: FriendlyBattleTurnMoveOption[] = input.showMoveOptions
+    ? self.active.moves.map((m) => ({
+        index: m.index,
+        nameKo: m.nameKo,
+        pp: m.pp,
+        maxPp: m.maxPp,
+        disabled: m.disabled,
+      }))
+    : [];
+
+  const partyOptions: FriendlyBattleTurnPartyOption[] = input.showPartyOptions
+    ? self.party.map((p) => ({
+        index: p.index,
+        name: p.name,
+        hp: p.hp,
+        maxHp: p.maxHp,
+        fainted: p.fainted,
+      }))
+    : [];
+
+  const oppLabel  = `상대 ${opp.active.name} Lv.${opp.active.level} HP:${opp.active.hp}/${opp.active.maxHp}`;
+  const selfLabel = `내 ${self.active.name} Lv.${self.active.level} HP:${self.active.hp}/${self.active.maxHp}`;
+  const questionContext = `${input.headline}\n⚔️ ${oppLabel} | ${selfLabel}`;
+
+  return {
+    questionContext,
+    moveOptions,
+    partyOptions,
+    animationFrames: [],
+    currentFrameIndex: 0,
+  };
+}
+
 function eventToEnvelopeFields(
   event: FriendlyBattleBattleEvent,
   role: FriendlyBattleRole,
@@ -264,6 +321,26 @@ function eventToEnvelopeFields(
       };
     case 'choices_requested': {
       const isFaintedSwitch = event.phase === 'awaiting_fainted_switch';
+      const localIsWaiting = event.waitingFor.includes(role);
+      // Prefer the authoritative live state the host embedded in the event.
+      // If absent (older test events), fall back to the local runtime/snapshot.
+      if (event.liveState) {
+        const headline = isFaintedSwitch
+          ? (localIsWaiting
+              ? `Turn ${event.turn}: Your Pokémon fainted — pick a replacement`
+              : `Turn ${event.turn}: Opponent's Pokémon fainted — waiting for their replacement`)
+          : `Turn ${event.turn}: Choose your action`;
+        return buildEnvelopeFieldsFromLiveState({
+          headline,
+          liveState: event.liveState,
+          role,
+          // Only the side that is actually waiting gets move/party options;
+          // the other side is just a spectator until the peer submits.
+          showMoveOptions: !isFaintedSwitch && localIsWaiting,
+          showPartyOptions: localIsWaiting,
+        });
+      }
+      // Legacy fallback path (used by older synthetic-event tests)
       const moveOptions = isFaintedSwitch
         ? []
         : (runtime
@@ -329,8 +406,21 @@ function eventStatus(
   switch (event.type) {
     case 'battle_initialized':
       return 'ongoing';
-    case 'choices_requested':
-      return event.phase === 'awaiting_fainted_switch' ? 'fainted_switch' : 'select_action';
+    case 'choices_requested': {
+      // For fainted_switch, only the role(s) actually in waitingFor should
+      // see the forced-switch menu. Spectators (the side whose pokemon did
+      // NOT faint) treat the event as 'ongoing' and loop back to wait_next_event
+      // — otherwise both clients would try to pick a replacement when only
+      // one needs to.
+      if (event.phase === 'awaiting_fainted_switch') {
+        return event.waitingFor.includes(role) ? 'fainted_switch' : 'ongoing';
+      }
+      // Normal turn: both sides are in waitingFor by definition. If for some
+      // reason the local role has already submitted and is waiting on the
+      // peer, surface it as 'ongoing' so the skill polls again instead of
+      // re-prompting for a duplicate move.
+      return event.waitingFor.includes(role) ? 'select_action' : 'ongoing';
+    }
     case 'turn_resolved':
       return 'ongoing';
     case 'battle_finished':

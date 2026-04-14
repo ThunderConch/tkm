@@ -51,6 +51,26 @@ function makeBattlePokemon(overrides: Partial<BattlePokemon> = {}): BattlePokemo
   };
 }
 
+/**
+ * Strip the `liveState` field that battle-adapter now embeds into every
+ * choices_requested event so the existing structural assertions in this
+ * file stay focused on the wire-shape contract. The liveState payload is
+ * exercised separately via daemon integration tests.
+ */
+function stripLiveState<T extends { type?: string }>(events: T[]): T[] {
+  return events.map((event) => {
+    if (event && event.type === 'choices_requested' && 'liveState' in event) {
+      const { liveState: _liveState, ...rest } = event as Record<string, unknown>;
+      return rest as unknown as T;
+    }
+    return event;
+  });
+}
+
+function stripLiveStateFromEvent<T extends { type?: string }>(event: T): T {
+  return stripLiveState([event])[0];
+}
+
 describe('friendly battle battle adapter', () => {
   it('creates a transport-independent runtime with initial battle events and cloned teams', () => {
     const hostTeam = [makeBattlePokemon({ displayName: 'Hostmon' })];
@@ -63,7 +83,7 @@ describe('friendly battle battle adapter', () => {
       startedAt: '2026-04-12T12:00:00.000Z',
     });
 
-    assert.deepEqual(events, [
+    assert.deepEqual(stripLiveState(events), [
       { type: 'battle_initialized', battleId: 'battle-1', turn: 0 },
       {
         type: 'choices_requested',
@@ -136,7 +156,7 @@ describe('friendly battle battle adapter', () => {
       winner: null,
     });
     assert.ok(events[0]?.type === 'turn_resolved' && events[0].messages.length >= 2);
-    assert.deepEqual(events[1], {
+    assert.deepEqual(stripLiveStateFromEvent(events[1]!), {
       type: 'choices_requested',
       turn: 2,
       waitingFor: ['host', 'guest'],
@@ -223,7 +243,7 @@ describe('friendly battle battle adapter', () => {
       winner: null,
     });
     assert.ok(resolveEvents[0]?.type === 'turn_resolved' && resolveEvents[0].messages.some((message) => message.includes('쓰러졌다')));
-    assert.deepEqual(resolveEvents[1], {
+    assert.deepEqual(stripLiveStateFromEvent(resolveEvents[1]!), {
       type: 'choices_requested',
       turn: 1,
       waitingFor: ['guest'],
@@ -239,7 +259,7 @@ describe('friendly battle battle adapter', () => {
     assert.equal(runtime.state.turn, 1);
     assert.equal(runtime.state.opponent.activeIndex, 1);
     assert.equal(runtime.phase, 'waiting_for_choices');
-    assert.deepEqual(switchEvents, [
+    assert.deepEqual(stripLiveState(switchEvents), [
       {
         type: 'turn_resolved',
         turn: 1,
