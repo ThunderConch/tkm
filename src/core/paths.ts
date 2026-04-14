@@ -1,5 +1,5 @@
 import { homedir } from 'os';
-import { join } from 'path';
+import { dirname, join } from 'path';
 import { existsSync, readFileSync, writeFileSync } from 'fs';
 import type { SessionGenMap } from './types.js';
 
@@ -13,8 +13,20 @@ export const LOCK_PATH = join(DATA_DIR, 'tokenmon.lock');
 export const SESSION_GEN_MAP_PATH = join(DATA_DIR, 'session-gen-map.json');
 export const COMMON_STATE_PATH = join(DATA_DIR, 'common_state.json');
 
-// Plugin root (where the npm package is installed)
-export const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? join(import.meta.dirname, '..', '..');
+// Plugin root (where the npm package is installed). `CLAUDE_PLUGIN_ROOT` wins
+// when set (Claude Code injects it), otherwise walk up from this module until
+// we find a package.json. The old hardcoded `../..` hop worked from
+// `src/core/paths.ts` (two levels to project root) but pointed at `dist/`
+// when compiled to `dist/core/paths.js`, breaking every downstream data path
+// (pokemon data, moves, i18n, sprites, …) for dist-based callers such as the
+// friendly-battle daemon spawned from the plugin cache.
+export const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_ROOT ?? (() => {
+  let dir = import.meta.dirname;
+  while (dir && dir !== '/' && !existsSync(join(dir, 'package.json'))) {
+    dir = dirname(dir);
+  }
+  return existsSync(join(dir, 'package.json')) ? dir : join(import.meta.dirname, '..', '..');
+})();
 export const GENERATIONS_JSON_PATH = join(PLUGIN_ROOT, 'data', 'generations.json');
 export const SHARED_JSON_PATH = join(PLUGIN_ROOT, 'data', 'shared.json');
 export const EVENTS_JSON_PATH = join(PLUGIN_ROOT, 'data', 'events.json');

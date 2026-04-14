@@ -519,7 +519,33 @@ async function runWaitNextEvent(flags: Record<string, string | boolean | undefin
     }
     process.stdout.write(`${JSON.stringify(response.envelope)}\n`);
   } catch (err) {
-    process.stderr.write(`REASON: ${(err as Error).message}\n`);
+    // If the daemon has already exited cleanly (socket gone), synthesize a
+    // terminal envelope from the session record on disk so the skill can
+    // render a final "You won!" / "You lost!" / "Battle ended." message
+    // instead of bubbling up an ENOENT/ECONNREFUSED crash. This matches the
+    // "status never fails" pattern used by the `--status` subcommand.
+    const msg = (err as Error).message;
+    if (msg.includes('ENOENT') || msg.includes('ECONNREFUSED')) {
+      const frozen = readFriendlyBattleSessionRecord(sessionId, generation);
+      if (frozen && (frozen.phase === 'finished' || frozen.phase === 'aborted')) {
+        const questionContext = frozen.status === 'victory'
+          ? 'You won!'
+          : frozen.status === 'aborted'
+            ? 'Battle ended.'
+            : 'You lost!';
+        const envelope = formatFriendlyBattleTurnJson({
+          record: frozen,
+          questionContext,
+          moveOptions: [],
+          partyOptions: [],
+          animationFrames: [],
+          currentFrameIndex: 0,
+        });
+        process.stdout.write(`${JSON.stringify(envelope)}\n`);
+        return;
+      }
+    }
+    process.stderr.write(`REASON: ${msg}\n`);
     process.exit(1);
   }
 }
