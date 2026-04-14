@@ -129,6 +129,17 @@ interface DaemonOptions {
   timeoutMs: number;
 }
 
+// Player actions are taken by humans who can spend minutes thinking. The
+// init handshake's --timeout-ms is meant for pre-battle network setup, not
+// for the in-battle turn loop, so we use a separate (much longer) bound for
+// the per-turn waits. 30 minutes leaves room for slow play and tool latency
+// without leaving a daemon orphaned forever. Tests may override this via
+// TKM_FB_TURN_TIMEOUT_MS so leave/disconnect specs can finish in seconds.
+const TURN_LOOP_TIMEOUT_MS = (() => {
+  const override = Number.parseInt(process.env.TKM_FB_TURN_TIMEOUT_MS ?? '', 10);
+  return Number.isInteger(override) && override > 0 ? override : 30 * 60 * 1000;
+})();
+
 // ---------------------------------------------------------------------------
 // Helpers: convert BattleEvents → turn-json fields
 // ---------------------------------------------------------------------------
@@ -374,13 +385,16 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   };
   logLine(`daemon-start role=${role} pid=${process.pid} sessionId=${sessionId}`);
 
-  // Mirror process.stderr.write into the crash log too so regular error
-  // messages ("daemon host error: …") are captured alongside the stack.
-  const originalStderrWrite = process.stderr.write.bind(process.stderr);
+  // Mirror process.stderr.write into the crash log. We deliberately do NOT
+  // forward to the real stderr stream — the parent CLI destroys its read end
+  // of the child's stderr right after DAEMON_READY, so any subsequent write
+  // to the original stream would EPIPE and uncaughtException-kill the
+  // daemon (this exact crash appeared in early visual QA logs). The crash
+  // log file is now the canonical post-mortem channel.
   process.stderr.write = ((
     chunk: string | Uint8Array,
-    encodingOrCb?: BufferEncoding | ((err?: Error) => void),
-    cb?: (err?: Error) => void,
+    _encodingOrCb?: BufferEncoding | ((err?: Error) => void),
+    _cb?: (err?: Error) => void,
   ): boolean => {
     try {
       const text = typeof chunk === 'string'
@@ -388,9 +402,9 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         : Buffer.from(chunk).toString('utf8');
       fsWriteSync(crashLogFd, text);
     } catch {
-      // swallow
+      // swallow — logging must never crash the daemon
     }
-    return originalStderrWrite(chunk, encodingOrCb as BufferEncoding, cb);
+    return true;
   }) as typeof process.stderr.write;
 
   process.on('uncaughtException', (err: Error) => {
@@ -668,11 +682,11 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         const waitingFor = getFriendlyBattleWaitingForRoles(runtime);
 
         const hostPromise = waitingFor.includes('host')
-          ? localActionQueue.shift(timeoutMs, 'host action')
+          ? localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'host action')
           : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
 
         const guestPromise = waitingFor.includes('guest')
-          ? host_transport.waitForGuestChoice(timeoutMs)
+          ? host_transport.waitForGuestChoice(TURN_LOOP_TIMEOUT_MS)
           : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
 
         const [hostEnvelope, guestEnvelope] = await Promise.all([hostPromise, guestPromise]);
@@ -789,7 +803,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     let battleFinished = false;
     while (!battleFinished) {
       // Wait for the local player to submit an action via UNIX socket
-      const myAction = await localActionQueue.shift(timeoutMs, 'guest action');
+      const myAction = await localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'guest action');
 
       // Forward to host over TCP using the parsed choice from the envelope
       await guest_transport.submitChoice(formatFriendlyBattleChoice(myAction.choice));
@@ -797,7 +811,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       // Pump events from TCP until we see choices_requested or battle_finished
       let turnDone = false;
       while (!turnDone) {
-        const event = await guest_transport.waitForBattleEvent(timeoutMs);
+        const event = await guest_transport.waitForBattleEvent(TURN_LOOP_TIMEOUT_MS);
         localEventQueue.push(event);
         if (event.type === 'battle_finished') {
           battleFinished = true;

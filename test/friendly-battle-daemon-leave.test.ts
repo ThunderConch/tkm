@@ -71,6 +71,10 @@ function spawnDaemon(
           TSX_DISABLE_CACHE: '1',
           TOKENMON_TEST: '1',
           TKM_FB_OPTIONS_B64: encodeOptionsJson(options),
+          // Force the daemon's turn-loop timeout down to 4s so the leave/
+          // disconnect path resolves within the test budget. Production
+          // default is 30 minutes (see TURN_LOOP_TIMEOUT_MS in daemon.ts).
+          TKM_FB_TURN_TIMEOUT_MS: '4000',
         },
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: false,
