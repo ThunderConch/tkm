@@ -4,6 +4,7 @@ import {
   formatFriendlyBattleTurnJson,
 } from '../src/friendly-battle/turn-json.js';
 import type { FriendlyBattleSessionRecord } from '../src/friendly-battle/session-store.js';
+import type { FogState, FriendlyBattleLiveBattleState } from '../src/friendly-battle/contracts.js';
 
 function makeRecord(overrides: Partial<FriendlyBattleSessionRecord> = {}): FriendlyBattleSessionRecord {
   return {
@@ -13,6 +14,7 @@ function makeRecord(overrides: Partial<FriendlyBattleSessionRecord> = {}): Frien
     sessionCode: 'alpha-123',
     phase: 'battle',
     status: 'select_action',
+    playerMode: 'manual',
     transport: { host: '127.0.0.1', port: 52345 },
     opponent: { playerName: 'Guest' },
     pid: 12345,
@@ -21,6 +23,45 @@ function makeRecord(overrides: Partial<FriendlyBattleSessionRecord> = {}): Frien
     ...overrides,
   };
 }
+
+const liveState: FriendlyBattleLiveBattleState = {
+  host: {
+    active: {
+      pokemonId: 483,
+      name: 'Dialga',
+      level: 53,
+      hp: 169,
+      maxHp: 169,
+      fainted: false,
+      moves: [],
+    },
+    party: [],
+  },
+  guest: {
+    active: {
+      pokemonId: 445,
+      name: 'Garchomp',
+      level: 52,
+      hp: 100,
+      maxHp: 180,
+      fainted: false,
+      moves: [],
+    },
+    party: [],
+  },
+};
+
+const fogState: FogState = {
+  opponentActive: {
+    species: 'Garchomp',
+    level: 52,
+    hpPercent: 56,
+    visibleStatus: null,
+    revealedMoves: ['Earthquake'],
+  },
+  opponentBenchRevealed: [],
+  opponentBenchHidden: 2,
+};
 
 describe('friendly-battle turn-json formatter', () => {
   it('emits the gym-compatible envelope with sessionId/phase/status', () => {
@@ -80,5 +121,22 @@ describe('friendly-battle turn-json formatter', () => {
     assert.ok('currentFrameIndex' in serialized);
     assert.equal(serialized.animationFrames[0].kind, 'hit');
     assert.equal(serialized.animationFrames[0].durationMs, 150);
+  });
+
+  it('includes playerMode, liveState, and fogState when present', () => {
+    const json = formatFriendlyBattleTurnJson({
+      record: makeRecord({ playerMode: 'ai' }),
+      questionContext: 'ctx',
+      moveOptions: [],
+      partyOptions: [],
+      animationFrames: [],
+      currentFrameIndex: 0,
+      liveState,
+      fogState,
+    });
+
+    assert.equal(json.playerMode, 'ai');
+    assert.deepEqual(json.liveState, liveState);
+    assert.deepEqual(json.fogState, fogState);
   });
 });

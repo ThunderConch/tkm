@@ -10,6 +10,9 @@ export type FriendlyBattleLayer = (typeof FRIENDLY_BATTLE_LAYERS)[number];
 export const FRIENDLY_BATTLE_ROLES = ['host', 'guest'] as const;
 export type FriendlyBattleRole = (typeof FRIENDLY_BATTLE_ROLES)[number];
 
+export const FRIENDLY_BATTLE_PLAYER_MODES = ['manual', 'heuristic', 'ai', 'local'] as const;
+export type PlayerMode = (typeof FRIENDLY_BATTLE_PLAYER_MODES)[number];
+
 export const FRIENDLY_BATTLE_PARTY_SOURCES = ['current_party'] as const;
 export type FriendlyBattlePartySource = (typeof FRIENDLY_BATTLE_PARTY_SOURCES)[number];
 
@@ -157,6 +160,7 @@ export interface FriendlyBattleBattleInitializedEvent {
    * snapshot (which would show 100/100 for Dialga etc).
    */
   liveState?: FriendlyBattleLiveBattleState;
+  fogState?: FogState;
 }
 
 export interface FriendlyBattleLiveActiveMove {
@@ -201,6 +205,22 @@ export interface FriendlyBattleLiveBattleState {
   guest: FriendlyBattleLiveTeam;
 }
 
+export interface FogState {
+  opponentActive: {
+    species: string;
+    level: number;
+    hpPercent: number;
+    visibleStatus: string | null;
+    revealedMoves: string[];
+  };
+  opponentBenchRevealed: Array<{
+    species: string;
+    level: number;
+    hpPercent: number;
+  }>;
+  opponentBenchHidden: number;
+}
+
 export interface FriendlyBattleChoicesRequestedEvent {
   type: 'choices_requested';
   turn: number;
@@ -214,6 +234,7 @@ export interface FriendlyBattleChoicesRequestedEvent {
    * case.
    */
   liveState?: FriendlyBattleLiveBattleState;
+  fogState?: FogState;
 }
 
 export interface FriendlyBattleTurnResolvedEvent {
@@ -229,6 +250,7 @@ export interface FriendlyBattleTurnResolvedEvent {
    * relying on their own runtime.
    */
   liveState?: FriendlyBattleLiveBattleState;
+  fogState?: FogState;
 }
 
 export interface FriendlyBattleFinishedEvent {

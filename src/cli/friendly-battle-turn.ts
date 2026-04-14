@@ -80,6 +80,7 @@ const CLI_FLAG_SCHEMA = {
   'timeout-ms': { type: 'string' as const },
   'generation': { type: 'string' as const },
   'player-name': { type: 'string' as const },
+  'player-mode': { type: 'string' as const },
   'action': { type: 'string' as const },
 };
 
@@ -244,6 +245,14 @@ function readLineUntil(
   });
 }
 
+function validatePlayerMode(raw: string | undefined): 'manual' | 'heuristic' | 'ai' | 'local' {
+  const value = (raw ?? 'manual').trim().toLowerCase();
+  if (value === 'manual' || value === 'heuristic' || value === 'ai' || value === 'local') {
+    return value;
+  }
+  throw new Error(`invalid --player-mode: ${JSON.stringify(raw)} (expected manual|heuristic|ai|local)`);
+}
+
 async function runInitHost(flags: Record<string, string | boolean | undefined>): Promise<void> {
   // --- Input validation (must run before forking daemon) ---
   const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
@@ -252,6 +261,7 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
   const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 4000);
   const generation = validateGeneration(asStringFlag(flags, 'generation'));
   const playerName = sanitizeName(asStringFlag(flags, 'player-name'), 'player-name', 'Host');
+  const playerMode = validatePlayerMode(asStringFlag(flags, 'player-mode'));
 
   const sessionId = `fb-${randomUUID()}`;
   const nowIso = () => new Date().toISOString();
@@ -265,6 +275,7 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
     generation,
     playerName,
     timeoutMs,
+    playerMode,
   };
   const optionsB64 = Buffer.from(JSON.stringify(daemonOptions), 'utf8').toString('base64');
 
@@ -383,6 +394,7 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
   const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 4000);
   const generation = validateGeneration(asStringFlag(flags, 'generation'));
   const playerName = sanitizeName(asStringFlag(flags, 'player-name'), 'player-name', 'Guest');
+  const playerMode = validatePlayerMode(asStringFlag(flags, 'player-mode'));
 
   const sessionId = `fb-${randomUUID()}`;
   const nowIso = () => new Date().toISOString();
@@ -396,6 +408,7 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
     generation,
     playerName,
     timeoutMs,
+    playerMode,
   };
   const optionsB64 = Buffer.from(JSON.stringify(daemonOptions), 'utf8').toString('base64');
 

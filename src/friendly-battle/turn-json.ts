@@ -1,4 +1,9 @@
 import type { FriendlyBattleSessionRecord } from './session-store.js';
+import type {
+  FogState,
+  FriendlyBattleLiveBattleState,
+  PlayerMode,
+} from './contracts.js';
 
 export interface FriendlyBattleTurnMoveOption {
   index: number;
@@ -27,11 +32,14 @@ export interface FriendlyBattleTurnJson {
   role: 'host' | 'guest';
   phase: string;
   status: string;
+  playerMode?: PlayerMode;
   questionContext: string;
   moveOptions: FriendlyBattleTurnMoveOption[];
   partyOptions: FriendlyBattleTurnPartyOption[];
   animationFrames: FriendlyBattleTurnAnimationFrame[];
   currentFrameIndex: number;
+  liveState?: FriendlyBattleLiveBattleState;
+  fogState?: FogState;
 }
 
 export interface FormatFriendlyBattleTurnJsonInput {
@@ -41,6 +49,8 @@ export interface FormatFriendlyBattleTurnJsonInput {
   partyOptions: FriendlyBattleTurnPartyOption[];
   animationFrames: FriendlyBattleTurnAnimationFrame[];
   currentFrameIndex: number;
+  liveState?: FriendlyBattleLiveBattleState;
+  fogState?: FogState;
 }
 
 export function formatFriendlyBattleTurnJson(
@@ -51,10 +61,13 @@ export function formatFriendlyBattleTurnJson(
     role: input.record.role,
     phase: input.record.phase,
     status: input.record.status,
+    playerMode: input.record.playerMode,
     questionContext: input.questionContext,
     moveOptions: input.moveOptions,
     partyOptions: input.partyOptions,
     animationFrames: input.animationFrames,
     currentFrameIndex: input.currentFrameIndex,
+    liveState: input.liveState,
+    fogState: input.fogState,
   };
 }

@@ -10,8 +10,11 @@ Open a friendly battle session and fight another player in real-time turn-based 
 
 Read the first token of `$ARGUMENTS`:
 
-- `open` → go to **Step 1a** (open flow). **Default is LAN mode** — bind `0.0.0.0` and advertise the machine's detected LAN IP. If the **second** token is `local`, run in loopback mode instead — bind `127.0.0.1` (same-machine only).
-- `join` → go to **Step 1b** (join flow); the second token must be `<code>@<host>:<port>`
+- `open` → go to **Step 1a** (open flow). **Default is LAN mode + manual**. The **second** token can independently select a **listen mode** and a **player mode**:
+  - Listen mode: `local` → loopback (`127.0.0.1`). Any other second token → LAN (`0.0.0.0`).
+  - Player mode: `heuristic` or `ai` — these are **player decision modes** for the host side. `heuristic` makes the daemon auto-pick the best move greedy-style (sub-second, no LLM). `ai` makes Claude pick inline from the envelope, skipping AskUserQuestion. `manual` (default) keeps the normal AskUserQuestion flow.
+  - Examples: `/tkm:friendly-battle open` (LAN + manual), `/tkm:friendly-battle open local` (loopback + manual), `/tkm:friendly-battle open heuristic` (LAN + heuristic auto-pick), `/tkm:friendly-battle open ai` (LAN + Claude picks), `/tkm:friendly-battle open local ai` (loopback + Claude picks).
+- `join` → go to **Step 1b** (join flow); the second token must be `<code>@<host>:<port>`. Optional third token: `heuristic` or `ai` to delegate the guest side's decisions. `heuristic` on guest is accepted by the CLI but currently no-ops (host-side only in PR48) — use `manual` or `ai` on the guest side.
 - `status` → go to **Step 7** (status flow)
 - `leave` → go to **Step 9** (leave flow)
 - `help` or empty → go to **Step 8** (help flow)
@@ -34,8 +37,9 @@ GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path')
 SESSION_CODE=$(node -e "process.stdout.write(require('crypto').randomBytes(3).toString('hex'))")
 # Default LAN mode binds 0.0.0.0 so same-network peers can reach this host;
 # only the explicit `local` second token switches back to 127.0.0.1.
-LISTEN_HOST=0.0.0.0  # set to 127.0.0.1 when the second token is `local`
-"$P/bin/run-friendly-battle-turn.sh" --init-host --session-code "$SESSION_CODE" --generation "$GEN" --listen-host "$LISTEN_HOST" --port 0 --timeout-ms 300000 --player-name Host
+LISTEN_HOST=0.0.0.0  # set to 127.0.0.1 when a second token is `local`
+PLAYER_MODE=manual   # set to heuristic / ai when a second token requests one
+"$P/bin/run-friendly-battle-turn.sh" --init-host --session-code "$SESSION_CODE" --generation "$GEN" --listen-host "$LISTEN_HOST" --port 0 --timeout-ms 300000 --player-name Host --player-mode "$PLAYER_MODE"
 ```
 
 Parse the JSON envelope on stdout. Store `sessionId` and `questionContext`. Also read the `PORT:` line from stderr to get the bound port.
@@ -86,7 +90,8 @@ Once you have the three parts (`SESSION_CODE`, `HOST`, `PORT`):
 ```bash
 P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
 GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
-"$P/bin/run-friendly-battle-turn.sh" --init-join --session-code "$SESSION_CODE" --host "$HOST" --port "$PORT" --generation "$GEN" --timeout-ms 30000 --player-name Guest
+PLAYER_MODE=manual   # set to heuristic / ai when the third arg requests one
+"$P/bin/run-friendly-battle-turn.sh" --init-join --session-code "$SESSION_CODE" --host "$HOST" --port "$PORT" --generation "$GEN" --timeout-ms 30000 --player-name Guest --player-mode "$PLAYER_MODE"
 ```
 
 Parse the JSON envelope on stdout. Store `sessionId`.
@@ -103,7 +108,12 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 
 ### Step 2 — Turn loop (shared after handshake)
 
-**Non-negotiable input rule:** ALWAYS use **AskUserQuestion** for action selection. Never parse actions from plain chat. If the user types `1`, `공격`, `교체`, `항복`, or anything else in free chat during battle, ignore it as a battle command and re-open the correct AskUserQuestion UI.
+**Non-negotiable input rule (manual mode only):** When `$PLAYER_MODE` is `manual` (default), ALWAYS use **AskUserQuestion** for action selection. Never parse actions from plain chat. If the user types `1`, `공격`, `교체`, `항복`, or anything else in free chat during battle, ignore it as a battle command and re-open the correct AskUserQuestion UI.
+
+**Player mode branches** (set once at open/join time, fixed for the battle):
+- **`manual`** (default): original flow below. You show AskUserQuestion, user picks, you submit.
+- **`heuristic`**: the daemon auto-submits actions via `pickHeuristicAction` inside its host turn loop. Skill side does **nothing** except poll `--wait-next-event` in a tight loop and relay terminal envelopes to the user. **Do NOT call AskUserQuestion.** **Do NOT call `--action`.** Just wait_next_event until `victory` / `defeat` / `aborted`. Effective only when the host side chose heuristic at `open`; on the guest side heuristic is a no-op in PR48 (daemon falls back to waiting for skill actions — so if the guest requested heuristic it behaves like manual).
+- **`ai`**: You (Claude) pick the action inline from the envelope's `questionContext` + `moveOptions` + `partyOptions`, using your own judgement with only the information visible in the envelope. **Do NOT call AskUserQuestion.** Instead, for each `select_action` event, reason briefly in the conversation ("turn N: I'll use move:2 because...") and immediately call `--action` with `move:N` / `switch:N` / `surrender`. Treat move indexes as 1-based from `moveOptions`, party indexes as 1-based from `partyOptions`. For `fainted_switch` events, pick from `partyOptions` (non-fainted) and call `--action switch:N`. The rest of the turn loop (frame display, status dispatch) is identical to manual.
 
 **Turn loop:**
 
@@ -115,8 +125,14 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 
 2. Parse the returned envelope. Dispatch on `status` (also check `phase`):
 
-   - **`select_action`**: build a move-select AskUserQuestion (see **Step 3** below).
-   - **`fainted_switch`**: go directly to **Step 6** (forced switch — no move menu).
+   - **`select_action`**:
+     - `$PLAYER_MODE === 'manual'`: build a move-select AskUserQuestion (see **Step 3** below).
+     - `$PLAYER_MODE === 'heuristic'`: loop back to step 1 (daemon will submit the action; the next event arrives). Do not prompt.
+     - `$PLAYER_MODE === 'ai'`: Claude picks a `move:N` / `switch:N` / `surrender` from the envelope (1-based indexes, must be in range), writes the choice + a 1-sentence reason to the conversation, then calls `--action` with the chosen token. Loop back to step 1 after the ack envelope.
+   - **`fainted_switch`**:
+     - `manual`: go directly to **Step 6** (forced switch — no move menu).
+     - `heuristic`: loop back to step 1.
+     - `ai`: Claude picks a non-fainted index from `partyOptions` and calls `--action switch:N`. Loop back to step 1.
    - **`victory`**: show "승리! 배틀이 끝났습니다." and stop.
    - **`defeat`**: show "패배... 배틀이 끝났습니다." and stop.
    - **`aborted`** (or `phase === 'aborted'`): the daemon now marks voluntary leave and peer disconnect with distinct `questionContext` strings so you can branch without sniffing stderr:

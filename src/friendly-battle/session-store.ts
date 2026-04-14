@@ -2,6 +2,10 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, renameSync, unlinkSyn
 import { homedir } from 'node:os';
 import { dirname, join, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import {
+  FRIENDLY_BATTLE_PLAYER_MODES,
+  type PlayerMode,
+} from './contracts.js';
 
 export type FriendlyBattlePhase =
   | 'waiting_for_guest'
@@ -30,6 +34,7 @@ export interface FriendlyBattleSessionRecord {
   sessionCode: string;
   phase: FriendlyBattlePhase;
   status: FriendlyBattleStatus;
+  playerMode?: PlayerMode;
   transport: { host: string; port: number };
   opponent: { playerName: string } | null;
   pid: number;
@@ -69,6 +74,12 @@ function isValidRecord(value: unknown): value is FriendlyBattleSessionRecord {
   }
   if (typeof r.phase !== 'string') return false;
   if (typeof r.status !== 'string') return false;
+  if (
+    r.playerMode !== undefined
+    && (typeof r.playerMode !== 'string' || !FRIENDLY_BATTLE_PLAYER_MODES.includes(r.playerMode as PlayerMode))
+  ) {
+    return false;
+  }
   if (typeof r.sessionCode !== 'string') return false;
   if (typeof r.transport !== 'object' || r.transport === null) return false;
   if (typeof r.createdAt !== 'string') return false;

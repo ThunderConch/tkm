@@ -40,6 +40,9 @@ import { getLoadedMovesDB } from '../core/battle-setup.js';
 import { getDisplayName as getPokemonDisplayName } from '../core/pokemon-data.js';
 import { getLocale, initLocale } from '../i18n/index.js';
 import { readGlobalConfig } from '../core/config.js';
+import { pickHeuristicAction } from './heuristic.js';
+import { accumulateFogState, deriveFogState } from './fog.js';
+import type { FogState, PlayerMode } from './contracts.js';
 import {
   friendlyBattleSessionsDir,
   writeFriendlyBattleSessionRecord,
@@ -132,6 +135,7 @@ interface DaemonOptions {
   generation: string;
   playerName: string;
   timeoutMs: number;
+  playerMode?: PlayerMode;
 }
 
 // Player actions are taken by humans who can spend minutes thinking. The
@@ -525,6 +529,7 @@ function serializeDaemonAction(action: DaemonAction): string {
 
 async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Promise<void> {
   const { sessionId, sessionCode, host, port, generation, playerName, timeoutMs } = options;
+  const playerMode: PlayerMode = options.playerMode ?? 'manual';
 
   // Initialize locale from the user's global config so getPokemonName,
   // getGameI18n, localizeMoveName, and localizePokemonName all render in
@@ -877,8 +882,18 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // "not waiting for X" error that the unconditional Promise.all caused.
         const waitingFor = getFriendlyBattleWaitingForRoles(runtime);
 
+        // Heuristic mode: synthesize the host choice from pickHeuristicAction
+        // instead of waiting for a skill-side IPC submission. Resolves the
+        // promise immediately so the turn loop keeps ticking at daemon speed.
         const hostPromise = waitingFor.includes('host')
-          ? localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'host action')
+          ? (playerMode === 'heuristic'
+              ? Promise.resolve(
+                  createFriendlyBattleChoiceEnvelope(
+                    'host',
+                    serializeDaemonAction(pickHeuristicAction(runtime.state, 'host')),
+                  ),
+                )
+              : localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'host action'))
           : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
 
         const guestPromise = waitingFor.includes('guest')
