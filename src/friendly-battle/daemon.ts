@@ -779,6 +779,17 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       // swallow — logging must never crash the daemon
     }
   };
+  const logDebug = (tag: string, data: Record<string, unknown>): void => {
+    if (eventLogFd === null) return;
+    try {
+      fsWriteSync(
+        eventLogFd,
+        `${JSON.stringify({ ts: new Date().toISOString(), role, debug: tag, ...data })}\n`,
+      );
+    } catch {
+      // swallow
+    }
+  };
 
   // Mirror process.stderr.write into the crash log. We deliberately do NOT
   // forward to the real stderr stream — the parent CLI destroys its read end
@@ -965,6 +976,11 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // Update record status based on the event.
         record.status = eventStatus(event, role);
         writeRecord();
+        logDebug('wait_next_event.response', {
+          eventType: event.type,
+          status: eventStatus(event, role),
+          questionContext: fields.questionContext,
+        });
         // Round-trip sync for auto modes. If this envelope surfaces a
         // choices_requested (select_action / fainted_switch) in which our
         // own role is waiting, arm the auto-trigger so the turn-loop side
@@ -1067,6 +1083,12 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         animationFrames: [],
         currentFrameIndex: 0,
       });
+      logDebug('queueClosedEnvelope.armed', {
+        fallbackContext,
+        resolvedStatus,
+        committedTerminalStatus,
+        recordStatus: record.status,
+      });
       localEventQueue.fail(new Error('daemon shutting down'));
     } else {
       // On clean finish: drain any already-buffered events first so legitimate
@@ -1086,6 +1108,12 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
         animationFrames: [],
         currentFrameIndex: 0,
+      });
+      logDebug('queueClosedEnvelope.armed', {
+        fallbackContext,
+        resolvedStatus,
+        committedTerminalStatus,
+        recordStatus: record.status,
       });
       // Unblock any shift() that's already in flight so it can fall through
       // to the sentinel check in the IPC handler's catch branch.
@@ -1271,17 +1299,39 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       await shutdown(0, 'finished');
     } catch (err) {
       process.stderr.write(`daemon host error: ${(err as Error).message}\n`);
+      logDebug('host-path.catch', {
+        errorMessage: (err as Error).message,
+        runtimePhase: runtime?.phase,
+        runtimeWinner: runtime?.state?.winner ?? null,
+        recordStatus: record.status,
+      });
+      // If the runtime already resolved a winner before the exception
+      // fired (e.g. post-commit TCP close from the peer), honor that
+      // winner as the committed terminal outcome so the skill's
+      // final envelope shows the correct victory/defeat. Only fall
+      // back to 'aborted' for genuine mid-battle crashes.
+      if (runtime && runtime.state && runtime.state.winner !== null) {
+        const winnerRole: FriendlyBattleRole = runtime.state.winner === 'player' ? 'host' : 'guest';
+        committedTerminalStatus = winnerRole === 'host' ? 'victory' : 'defeat';
+        record.phase = 'finished';
+        record.status = committedTerminalStatus;
+        writeRecord();
+      }
       // Push a synthetic battle_finished event so any pending wait_next_event
       // on this side returns a clean "opponent left" envelope instead of hanging.
       const hostErrorDisconnect: FriendlyBattleBattleEvent = {
         type: 'battle_finished',
-        winner: null,
-        reason: 'disconnect',
+        winner: runtime?.state?.winner === 'player'
+          ? 'host'
+          : runtime?.state?.winner === 'opponent'
+            ? 'guest'
+            : null,
+        reason: runtime?.state?.winner != null ? 'completed' : 'disconnect',
       };
       logEvent(hostErrorDisconnect);
       localEventQueue.push(hostErrorDisconnect);
       await host_transport.close().catch(() => undefined);
-      await shutdown(1, 'aborted');
+      await shutdown(committedTerminalStatus ? 0 : 1, committedTerminalStatus ? 'finished' : 'aborted');
     }
     return;
   }
