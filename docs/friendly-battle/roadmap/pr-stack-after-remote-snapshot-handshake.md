@@ -239,6 +239,18 @@ master
 
 ## 8. Architecture revision (PR44 daemon reversal)
 
+## 9. PR47 scope narrowed after PR46 LAN mode merge
+
+PR46 commit `8631e4c` already landed the LAN-mode host behavior itself, so **PR47 no longer carries network-mode implementation scope**. The remaining PR47 deliverable is evidence collection plus a small helper wrapper:
+
+- `docs/friendly-battle/validation/two-machine-smoke.md`
+- `scripts/friendly-battle-smoke.sh`
+- loopback reference log captured locally, with real two-machine logs left as USER ACTION placeholders
+
+Current source of truth for that narrowed scope: [`pr47-smoke-evidence-plan.md`](./pr47-smoke-evidence-plan.md).
+
+In the stacked checklist, treat this as **PR47 Option A**: document the manual two-machine smoke procedure and collect evidence after LAN mode has already shipped.
+
 PR43까지는 "데몬 없음, gym 패턴 그대로, 단일 프로세스 foreground-blocking" 을 전제로 작업했다. PR44 실행에 들어가자마자 이 전제가 깨졌다.
 
 ### 8-1. 발견한 모순
