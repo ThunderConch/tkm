@@ -381,6 +381,75 @@ describe('friendly-battle heuristic picker', () => {
     assert.deepEqual(withFixedRandom(0.5, () => pickHeuristicAction(state, 'host')), { kind: 'move', index: 1 });
   });
 
+  it('returns a switch action when the active pokemon is already fainted (forced switch)', () => {
+    // Regression: PR48 visual QA found that host-side heuristic on guest's
+    // forced switch was returning a move action (because HP%=0 < 20 hit the
+    // emergency-switch branch but bench damage was less than the fainted
+    // mon's theoretical damage), which the battle-adapter rejected with
+    // "Friendly battle is waiting for a switch choice", aborting the battle.
+    // pickHeuristicAction must short-circuit on fainted active and always
+    // return a switch.
+    const state = makeState({
+      host: [
+        makeBattlePokemon({ fainted: true, currentHp: 0, maxHp: 316, displayName: 'Fainted Ace', spAttack: 140 }),
+        makeBattlePokemon({ id: 2, name: '2', displayName: 'Bench Survivor', currentHp: 226, maxHp: 270 }),
+      ],
+      guest: [makeBattlePokemon({ displayName: 'Opp' })],
+    });
+
+    const action = withFixedRandom(0.5, () => pickHeuristicAction(state, 'host'));
+    assert.equal(action.kind, 'switch');
+    if (action.kind === 'switch') {
+      assert.equal(action.pokemonIndex, 1);
+    }
+  });
+
+  it('skips near-dead bench mons when evaluating hp-emergency switch', () => {
+    // Regression: PR48 visual QA found the daemon switching from a healthy
+    // active into a 21 HP bench mon (near-death Dialga) because bestBenchSwitch
+    // picked the highest raw-damage bench regardless of HP. bestBenchSwitch
+    // now weights damage by HP ratio, so a 21/316 bench (~7%) contributes
+    // only 7% of its damage as effective score and loses to a full-HP bench.
+    const state = makeState({
+      host: [
+        // Active is healthy but grass vs grass — low damage vs opp
+        makeBattlePokemon({
+          currentHp: 19,
+          maxHp: 100,
+          moves: [{ data: makeMoveData({ type: 'grass', category: 'special', power: 40 }), currentPp: 35 }],
+          spAttack: 60,
+        }),
+        // Near-dead but high raw damage
+        makeBattlePokemon({
+          id: 2,
+          name: '2',
+          displayName: 'Dying Ace',
+          currentHp: 21,
+          maxHp: 316,
+          types: ['dragon'],
+          spAttack: 140,
+          moves: [{ data: makeMoveData({ type: 'dragon', category: 'special', power: 90 }), currentPp: 10 }],
+        }),
+        // Healthy with decent damage
+        makeBattlePokemon({
+          id: 3,
+          name: '3',
+          displayName: 'Healthy Bench',
+          currentHp: 226,
+          maxHp: 270,
+          types: ['ground'],
+          attack: 110,
+          moves: [{ data: makeMoveData({ type: 'ground', category: 'physical', power: 90 }), currentPp: 10 }],
+        }),
+      ],
+      guest: [makeBattlePokemon({ types: ['water'], displayName: 'Water Opp' })],
+    });
+
+    const action = withFixedRandom(0.5, () => pickHeuristicAction(state, 'host'));
+    // Must NOT pick the dying ace (index 1)
+    assert.notDeepEqual(action, { kind: 'switch', pokemonIndex: 1 });
+  });
+
   it('does not surrender when more than one allied pokemon remains alive', () => {
     const state = makeState({
       host: [

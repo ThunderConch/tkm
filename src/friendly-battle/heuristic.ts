@@ -54,14 +54,24 @@ function bestBenchSwitch(
   team: BattleState['player'],
   oppActive: BattlePokemon,
 ): { pokemonIndex: number; damage: number } | null {
+  // Weight each bench candidate's raw damage by its HP ratio so we never
+  // willingly switch INTO a near-dead pokemon just because its stats give
+  // higher nominal damage. A 20% HP bench mon is effectively useless on
+  // the switch-in turn because it can be one-shot by the opponent's next
+  // move — scaling by hp ratio captures that without inventing a new
+  // survivability dimension. Tests that use full-HP bench mons (all the
+  // PR48 unit tests) are unaffected because the ratio is 1.0.
   let best: { pokemonIndex: number; damage: number } | null = null;
   for (let i = 0; i < team.pokemon.length; i++) {
     if (i === team.activeIndex) continue;
     const bench = team.pokemon[i];
     if (bench.fainted) continue;
     const score = bestMoveFor(bench, oppActive);
-    if (score && (best === null || score.damage > best.damage)) {
-      best = { pokemonIndex: i, damage: score.damage };
+    if (!score) continue;
+    const hpRatio = bench.maxHp > 0 ? bench.currentHp / bench.maxHp : 0;
+    const effective = score.damage * hpRatio;
+    if (best === null || effective > best.damage) {
+      best = { pokemonIndex: i, damage: effective };
     }
   }
   return best;
@@ -74,6 +84,20 @@ export function pickHeuristicAction(state: BattleState, role: FriendlyBattleRole
   const oppActive = opp.pokemon[opp.activeIndex];
 
   if (!myActive || !oppActive) {
+    return { kind: 'move', index: 0 };
+  }
+
+  // Forced switch: if the active pokemon is already fainted, the battle
+  // adapter is in awaiting_fainted_switch phase and will reject ANY move
+  // choice. We MUST return a switch action. Pick the best non-fainted
+  // bench member by effective damage (HP-weighted). If somehow no bench
+  // is available (shouldn't happen — battle would have ended) fall
+  // through to the legacy path so the caller at least gets a valid shape.
+  if (myActive.fainted) {
+    const forcedSwitch = bestBenchSwitch(my, oppActive);
+    if (forcedSwitch) {
+      return { kind: 'switch', pokemonIndex: forcedSwitch.pokemonIndex };
+    }
     return { kind: 'move', index: 0 };
   }
 
