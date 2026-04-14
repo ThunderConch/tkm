@@ -38,7 +38,8 @@ import {
 } from './local-harness.js';
 import { getLoadedMovesDB } from '../core/battle-setup.js';
 import { getDisplayName as getPokemonDisplayName } from '../core/pokemon-data.js';
-import { getLocale } from '../i18n/index.js';
+import { getLocale, initLocale } from '../i18n/index.js';
+import { readGlobalConfig } from '../core/config.js';
 import {
   friendlyBattleSessionsDir,
   writeFriendlyBattleSessionRecord,
@@ -524,6 +525,19 @@ function serializeDaemonAction(action: DaemonAction): string {
 
 async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Promise<void> {
   const { sessionId, sessionCode, host, port, generation, playerName, timeoutMs } = options;
+
+  // Initialize locale from the user's global config so getPokemonName,
+  // getGameI18n, localizeMoveName, and localizePokemonName all render in
+  // the player's chosen language. Without this, the daemon subprocess
+  // defaults to 'en' even when the user's tokenmon config is 'ko'.
+  // Wrapped in try/catch so a missing/corrupt config still lets the
+  // daemon come up (the battle will just show English names).
+  try {
+    const globalConfig = readGlobalConfig();
+    initLocale(globalConfig.language ?? 'en', globalConfig.voice_tone);
+  } catch {
+    // swallow — locale init must never crash the daemon
+  }
 
   // Derive the socket path — lives in the same dir as session records
   const sessionsDir = friendlyBattleSessionsDir(generation);
