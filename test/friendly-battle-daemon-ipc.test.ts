@@ -100,6 +100,61 @@ describe('friendly-battle daemon IPC', () => {
     });
   });
 
+  it('handler that blocks longer than the idle timeout still delivers its response', async () => {
+    // Regression: the initial 5s idle timeout on the socket used to fire
+    // during wait_next_event long polls, destroying the connection and
+    // dropping the response. Once a request is parsed the timeout must
+    // be cleared so handlers can legitimately block for minutes.
+    const socketPath = tempSocketPath();
+    const server = await createDaemonIpcServer(socketPath, async (_req) => {
+      await new Promise<void>((resolve) => setTimeout(resolve, 6_000));
+      return { op: 'pong', pid: 98765 };
+    });
+    servers.push(server);
+
+    const response = await sendDaemonIpcRequest(socketPath, { op: 'ping' }, 10_000);
+    assert.equal(response.op, 'pong');
+    if (response.op === 'pong') {
+      assert.equal(response.pid, 98765);
+    }
+  });
+
+  it('destroys a client that connects but never sends a request line', async () => {
+    // Pre-handler idle guard: a client that opens the socket and then
+    // stalls without writing anything should be destroyed within the
+    // idle window (5s default). This verifies the guard still protects
+    // the pre-request phase after the long-handler fix.
+    const socketPath = tempSocketPath();
+    const server = await createDaemonIpcServer(socketPath, () => {
+      throw new Error('handler must not run for a client that never wrote');
+    });
+    servers.push(server);
+
+    await new Promise<void>((resolve, reject) => {
+      const client = net.createConnection(socketPath);
+      let closedAt: number | null = null;
+      const startedAt = Date.now();
+
+      client.on('close', () => {
+        closedAt = Date.now();
+        try {
+          const elapsed = closedAt - startedAt;
+          // The idle guard is 5000ms; allow 4.5s lower bound for scheduler
+          // jitter on CI and 7s upper bound so a never-firing guard still
+          // fails the test.
+          assert.ok(elapsed >= 4_500, `expected idle destroy after 5s, elapsed=${elapsed}ms`);
+          assert.ok(elapsed <= 7_000, `expected idle destroy within 7s, elapsed=${elapsed}ms`);
+          resolve();
+        } catch (err) {
+          reject(err as Error);
+        }
+      });
+      client.on('error', () => {
+        // ECONNRESET or similar is fine — we only care about the close timing
+      });
+    });
+  });
+
   it('rejects a bad request with op=error code=bad_request', async () => {
     const socketPath = tempSocketPath();
     const server = await createDaemonIpcServer(socketPath, () => {

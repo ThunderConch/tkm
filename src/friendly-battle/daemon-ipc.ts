@@ -37,8 +37,14 @@ export async function createDaemonIpcServer(
     let buffer = '';
     let handled = false;
 
-    // 5-second idle timeout — destroy the socket if no newline arrives in time.
-    socket.setTimeout(5000, () => socket.destroy());
+    // 5-second idle timeout — destroy the socket if the client connects but
+    // never sends a request line. This is a pre-handler DoS guard; once we
+    // parse a request the timeout is cleared because the handler (e.g.
+    // wait_next_event) may legitimately block for a minute or more waiting
+    // for a real battle event to arrive on the local queue.
+    socket.setTimeout(5000, () => {
+      if (!handled) socket.destroy();
+    });
 
     const cleanup = (): void => {
       if (!socket.destroyed) {
@@ -58,6 +64,10 @@ export async function createDaemonIpcServer(
       if (newlineIdx < 0) return;
 
       handled = true;
+      // Request line received — clear the idle timeout so long-blocking
+      // handlers (wait_next_event with a multi-minute timeoutMs) are not
+      // reaped while they legitimately wait for a battle event.
+      socket.setTimeout(0);
       const line = buffer.slice(0, newlineIdx);
       let request: DaemonRequest;
       try {
