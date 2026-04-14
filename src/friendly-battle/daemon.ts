@@ -36,6 +36,9 @@ import {
   createFriendlyBattleChoiceEnvelope,
   formatFriendlyBattleChoice,
 } from './local-harness.js';
+import { getLoadedMovesDB } from '../core/battle-setup.js';
+import { getDisplayName as getPokemonDisplayName } from '../core/pokemon-data.js';
+import { getLocale } from '../i18n/index.js';
 import {
   friendlyBattleSessionsDir,
   writeFriendlyBattleSessionRecord,
@@ -243,6 +246,38 @@ function buildBattleContext(
 }
 
 /**
+ * Look up a move's name in the local (per-client) i18n data so each daemon
+ * renders names in its OWN locale instead of reusing the host's resolved
+ * strings. Falls back to the host-authored wire name if the local DB cannot
+ * find the move id.
+ */
+function localizeMoveName(moveId: number, fallback: string): string {
+  if (!moveId || moveId <= 0) return fallback;
+  const db = getLoadedMovesDB();
+  if (!db) return fallback;
+  const data = db[String(moveId)];
+  if (!data) return fallback;
+  const localized = getLocale() === 'ko'
+    ? (data.nameKo ?? data.nameEn ?? data.name)
+    : (data.nameEn ?? data.nameKo ?? data.name);
+  return localized || fallback;
+}
+
+/**
+ * Look up a pokemon species name in the local i18n data. Falls back to the
+ * host-authored wire name if the local DB cannot find the species id.
+ */
+function localizePokemonName(speciesId: number, fallback: string): string {
+  if (!speciesId || speciesId <= 0) return fallback;
+  try {
+    const display = getPokemonDisplayName(speciesId);
+    return display || fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Build the envelope display fields directly from the host-authored live
  * battle state. This is the canonical path: guest daemons consume it without
  * needing their own runtime, and host daemons get the same accurate render
@@ -265,10 +300,12 @@ function buildEnvelopeFieldsFromLiveState(input: {
   const self = input.role === 'host' ? input.liveState.host : input.liveState.guest;
   const opp  = input.role === 'host' ? input.liveState.guest : input.liveState.host;
 
+  // Localize names locally so each client renders in its OWN locale instead
+  // of reusing the host's pre-resolved strings.
   const moveOptions: FriendlyBattleTurnMoveOption[] = input.showMoveOptions
     ? self.active.moves.map((m) => ({
         index: m.index,
-        nameKo: m.nameKo,
+        nameKo: localizeMoveName(m.moveId, m.nameKo),
         pp: m.pp,
         maxPp: m.maxPp,
         disabled: m.disabled,
@@ -278,15 +315,17 @@ function buildEnvelopeFieldsFromLiveState(input: {
   const partyOptions: FriendlyBattleTurnPartyOption[] = input.showPartyOptions
     ? self.party.map((p) => ({
         index: p.index,
-        name: p.name,
+        name: localizePokemonName(p.pokemonId, p.name),
         hp: p.hp,
         maxHp: p.maxHp,
         fainted: p.fainted,
       }))
     : [];
 
-  const oppLabel  = `상대 ${opp.active.name} Lv.${opp.active.level} HP:${opp.active.hp}/${opp.active.maxHp}`;
-  const selfLabel = `내 ${self.active.name} Lv.${self.active.level} HP:${self.active.hp}/${self.active.maxHp}`;
+  const oppName  = localizePokemonName(opp.active.pokemonId, opp.active.name);
+  const selfName = localizePokemonName(self.active.pokemonId, self.active.name);
+  const oppLabel  = `상대 ${oppName} Lv.${opp.active.level} HP:${opp.active.hp}/${opp.active.maxHp}`;
+  const selfLabel = `내 ${selfName} Lv.${self.active.level} HP:${self.active.hp}/${self.active.maxHp}`;
   const questionContext = `${input.headline}\n⚔️ ${oppLabel} | ${selfLabel}`;
 
   return {
@@ -894,33 +933,57 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     }
 
     // ---------------------------------------------------------------------------
-    // Guest turn loop
+    // Guest turn loop — two independent coroutines because incoming TCP events
+    // and outgoing local actions are not always paired turn-by-turn. The
+    // previous single-loop design (await action; submit; pump events) blocked
+    // the TCP pump while waiting for a local action, so a host-initiated event
+    // (e.g. host's forced switch resolving without any guest input) would sit
+    // in the TCP buffer until the guest user took an action — leaving the
+    // guest skill watching an empty envelope queue indefinitely. Split into:
+    //
+    //   tcpPump   — continuously drains incoming battle events into the local
+    //               event queue, no matter whether a guest action is pending.
+    //   actionPump — continuously pulls local actions and submits them via TCP,
+    //                no matter whether host has just sent unrelated events.
+    //
+    // They share the `battleFinished` flag (set by tcpPump on battle_finished)
+    // so actionPump can exit cleanly. Promise.race waits for either to finish
+    // (clean battle end OR error), and the existing catch handles both cases.
     // ---------------------------------------------------------------------------
     let battleFinished = false;
-    while (!battleFinished) {
-      // Wait for the local player to submit an action via UNIX socket
-      const myAction = await localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'guest action');
-
-      // Forward to host over TCP using the parsed choice from the envelope
-      await guest_transport.submitChoice(formatFriendlyBattleChoice(myAction.choice));
-
-      // Pump events from TCP until we see choices_requested or battle_finished
-      let turnDone = false;
-      while (!turnDone) {
+    const tcpPump = (async () => {
+      while (!battleFinished) {
         const event = await guest_transport.waitForBattleEvent(TURN_LOOP_TIMEOUT_MS);
         localEventQueue.push(event);
         if (event.type === 'battle_finished') {
           battleFinished = true;
-          turnDone = true;
           record.phase = 'finished';
           record.status = event.winner === 'guest' ? 'victory' : 'defeat';
           writeRecord();
-        } else if (event.type === 'choices_requested') {
-          turnDone = true;
+          // Unblock any pending action shift so actionPump can exit.
+          localActionQueue.fail(new Error('guest battle finished'));
+          return;
         }
-        // turn_resolved: keep pumping (battle_finished or choices_requested will follow)
       }
-    }
+    })();
+
+    const actionPump = (async () => {
+      while (!battleFinished) {
+        let myAction: FriendlyBattleChoiceEnvelope;
+        try {
+          myAction = await localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'guest action');
+        } catch (err) {
+          // Queue failed (battle finished, daemon shutting down) — exit cleanly
+          if (battleFinished) return;
+          throw err;
+        }
+        await guest_transport.submitChoice(formatFriendlyBattleChoice(myAction.choice));
+      }
+    })();
+
+    await Promise.race([tcpPump, actionPump]);
+    // Wait for both to settle before falling through to shutdown
+    await Promise.allSettled([tcpPump, actionPump]);
 
     await guest_transport.close().catch(() => undefined);
     await shutdown(0, 'finished');

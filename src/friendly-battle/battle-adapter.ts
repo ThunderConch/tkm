@@ -413,6 +413,7 @@ function buildLiveTeam(team: BattleTeam): FriendlyBattleLiveTeam {
   const moves: FriendlyBattleLiveActiveMove[] = active
     ? active.moves.map((m, i) => ({
         index: i + 1,
+        moveId: m.data.id,
         nameKo: m.data.nameKo ?? m.data.name ?? `Move ${i + 1}`,
         pp: m.currentPp,
         maxPp: m.data.pp,
@@ -421,6 +422,7 @@ function buildLiveTeam(team: BattleTeam): FriendlyBattleLiveTeam {
     : [];
   return {
     active: {
+      pokemonId: active?.id ?? 0,
       name: active?.displayName ?? active?.name ?? 'Unknown',
       level: active?.level ?? 1,
       hp: active?.currentHp ?? 0,
@@ -430,6 +432,7 @@ function buildLiveTeam(team: BattleTeam): FriendlyBattleLiveTeam {
     },
     party: team.pokemon.map((p, i): FriendlyBattleLivePartyEntry => ({
       index: i + 1,
+      pokemonId: p.id,
       name: p.displayName ?? p.name ?? `Pokemon ${i + 1}`,
       level: p.level,
       hp: p.currentHp,

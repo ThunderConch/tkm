@@ -154,7 +154,8 @@ export interface FriendlyBattleBattleInitializedEvent {
 
 export interface FriendlyBattleLiveActiveMove {
   index: number;       // 1-based slot index for SKILL.md / CLI
-  nameKo: string;
+  moveId: number;      // canonical move id; each daemon localizes locally
+  nameKo: string;      // host-locale fallback for legacy clients without ID lookup
   pp: number;
   maxPp: number;
   disabled: boolean;
@@ -162,7 +163,8 @@ export interface FriendlyBattleLiveActiveMove {
 
 export interface FriendlyBattleLivePartyEntry {
   index: number;       // 1-based slot index for SKILL.md / CLI
-  name: string;
+  pokemonId: number;   // canonical species id; each daemon localizes locally
+  name: string;        // host-locale fallback
   level: number;
   hp: number;
   maxHp: number;
@@ -171,7 +173,8 @@ export interface FriendlyBattleLivePartyEntry {
 
 export interface FriendlyBattleLiveTeam {
   active: {
-    name: string;
+    pokemonId: number; // canonical species id; each daemon localizes locally
+    name: string;      // host-locale fallback
     level: number;
     hp: number;
     maxHp: number;
