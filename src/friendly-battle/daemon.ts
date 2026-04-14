@@ -139,9 +139,11 @@ function buildMoveOptionsFromSnapshot(
   // find the first alive pokemon (slot 0 is the active one for a fresh battle)
   const active = snapshot.pokemon.slice().sort((a, b) => a.slot - b.slot)[0];
   if (!active) return [];
-  return active.moves.map((move, index) => ({
-    index,
-    nameKo: move.name ?? `Move ${index + 1}`,
+  // SKILL.md / CLI expect 1-based move indexes (matches skills/gym/SKILL.md).
+  // The CLI runAction subtracts 1 before forwarding to the battle adapter.
+  return active.moves.map((move, arrayIdx) => ({
+    index: arrayIdx + 1,
+    nameKo: move.name ?? `Move ${arrayIdx + 1}`,
     pp: move.pp,
     maxPp: move.pp,
     disabled: move.pp <= 0,
@@ -155,9 +157,10 @@ function buildMoveOptionsFromRuntime(
   const team = role === 'host' ? runtime.state.player : runtime.state.opponent;
   const active = team.pokemon[team.activeIndex];
   if (!active) return [];
-  return active.moves.map((move, index) => ({
-    index,
-    nameKo: move.data.nameKo ?? move.data.name ?? `Move ${index + 1}`,
+  // 1-based indexes (see buildMoveOptionsFromSnapshot comment).
+  return active.moves.map((move, arrayIdx) => ({
+    index: arrayIdx + 1,
+    nameKo: move.data.nameKo ?? move.data.name ?? `Move ${arrayIdx + 1}`,
     pp: move.currentPp,
     maxPp: move.data.pp,
     disabled: move.currentPp <= 0,
@@ -169,9 +172,10 @@ function buildPartyOptionsFromRuntime(
   role: FriendlyBattleRole,
 ): FriendlyBattleTurnPartyOption[] {
   const team = role === 'host' ? runtime.state.player : runtime.state.opponent;
-  return team.pokemon.map((pokemon, index) => ({
-    index,
-    name: pokemon.displayName ?? `Pokemon ${index + 1}`,
+  // 1-based party indexes (matches switch:<N> token in SKILL.md).
+  return team.pokemon.map((pokemon, arrayIdx) => ({
+    index: arrayIdx + 1,
+    name: pokemon.displayName ?? `Pokemon ${arrayIdx + 1}`,
     hp: pokemon.currentHp,
     maxHp: pokemon.maxHp,
     fainted: pokemon.fainted,
@@ -181,13 +185,49 @@ function buildPartyOptionsFromRuntime(
 function buildPartyOptionsFromSnapshot(
   snapshot: FriendlyBattlePartySnapshot,
 ): FriendlyBattleTurnPartyOption[] {
-  return snapshot.pokemon.map((pokemon, index) => ({
-    index,
+  return snapshot.pokemon.map((pokemon, arrayIdx) => ({
+    index: arrayIdx + 1,
     name: pokemon.displayName,
     hp: pokemon.baseStats.hp,
     maxHp: pokemon.baseStats.hp,
     fainted: false,
   }));
+}
+
+/**
+ * Build a gym-style battle context string for the question headline:
+ *   "<headline>\n⚔️ 상대 <name> Lv.L HP:cur/max | 내 <name> Lv.L HP:cur/max"
+ *
+ * When the daemon has a battle-adapter runtime (host side), we can render
+ * both sides' live HP. On the guest side without a runtime we fall back to
+ * the local party snapshot and render only "내 <name>" (opponent is omitted
+ * because we don't have authoritative guest-side HP state yet).
+ */
+function buildBattleContext(
+  headline: string,
+  runtime: FriendlyBattleBattleRuntime | null,
+  role: FriendlyBattleRole,
+  ownSnapshot: FriendlyBattlePartySnapshot | null,
+): string {
+  if (runtime) {
+    const selfTeam = role === 'host' ? runtime.state.player : runtime.state.opponent;
+    const oppTeam  = role === 'host' ? runtime.state.opponent : runtime.state.player;
+    const self = selfTeam.pokemon[selfTeam.activeIndex];
+    const opp  = oppTeam.pokemon[oppTeam.activeIndex];
+    if (self && opp) {
+      const oppLabel  = `상대 ${opp.displayName ?? 'Unknown'} Lv.${opp.level} HP:${opp.currentHp}/${opp.maxHp}`;
+      const selfLabel = `내 ${self.displayName ?? 'Me'} Lv.${self.level} HP:${self.currentHp}/${self.maxHp}`;
+      return `${headline}\n⚔️ ${oppLabel} | ${selfLabel}`;
+    }
+  }
+  if (ownSnapshot) {
+    const own = ownSnapshot.pokemon.slice().sort((a, b) => a.slot - b.slot)[0];
+    if (own) {
+      const selfLabel = `내 ${own.displayName} Lv.${own.level} HP:${own.baseStats.hp}/${own.baseStats.hp}`;
+      return `${headline}\n${selfLabel} (상대 HP는 다음 턴 결과에서 확인)`;
+    }
+  }
+  return headline;
 }
 
 function eventToEnvelopeFields(
@@ -205,7 +245,7 @@ function eventToEnvelopeFields(
   switch (event.type) {
     case 'battle_initialized':
       return {
-        questionContext: 'Battle started!',
+        questionContext: buildBattleContext('Battle started!', runtime, role, ownSnapshot),
         moveOptions: [],
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : (ownSnapshot ? buildPartyOptionsFromSnapshot(ownSnapshot) : []),
         animationFrames: [{ kind: 'message', text: 'Battle started!', durationMs: 300 }],
@@ -221,10 +261,11 @@ function eventToEnvelopeFields(
       const partyOptions = runtime
         ? buildPartyOptionsFromRuntime(runtime, role)
         : (ownSnapshot ? buildPartyOptionsFromSnapshot(ownSnapshot) : []);
+      const headline = isFaintedSwitch
+        ? `Turn ${event.turn}: Your Pokémon fainted — pick a replacement`
+        : `Turn ${event.turn}: Choose your action`;
       return {
-        questionContext: isFaintedSwitch
-          ? 'Your Pokémon fainted — pick a replacement'
-          : `Turn ${event.turn}: Choose your action`,
+        questionContext: buildBattleContext(headline, runtime, role, ownSnapshot),
         moveOptions,
         partyOptions,
         animationFrames: [],
@@ -238,7 +279,7 @@ function eventToEnvelopeFields(
         durationMs: 300,
       }));
       return {
-        questionContext: event.messages.join(' '),
+        questionContext: buildBattleContext(event.messages.join(' '), runtime, role, ownSnapshot),
         moveOptions: [],
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
         animationFrames: frames,
