@@ -1168,6 +1168,27 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
           localEventQueue.push(event);
         }
 
+        // Per-turn throttle so skills can poll each turn's events before the
+        // next turn resolves. Without this, heuristic vs heuristic battles
+        // resolve in microseconds on the daemon side and skills (which run
+        // inside an LLM loop with second-scale iteration time) only get to
+        // see 2-3 events before battle_finished arrives — making battles
+        // feel like they "skipped straight to the loss screen".
+        //
+        // The delay applies any time at least one side is NOT manual, so
+        // heuristic/heuristic, heuristic/manual, heuristic/ai, ai/ai all
+        // pace themselves. Pure manual battles keep the native latency.
+        // 900ms empirically lets the skill poll each turn without feeling
+        // sluggish; override with TKM_FB_AUTO_TURN_DELAY_MS if needed.
+        const needsAutoThrottle = playerMode !== 'manual' || guestPlayerMode !== 'manual';
+        if (needsAutoThrottle) {
+          const delayOverride = Number.parseInt(process.env.TKM_FB_AUTO_TURN_DELAY_MS ?? '', 10);
+          const delayMs = Number.isInteger(delayOverride) && delayOverride >= 0 ? delayOverride : 900;
+          if (delayMs > 0) {
+            await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
+          }
+        }
+
         // Check if battle is over
         const finished = syncedResolvedEvents.find((e) => e.type === 'battle_finished');
         if (finished) {

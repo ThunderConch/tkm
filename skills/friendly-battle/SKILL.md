@@ -138,22 +138,7 @@ If `phase === 'aborted'`: show the REASON from stderr and stop.
 
 **Player mode branches** (set once at open/join time, fixed for the battle):
 - **`manual`** (default): original flow below. You show AskUserQuestion, user picks, you submit.
-- **`heuristic`**: the daemon auto-submits actions internally at daemon speed (microseconds). The skill must NOT try to poll one event at a time through the LLM loop — the whole battle finishes before the LLM can loop even once, and events accumulate in the queue faster than Claude can drain them. Instead, run a **bash tight-loop** that pumps `--wait-next-event` in a shell while-loop (NO Claude intervention between polls) until a terminal envelope appears. The loop prints each envelope as a separate line to stdout; Claude reads the whole output once at the end and displays each event's `questionContext` + `animationFrames[].text` to the user in order. **Do NOT call AskUserQuestion.** **Do NOT call `--action`.** Drain loop template (paste as the only bash command for heuristic mode after handshake):
-
-```bash
-P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
-while true; do
-  LINE=$("$P/bin/run-friendly-battle-turn.sh" --wait-next-event --session "$SESSION_ID" --generation "$GEN" --timeout-ms 60000) || { echo "---ERROR---"; break; }
-  printf '%s\n' "---EVENT---"
-  printf '%s\n' "$LINE"
-  STATUS=$(printf '%s' "$LINE" | node -e "try{const d=JSON.parse(require('fs').readFileSync(0,'utf8'));process.stdout.write(d.status||'')}catch{process.stdout.write('parse_error')}")
-  case "$STATUS" in
-    victory|defeat|aborted|parse_error) break ;;
-  esac
-done
-```
-
-Then iterate the `---EVENT---` separated blocks in the output and render each one's summary to the user (turn number from `questionContext`, `animationFrames[].text` for turn-resolved messages, final `questionContext` for the terminal envelope). If you want to keep the UI responsive, display a progress spinner between events.
+- **`heuristic`**: the daemon decides the action on this side's behalf. The turn loop is otherwise identical to manual — poll `--wait-next-event` once per turn, display each event's `questionContext` / `animationFrames[].text` to the user as they arrive, loop. **Do NOT call AskUserQuestion.** **Do NOT call `--action`.** The daemon automatically paces turns (default ~900ms between resolutions whenever at least one side is heuristic/ai) so the skill's per-LLM-iteration polling rhythm comfortably catches every turn's messages in order. `TKM_FB_AUTO_TURN_DELAY_MS` env can override the pacing if you want faster or slower auto battles.
 - **`ai`**: You (Claude) pick the action inline. **Do NOT call AskUserQuestion.**
   **STRICT FOG RULE**: for OPPONENT info, you may ONLY look at `envelope.fogState` (`opponentActive.species`, `level`, `hpPercent`, `visibleStatus`, `revealedMoves[]`, `types[]`, plus `opponentBenchRevealed[]` and `opponentBenchHidden`). You MUST NOT read `envelope.liveState.guest` (when you are host) or `envelope.liveState.host` (when you are guest) — that field contains the opponent's full unfogged state and reading it is cheating per the PR48 spec.
   **NO WORLD-KNOWLEDGE RULE** (type effectiveness): you MUST NOT infer type effectiveness from move/species names using your pre-trained Pokemon knowledge. Every `liveState.host.active.moves[i]` (or `liveState.guest.active.moves[i]` for the guest side) carries a **pre-computed** `typeEffectivenessVsOpponentActive` field — a number like `0`, `0.25`, `0.5`, `1`, `2`, or `4` — computed by the host's authoritative type_chart against the current opponent active pokemon's `types`. You MUST read that field directly and compare numerically. Do not multiply type matchups yourself, do not guess dual-type products, do not remember whether "용 vs 강철" is 0.5× — ALL of that is already baked into the number. If the field is missing (legacy event), fall back to assuming 1.0 and note it in your reasoning.
