@@ -37,6 +37,8 @@ import {
   formatFriendlyBattleChoice,
 } from './local-harness.js';
 import { getLoadedMovesDB } from '../core/battle-setup.js';
+import { getPokemonDB } from '../core/pokemon-data.js';
+import { createBattlePokemon } from '../core/turn-battle.js';
 import { getDisplayName as getPokemonDisplayName } from '../core/pokemon-data.js';
 import { getLocale, initLocale } from '../i18n/index.js';
 import { readGlobalConfig } from '../core/config.js';
@@ -56,6 +58,14 @@ import {
   type FriendlyBattleTurnPartyOption,
   type FriendlyBattleTurnAnimationFrame,
 } from './turn-json.js';
+import type {
+  BattlePokemon,
+  BattleState,
+  MoveData,
+  StatStages,
+  VolatileStatus,
+  StatusCondition,
+} from '../core/types.js';
 import type {
   FriendlyBattleBattleEvent,
   FriendlyBattleChoiceEnvelope,
@@ -353,6 +363,8 @@ function eventToEnvelopeFields(
   partyOptions: FriendlyBattleTurnPartyOption[];
   animationFrames: FriendlyBattleTurnAnimationFrame[];
   currentFrameIndex: number;
+  liveState?: FriendlyBattleLiveBattleState;
+  fogState?: FogState;
 } {
   switch (event.type) {
     case 'battle_initialized': {
@@ -370,6 +382,8 @@ function eventToEnvelopeFields(
         return {
           ...fromLive,
           animationFrames: [{ kind: 'message', text: 'Battle started!', durationMs: 300 }],
+          liveState: event.liveState,
+          fogState: event.fogState,
         };
       }
       return {
@@ -378,6 +392,8 @@ function eventToEnvelopeFields(
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : (ownSnapshot ? buildPartyOptionsFromSnapshot(ownSnapshot) : []),
         animationFrames: [{ kind: 'message', text: 'Battle started!', durationMs: 300 }],
         currentFrameIndex: 0,
+        liveState: event.liveState,
+        fogState: event.fogState,
       };
     }
     case 'choices_requested': {
@@ -419,6 +435,8 @@ function eventToEnvelopeFields(
         partyOptions,
         animationFrames: [],
         currentFrameIndex: 0,
+        liveState: event.liveState,
+        fogState: event.fogState,
       };
     }
     case 'turn_resolved': {
@@ -441,6 +459,8 @@ function eventToEnvelopeFields(
         return {
           ...fromLive,
           animationFrames: frames,
+          liveState: event.liveState,
+          fogState: event.fogState,
         };
       }
       return {
@@ -449,6 +469,8 @@ function eventToEnvelopeFields(
         partyOptions: runtime ? buildPartyOptionsFromRuntime(runtime, role) : [],
         animationFrames: frames,
         currentFrameIndex: 0,
+        liveState: event.liveState,
+        fogState: event.fogState,
       };
     }
     case 'battle_finished': {
@@ -474,6 +496,143 @@ function eventToEnvelopeFields(
       };
     }
   }
+}
+
+function cloneEmptyStatStages(): StatStages {
+  return {
+    attack: 0,
+    defense: 0,
+    spAttack: 0,
+    spDefense: 0,
+    speed: 0,
+    accuracy: 0,
+    evasion: 0,
+  };
+}
+
+function buildBattlePokemonFromLiveEntry(input: {
+  generation: string;
+  pokemonId: number;
+  level: number;
+  hp: number;
+  maxHp: number;
+  fainted: boolean;
+  name: string;
+  moveIds?: number[];
+  movePp?: Array<{ current: number; max: number }>;
+}): BattlePokemon {
+  const pokemonData = getPokemonDB(input.generation).pokemon[String(input.pokemonId)];
+  if (!pokemonData) {
+    throw new Error(`Missing pokemon data for species ${input.pokemonId} in ${input.generation}`);
+  }
+
+  const movesDb = getLoadedMovesDB();
+  const moves: MoveData[] = (input.moveIds ?? [])
+    .map((moveId) => movesDb?.[String(moveId)] ?? null)
+    .filter((move): move is MoveData => move !== null);
+
+  const battlePokemon = createBattlePokemon(
+    {
+      id: input.pokemonId,
+      types: pokemonData.types,
+      level: input.level,
+      baseStats: pokemonData.base_stats,
+      displayName: input.name,
+    },
+    moves,
+  );
+
+  battlePokemon.currentHp = input.hp;
+  battlePokemon.maxHp = input.maxHp;
+  battlePokemon.fainted = input.fainted || input.hp <= 0;
+  battlePokemon.statusCondition = null as StatusCondition | null;
+  battlePokemon.toxicCounter = 0;
+  battlePokemon.sleepCounter = 0;
+  battlePokemon.volatileStatuses = [] as VolatileStatus[];
+  battlePokemon.statStages = cloneEmptyStatStages();
+
+  for (let i = 0; i < battlePokemon.moves.length; i++) {
+    const pp = input.movePp?.[i];
+    if (!pp) continue;
+    battlePokemon.moves[i].currentPp = pp.current;
+    battlePokemon.moves[i].data.pp = pp.max;
+  }
+
+  return battlePokemon;
+}
+
+function deriveBattleStateFromLiveState(
+  liveState: FriendlyBattleLiveBattleState,
+  role: FriendlyBattleRole,
+  generation: string,
+): BattleState {
+  const self = role === 'host' ? liveState.host : liveState.guest;
+  const opp = role === 'host' ? liveState.guest : liveState.host;
+
+  const selfActiveIdx = self.party.findIndex((entry) => entry.index === self.active.moves[0]?.index ? -1 : self.party.find((candidate) => candidate.pokemonId === self.active.pokemonId && candidate.level === self.active.level && candidate.hp === self.active.hp && candidate.maxHp === self.active.maxHp)?.index);
+  const playerActiveIndex = self.party.findIndex((entry) =>
+    entry.pokemonId === self.active.pokemonId &&
+    entry.level === self.active.level &&
+    entry.hp === self.active.hp &&
+    entry.maxHp === self.active.maxHp,
+  );
+  const opponentActiveIndex = opp.party.findIndex((entry) =>
+    entry.pokemonId === opp.active.pokemonId &&
+    entry.level === opp.active.level &&
+    entry.hp === opp.active.hp &&
+    entry.maxHp === opp.active.maxHp,
+  );
+
+  const playerTeam = self.party.map((entry) =>
+    buildBattlePokemonFromLiveEntry({
+      generation,
+      pokemonId: entry.pokemonId,
+      level: entry.level,
+      hp: entry.hp,
+      maxHp: entry.maxHp,
+      fainted: entry.fainted,
+      name: entry.name,
+      moveIds: entry.index === (playerActiveIndex >= 0 ? self.party[playerActiveIndex]?.index : -1)
+        ? self.active.moves.map((move) => move.moveId)
+        : [],
+      movePp: entry.index === (playerActiveIndex >= 0 ? self.party[playerActiveIndex]?.index : -1)
+        ? self.active.moves.map((move) => ({ current: move.pp, max: move.maxPp }))
+        : [],
+    }),
+  );
+
+  const opponentTeam = opp.party.map((entry) =>
+    buildBattlePokemonFromLiveEntry({
+      generation,
+      pokemonId: entry.pokemonId,
+      level: entry.level,
+      hp: entry.hp,
+      maxHp: entry.maxHp,
+      fainted: entry.fainted,
+      name: entry.name,
+      moveIds: entry.index === (opponentActiveIndex >= 0 ? opp.party[opponentActiveIndex]?.index : -1)
+        ? opp.active.moves.map((move) => move.moveId)
+        : [],
+      movePp: entry.index === (opponentActiveIndex >= 0 ? opp.party[opponentActiveIndex]?.index : -1)
+        ? opp.active.moves.map((move) => ({ current: move.pp, max: move.maxPp }))
+        : [],
+    }),
+  );
+
+  return {
+    player: {
+      pokemon: playerTeam,
+      activeIndex: playerActiveIndex >= 0 ? playerActiveIndex : 0,
+    },
+    opponent: {
+      pokemon: opponentTeam,
+      activeIndex: opponentActiveIndex >= 0 ? opponentActiveIndex : 0,
+    },
+    turn: 0,
+    log: [],
+    phase: 'select_action',
+    winner: null,
+  };
 }
 
 function eventStatus(
