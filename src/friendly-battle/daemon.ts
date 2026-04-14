@@ -803,6 +803,14 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   // peer gets an EOF and can shut down on its own.
   let transportClose: (() => Promise<void>) | null = null;
 
+  // Auto-mode round-trip sync. wait_next_event sets this to true after the
+  // skill has polled a choices_requested envelope in which it is one of the
+  // waiting roles. The host turn loop (or guest actionPump) reads the flag
+  // and only then submits the heuristic / ai action, guaranteeing that
+  // auto battles follow the exact same "emit events → skill drains →
+  // receive action → resolve next turn" rhythm as manual battles.
+  let pendingAutoTriggerForSelf = false;
+
   // ---------------------------------------------------------------------------
   // Session record — written every time phase changes
   // ---------------------------------------------------------------------------
@@ -921,6 +929,19 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // Update record status based on the event
         record.status = eventStatus(event, role);
         writeRecord();
+        // Round-trip sync for auto modes. If this envelope surfaces a
+        // choices_requested (select_action / fainted_switch) in which our
+        // own role is waiting, arm the auto-trigger so the turn-loop side
+        // knows the skill has caught up and it's safe to submit the
+        // heuristic / ai action. Manual mode ignores the flag — manual
+        // actions come from submit_action IPC calls as before.
+        if (
+          playerMode !== 'manual' &&
+          event.type === 'choices_requested' &&
+          event.waitingFor.includes(role)
+        ) {
+          pendingAutoTriggerForSelf = true;
+        }
         return { op: 'event', envelope: buildEnvelope(fields) };
       }
 
@@ -1118,31 +1139,36 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         // "not waiting for X" error that the unconditional Promise.all caused.
         const waitingFor = getFriendlyBattleWaitingForRoles(runtime);
 
+        // Round-trip sync for auto modes. If the host side is heuristic,
+        // we do NOT pre-resolve the action — we wait for the skill's
+        // wait_next_event poll (which arms pendingAutoTriggerForSelf),
+        // then synthesize the action and push it to localActionQueue.
+        // The shift() below picks it up exactly as it would pick up a
+        // manual --action submission. This keeps auto mode on the same
+        // emit-drain-submit cycle as manual mode.
+        if (waitingFor.includes('host') && playerMode === 'heuristic') {
+          while (!pendingAutoTriggerForSelf) {
+            await new Promise<void>((r) => setTimeout(r, 20));
+          }
+          pendingAutoTriggerForSelf = false;
+          localActionQueue.push(
+            createFriendlyBattleChoiceEnvelope(
+              'host',
+              serializeDaemonAction(pickHeuristicAction(runtime.state, 'host')),
+            ),
+          );
+        }
         const hostPromise = waitingFor.includes('host')
-          ? (playerMode === 'heuristic'
-              ? Promise.resolve(
-                  createFriendlyBattleChoiceEnvelope(
-                    'host',
-                    serializeDaemonAction(pickHeuristicAction(runtime.state, 'host')),
-                  ),
-                )
-              : localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'host action'))
+          ? localActionQueue.shift(TURN_LOOP_TIMEOUT_MS, 'host action')
           : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
 
-        // When the guest is in heuristic mode, the host computes the guest's
-        // action locally from the host-authoritative runtime — the guest
-        // daemon never sends an action over TCP because its skill stays in
-        // poll-only mode. This is the same per-side decision contract as the
-        // host heuristic branch above, but evaluated on the guest team.
+        // When the guest is auto, the guest daemon's own wait_next_event
+        // handler mirrors the same pattern: the guest skill's poll triggers
+        // the guest daemon to submit the heuristic action over TCP, which
+        // the host turn loop receives through waitForGuestChoice exactly as
+        // it would receive a manual guest's submission.
         const guestPromise = waitingFor.includes('guest')
-          ? (guestPlayerMode === 'heuristic'
-              ? Promise.resolve(
-                  createFriendlyBattleChoiceEnvelope(
-                    'guest',
-                    serializeDaemonAction(pickHeuristicAction(runtime.state, 'guest')),
-                  ),
-                )
-              : host_transport.waitForGuestChoice(TURN_LOOP_TIMEOUT_MS))
+          ? host_transport.waitForGuestChoice(TURN_LOOP_TIMEOUT_MS)
           : Promise.resolve(null as FriendlyBattleChoiceEnvelope | null);
 
         const [hostEnvelope, guestEnvelope] = await Promise.all([hostPromise, guestPromise]);
@@ -1168,26 +1194,10 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
           localEventQueue.push(event);
         }
 
-        // Per-turn throttle so skills can poll each turn's events before the
-        // next turn resolves. Without this, heuristic vs heuristic battles
-        // resolve in microseconds on the daemon side and skills (which run
-        // inside an LLM loop with second-scale iteration time) only get to
-        // see 2-3 events before battle_finished arrives — making battles
-        // feel like they "skipped straight to the loss screen".
-        //
-        // The delay applies any time at least one side is NOT manual, so
-        // heuristic/heuristic, heuristic/manual, heuristic/ai, ai/ai all
-        // pace themselves. Pure manual battles keep the native latency.
-        // 900ms empirically lets the skill poll each turn without feeling
-        // sluggish; override with TKM_FB_AUTO_TURN_DELAY_MS if needed.
-        const needsAutoThrottle = playerMode !== 'manual' || guestPlayerMode !== 'manual';
-        if (needsAutoThrottle) {
-          const delayOverride = Number.parseInt(process.env.TKM_FB_AUTO_TURN_DELAY_MS ?? '', 10);
-          const delayMs = Number.isInteger(delayOverride) && delayOverride >= 0 ? delayOverride : 900;
-          if (delayMs > 0) {
-            await new Promise<void>((resolve) => setTimeout(resolve, delayMs));
-          }
-        }
+        // No artificial throttle. The round-trip pacing is now provided by
+        // the localActionQueue.shift() / waitForGuestChoice() above — each
+        // next turn only resolves after the skill (auto or manual) has
+        // completed its poll-and-submit cycle for the current turn.
 
         // Check if battle is over
         const finished = syncedResolvedEvents.find((e) => e.type === 'battle_finished');
@@ -1333,15 +1343,23 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     const actionPump = (async () => {
       while (!battleFinished) {
         if (playerMode === 'heuristic') {
-          const actionKey = buildAutoActionKey(lastLiveState, 'guest', record.status);
-          if (!actionKey || actionKey === lastAutoActionKey) {
+          // Round-trip sync for guest heuristic. Wait until the skill has
+          // polled the current turn's choices_requested envelope via
+          // wait_next_event — the IPC handler sets pendingAutoTriggerForSelf
+          // only when our role is actually in waitingFor. Only then do we
+          // compute and submit the heuristic action. This matches the host
+          // heuristic branch and gives auto battles the same per-turn
+          // emit-drain-submit rhythm as manual battles.
+          while (!battleFinished && !pendingAutoTriggerForSelf) {
             await sleep(20);
-            continue;
           }
+          if (battleFinished) return;
           if (!lastLiveState || !ownSnapshot) {
+            // LiveState hasn't landed yet — give tcpPump another cycle.
             await sleep(20);
             continue;
           }
+          pendingAutoTriggerForSelf = false;
           const action = record.status === 'fainted_switch'
             ? pickForcedSwitchFromLiveState(lastLiveState, 'guest')
             : pickHeuristicAction(
@@ -1349,7 +1367,6 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
               'guest',
             );
           await guest_transport.submitChoice(serializeDaemonAction(action));
-          lastAutoActionKey = actionKey;
           continue;
         }
 
