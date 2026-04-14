@@ -723,6 +723,34 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   };
   logLine(`daemon-start role=${role} pid=${process.pid} sessionId=${sessionId}`);
 
+  // Per-event disk log. Captures every battle event this daemon either
+  // originates (host side: init + turn_resolved + choices_requested +
+  // battle_finished) or receives over TCP (guest side: same event stream
+  // mirrored from host), including the synthetic disconnect events emitted
+  // from the error catch blocks. Written as JSONL, one event per line,
+  // opened append-only per session. Debug aid for fast heuristic battles
+  // where the skill's per-LLM-iteration polling can't keep up with the
+  // daemon's native speed — the disk log is authoritative even if the
+  // skill misses some polls.
+  const eventLogPath = join(sessionsDir, `${sessionId}.events.jsonl`);
+  let eventLogFd: number | null = null;
+  try {
+    eventLogFd = fsOpenSync(eventLogPath, 'a');
+  } catch {
+    eventLogFd = null;
+  }
+  const logEvent = (event: FriendlyBattleBattleEvent): void => {
+    if (eventLogFd === null) return;
+    try {
+      fsWriteSync(
+        eventLogFd,
+        `${JSON.stringify({ ts: new Date().toISOString(), role, event })}\n`,
+      );
+    } catch {
+      // swallow — logging must never crash the daemon
+    }
+  };
+
   // Mirror process.stderr.write into the crash log. We deliberately do NOT
   // forward to the real stderr stream — the parent CLI destroys its read end
   // of the child's stderr right after DAEMON_READY, so any subsequent write
@@ -1076,6 +1104,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
 
       // Push init events to local queue
       for (const event of syncedInitEvents) {
+        logEvent(event);
         localEventQueue.push(event);
       }
 
@@ -1135,6 +1164,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
         const syncedResolvedEvents = resolvedEvents.map((event) => syncDerivedState(event));
         host_transport.sendBattleEvents(syncedResolvedEvents);
         for (const event of syncedResolvedEvents) {
+          logEvent(event);
           localEventQueue.push(event);
         }
 
@@ -1160,11 +1190,13 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       process.stderr.write(`daemon host error: ${(err as Error).message}\n`);
       // Push a synthetic battle_finished event so any pending wait_next_event
       // on this side returns a clean "opponent left" envelope instead of hanging.
-      localEventQueue.push({
+      const hostErrorDisconnect: FriendlyBattleBattleEvent = {
         type: 'battle_finished',
         winner: null,
         reason: 'disconnect',
-      });
+      };
+      logEvent(hostErrorDisconnect);
+      localEventQueue.push(hostErrorDisconnect);
       await host_transport.close().catch(() => undefined);
       await shutdown(1, 'aborted');
     }
@@ -1225,6 +1257,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
       let initDone = false;
       while (!initDone) {
         const initEvent = syncDerivedState(await guest_transport.waitForBattleEvent(timeoutMs));
+        logEvent(initEvent);
         localEventQueue.push(initEvent);
         if (initEvent.type === 'choices_requested' || initEvent.type === 'battle_finished') {
           initDone = true;
@@ -1255,6 +1288,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     const tcpPump = (async () => {
       while (!battleFinished) {
         const event = syncDerivedState(await guest_transport.waitForBattleEvent(TURN_LOOP_TIMEOUT_MS));
+        logEvent(event);
         localEventQueue.push(event);
         if (event.type === 'choices_requested') {
           lastAutoActionKey = null;
@@ -1320,6 +1354,12 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
     process.stderr.write(`daemon guest error: ${(err as Error).message}\n`);
     // Push a synthetic battle_finished event so any pending wait_next_event
     // on this side returns a clean "opponent left" envelope instead of hanging.
+    const guestErrorDisconnect: FriendlyBattleBattleEvent = {
+      type: 'battle_finished',
+      winner: null,
+      reason: 'disconnect',
+    };
+    logEvent(guestErrorDisconnect);
     localEventQueue.push({
       type: 'battle_finished',
       winner: null,
