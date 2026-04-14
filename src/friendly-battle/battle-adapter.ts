@@ -4,6 +4,7 @@ import {
   hasAlivePokemon,
   resolveTurn,
 } from '../core/turn-battle.js';
+import { getTypeEffectiveness } from '../core/type-chart.js';
 import type { BattlePokemon, BattleState, BattleTeam, TurnAction } from '../core/types.js';
 import type {
   FriendlyBattleBattleEvent,
@@ -410,22 +411,42 @@ function latestSubmittedAt(
  * mapping used everywhere else in the friendly-battle module).
  */
 export function buildFriendlyBattleLiveBattleState(state: BattleState): FriendlyBattleLiveBattleState {
+  const hostOpponentActive = state.opponent.pokemon[state.opponent.activeIndex];
+  const guestOpponentActive = state.player.pokemon[state.player.activeIndex];
   return {
-    host: buildLiveTeam(state.player),
-    guest: buildLiveTeam(state.opponent),
+    host: buildLiveTeam(state.player, hostOpponentActive),
+    guest: buildLiveTeam(state.opponent, guestOpponentActive),
   };
 }
 
-function buildLiveTeam(team: BattleTeam): FriendlyBattleLiveTeam {
+function computeTypeEffectiveness(moveType: string, defenderTypes: string[]): number {
+  // Reference-based lookup against the authoritative type chart in
+  // core/type-chart.ts. No LLM world knowledge — AI mode consumers read
+  // the pre-computed number instead of inferring effectiveness from move
+  // and species names. Dual-type multiplication is included.
+  let eff = 1;
+  for (const defType of defenderTypes) {
+    eff *= getTypeEffectiveness(moveType, defType);
+  }
+  return eff;
+}
+
+function buildLiveTeam(
+  team: BattleTeam,
+  opponentActive: BattlePokemon | undefined,
+): FriendlyBattleLiveTeam {
   const active = team.pokemon[team.activeIndex];
+  const oppTypes = opponentActive?.types ?? [];
   const moves: FriendlyBattleLiveActiveMove[] = active
     ? active.moves.map((m, i) => ({
         index: i + 1,
         moveId: m.data.id,
         nameKo: m.data.nameKo ?? m.data.name ?? `Move ${i + 1}`,
+        type: m.data.type,
         pp: m.currentPp,
         maxPp: m.data.pp,
         disabled: m.currentPp <= 0,
+        typeEffectivenessVsOpponentActive: computeTypeEffectiveness(m.data.type, oppTypes),
       }))
     : [];
   return {
@@ -436,6 +457,7 @@ function buildLiveTeam(team: BattleTeam): FriendlyBattleLiveTeam {
       hp: active?.currentHp ?? 0,
       maxHp: active?.maxHp ?? 0,
       fainted: active?.fainted ?? false,
+      types: active?.types ?? [],
       moves,
     },
     party: team.pokemon.map((p, i): FriendlyBattleLivePartyEntry => ({

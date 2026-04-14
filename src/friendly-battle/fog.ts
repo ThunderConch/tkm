@@ -92,6 +92,7 @@ export function deriveFogState(state: BattleState, role: FriendlyBattleRole): Fo
       hpPercent: active ? hpPercent(active) : 0,
       visibleStatus: active?.statusCondition ?? null,
       revealedMoves: [],
+      types: active?.types ?? [],
     },
     opponentBenchRevealed: [],
     opponentBenchHidden: Math.max(0, opponent.pokemon.length - 1),
@@ -141,6 +142,7 @@ function accumulateWithState(
       revealedMoves: changed || previous.opponentActive.species === (active ? speciesName(active) : previous.opponentActive.species)
         ? revealedMoves
         : previous.opponentActive.revealedMoves,
+      types: active?.types ?? previous.opponentActive.types ?? [],
     },
     opponentBenchRevealed: [...benchBySpecies.values()],
     opponentBenchHidden: nextBenchHiddenCount(metadata, [...benchBySpecies.values()]),

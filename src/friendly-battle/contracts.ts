@@ -167,9 +167,19 @@ export interface FriendlyBattleLiveActiveMove {
   index: number;       // 1-based slot index for SKILL.md / CLI
   moveId: number;      // canonical move id; each daemon localizes locally
   nameKo: string;      // host-locale fallback for legacy clients without ID lookup
+  type: string;        // elemental type of this move (e.g. 'dragon', 'ice')
   pp: number;
   maxPp: number;
   disabled: boolean;
+  /**
+   * Pre-computed type effectiveness multiplier (product of the move type
+   * against every opponent-active type) from the host's authoritative
+   * type_chart. AI-mode consumers MUST read this field instead of
+   * inferring effectiveness from the move and species names — the host
+   * is the single source of truth for the type chart and dual-type math.
+   * Values: 0 (immune), 0.25, 0.5, 1, 2, 4. Optional for legacy events.
+   */
+  typeEffectivenessVsOpponentActive?: number;
 }
 
 export interface FriendlyBattleLivePartyEntry {
@@ -190,6 +200,7 @@ export interface FriendlyBattleLiveTeam {
     hp: number;
     maxHp: number;
     fainted: boolean;
+    types: string[];   // elemental types of this pokemon (for STAB / defense reference)
     moves: FriendlyBattleLiveActiveMove[];
   };
   party: FriendlyBattleLivePartyEntry[];
@@ -212,6 +223,13 @@ export interface FogState {
     hpPercent: number;
     visibleStatus: string | null;
     revealedMoves: string[];
+    /**
+     * Opponent's elemental types as derived from the authoritative
+     * type chart (visible info in the Pokemon canon — the field sprite
+     * announces types). AI-mode consumers should use this instead of
+     * inferring types from the species name.
+     */
+    types: string[];
   };
   opponentBenchRevealed: Array<{
     species: string;
