@@ -55,16 +55,22 @@ export function createFriendlyBattleBattleRuntime(
     pendingChoices: {},
   };
 
+  const initialLiveState = buildFriendlyBattleLiveBattleState(runtime.state);
   return {
     runtime,
     events: [
-      { type: 'battle_initialized', battleId: input.battleId, turn: runtime.state.turn },
+      {
+        type: 'battle_initialized',
+        battleId: input.battleId,
+        turn: runtime.state.turn,
+        liveState: initialLiveState,
+      },
       {
         type: 'choices_requested',
         turn: runtime.state.turn + 1,
         waitingFor: ['host', 'guest'],
         phase: 'waiting_for_choices',
-        liveState: buildFriendlyBattleLiveBattleState(runtime.state),
+        liveState: initialLiveState,
       },
     ],
   };
@@ -220,6 +226,7 @@ function finalizeResolution(
 
   runtime.phase = nextPhase;
 
+  const postTurnLiveState = buildFriendlyBattleLiveBattleState(runtime.state);
   const events: FriendlyBattleBattleEvent[] = [
     {
       type: 'turn_resolved',
@@ -228,6 +235,7 @@ function finalizeResolution(
       waitingFor: nextWaiters,
       nextPhase,
       winner: resolution.winner,
+      liveState: postTurnLiveState,
     },
   ];
 

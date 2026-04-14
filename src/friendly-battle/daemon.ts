@@ -350,7 +350,23 @@ function eventToEnvelopeFields(
   currentFrameIndex: number;
 } {
   switch (event.type) {
-    case 'battle_initialized':
+    case 'battle_initialized': {
+      // Prefer the authoritative live state the host embedded. Guest daemons
+      // don't have a local runtime; without liveState, the legacy fallback
+      // rendered species-base HP (100/100 for Dialga) from ownSnapshot.
+      if (event.liveState) {
+        const fromLive = buildEnvelopeFieldsFromLiveState({
+          headline: 'Battle started!',
+          liveState: event.liveState,
+          role,
+          showMoveOptions: false,
+          showPartyOptions: false,
+        });
+        return {
+          ...fromLive,
+          animationFrames: [{ kind: 'message', text: 'Battle started!', durationMs: 300 }],
+        };
+      }
       return {
         questionContext: buildBattleContext('Battle started!', runtime, role, ownSnapshot),
         moveOptions: [],
@@ -358,6 +374,7 @@ function eventToEnvelopeFields(
         animationFrames: [{ kind: 'message', text: 'Battle started!', durationMs: 300 }],
         currentFrameIndex: 0,
       };
+    }
     case 'choices_requested': {
       const isFaintedSwitch = event.phase === 'awaiting_fainted_switch';
       const localIsWaiting = event.waitingFor.includes(role);
@@ -405,6 +422,22 @@ function eventToEnvelopeFields(
         text: msg,
         durationMs: 300,
       }));
+      // Host-authoritative post-turn state when available (see battle-adapter
+      // finalizeResolution). Without this, guest turn recaps showed stale
+      // species-base HP from ownSnapshot.
+      if (event.liveState) {
+        const fromLive = buildEnvelopeFieldsFromLiveState({
+          headline: event.messages.join(' '),
+          liveState: event.liveState,
+          role,
+          showMoveOptions: false,
+          showPartyOptions: false,
+        });
+        return {
+          ...fromLive,
+          animationFrames: frames,
+        };
+      }
       return {
         questionContext: buildBattleContext(event.messages.join(' '), runtime, role, ownSnapshot),
         moveOptions: [],

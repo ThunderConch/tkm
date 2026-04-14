@@ -57,9 +57,15 @@ function makeBattlePokemon(overrides: Partial<BattlePokemon> = {}): BattlePokemo
  * file stay focused on the wire-shape contract. The liveState payload is
  * exercised separately via daemon integration tests.
  */
+const EVENTS_WITH_LIVE_STATE = new Set([
+  'battle_initialized',
+  'choices_requested',
+  'turn_resolved',
+]);
+
 function stripLiveState<T extends { type?: string }>(events: T[]): T[] {
   return events.map((event) => {
-    if (event && event.type === 'choices_requested' && 'liveState' in event) {
+    if (event && event.type && EVENTS_WITH_LIVE_STATE.has(event.type) && 'liveState' in event) {
       const { liveState: _liveState, ...rest } = event as Record<string, unknown>;
       return rest as unknown as T;
     }
@@ -147,7 +153,7 @@ describe('friendly battle battle adapter', () => {
 
     assert.equal(runtime.state.turn, 1);
     assert.equal(runtime.phase, 'waiting_for_choices');
-    assert.deepEqual(events[0], {
+    assert.deepEqual(stripLiveStateFromEvent(events[0]!), {
       type: 'turn_resolved',
       turn: 1,
       messages: events[0]?.type === 'turn_resolved' ? events[0].messages : [],
@@ -185,7 +191,7 @@ describe('friendly battle battle adapter', () => {
 
     assert.equal(runtime.phase, 'completed');
     assert.equal(runtime.endedAt, '2026-04-12T12:00:02.000Z');
-    assert.deepEqual(events, [
+    assert.deepEqual(stripLiveState(events), [
       {
         type: 'turn_resolved',
         turn: 1,
@@ -234,7 +240,7 @@ describe('friendly battle battle adapter', () => {
 
     assert.equal(runtime.state.turn, 1);
     assert.equal(runtime.phase, 'awaiting_fainted_switch');
-    assert.deepEqual(resolveEvents[0], {
+    assert.deepEqual(stripLiveStateFromEvent(resolveEvents[0]!), {
       type: 'turn_resolved',
       turn: 1,
       messages: resolveEvents[0]?.type === 'turn_resolved' ? resolveEvents[0].messages : [],

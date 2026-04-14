@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   fallbackMoves,
@@ -19,7 +20,23 @@ import {
   type FriendlyBattleSnapshotRef,
 } from './contracts.js';
 
-const DEFAULT_PLUGIN_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
+// Walk up from this module's file until we find a package.json. That is the
+// plugin root regardless of whether we are running from `src/` under tsx
+// (`src/friendly-battle/snapshot.ts` → plugin root is 2 levels up) or from
+// the compiled `dist/` under plain node (`dist/friendly-battle/snapshot.js`
+// → plugin root is 3 levels up). The old hardcoded `../..` pointed at `dist/`
+// in the compiled case, which meant `data/moves.json` never resolved and the
+// moves DB silently stayed null — breaking per-client localization.
+const DEFAULT_PLUGIN_ROOT = (() => {
+  let dir = dirname(fileURLToPath(import.meta.url));
+  while (dir !== '/' && dir !== '' && !existsSync(join(dir, 'package.json'))) {
+    dir = dirname(dir);
+  }
+  // Fall back to the old behaviour if no package.json was found on the way up.
+  return existsSync(join(dir, 'package.json'))
+    ? dir
+    : resolve(fileURLToPath(new URL('../..', import.meta.url)));
+})();
 
 export interface FriendlyBattleSnapshotGenerationHook {
   mapPokemon?: (pokemon: FriendlyBattleSnapshotPokemon) => FriendlyBattleSnapshotPokemon;

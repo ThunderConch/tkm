@@ -150,6 +150,13 @@ export interface FriendlyBattleBattleInitializedEvent {
   type: 'battle_initialized';
   battleId: string;
   turn: number;
+  /**
+   * Optional authoritative live state. Populated by the host's battle-adapter
+   * runtime so the guest daemon can render real HP / species names on the
+   * initial battle-started screen without falling back to its own species-base
+   * snapshot (which would show 100/100 for Dialga etc).
+   */
+  liveState?: FriendlyBattleLiveBattleState;
 }
 
 export interface FriendlyBattleLiveActiveMove {
@@ -216,6 +223,12 @@ export interface FriendlyBattleTurnResolvedEvent {
   waitingFor: FriendlyBattleRole[];
   nextPhase: FriendlyBattleTurnPhase;
   winner: FriendlyBattleRole | null;
+  /**
+   * Optional authoritative live state at the END of this turn (post-damage,
+   * post-switch). Guest daemons use this to render the post-turn HP without
+   * relying on their own runtime.
+   */
+  liveState?: FriendlyBattleLiveBattleState;
 }
 
 export interface FriendlyBattleFinishedEvent {

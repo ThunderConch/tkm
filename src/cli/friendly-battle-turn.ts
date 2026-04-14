@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import {
   type FriendlyBattleSessionRecord,
   writeFriendlyBattleSessionRecord,
@@ -13,7 +14,28 @@ import {
 import { formatFriendlyBattleTurnJson } from '../friendly-battle/turn-json.js';
 import { sendDaemonIpcRequest } from '../friendly-battle/daemon-ipc.js';
 
-const DAEMON_ENTRY = resolve(fileURLToPath(new URL('../friendly-battle/daemon.ts', import.meta.url)));
+// Pick the daemon entry based on how this CLI was invoked:
+//   - When the compiled dist/cli/friendly-battle-turn.js runs, import.meta.url
+//     ends in .js and a sibling dist/friendly-battle/daemon.js exists, so we
+//     point at that and spawn it with a plain `node daemon.js` (no tsx load).
+//   - When the source src/cli/friendly-battle-turn.ts runs under tsx, we
+//     point at daemon.ts and spawn it with `node --import tsx daemon.ts`.
+// Falling back on existsSync() handles the edge case where only one side of
+// the pair is present (e.g. dist/ was partially synced).
+const DAEMON_ENTRY: string = (() => {
+  const jsEntry = resolve(fileURLToPath(new URL('../friendly-battle/daemon.js', import.meta.url)));
+  const tsEntry = resolve(fileURLToPath(new URL('../friendly-battle/daemon.ts', import.meta.url)));
+  if (import.meta.url.endsWith('.js') && existsSync(jsEntry)) return jsEntry;
+  if (existsSync(tsEntry)) return tsEntry;
+  if (existsSync(jsEntry)) return jsEntry;
+  return tsEntry;
+})();
+const DAEMON_USES_TSX = DAEMON_ENTRY.endsWith('.ts');
+function daemonSpawnArgs(role: 'host' | 'guest'): string[] {
+  return DAEMON_USES_TSX
+    ? ['--import', 'tsx', DAEMON_ENTRY, '--role', role]
+    : [DAEMON_ENTRY, '--role', role];
+}
 
 type Subcommand =
   | 'init-host'
@@ -249,7 +271,7 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
   // Fork the daemon as a detached child
   const child = spawn(
     process.execPath,
-    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'host'],
+    daemonSpawnArgs('host'),
     {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -380,7 +402,7 @@ async function runInitJoin(flags: Record<string, string | boolean | undefined>):
   // Fork the daemon as a detached child
   const child = spawn(
     process.execPath,
-    ['--import', 'tsx', DAEMON_ENTRY, '--role', 'guest'],
+    daemonSpawnArgs('guest'),
     {
       detached: true,
       stdio: ['ignore', 'pipe', 'pipe'],
