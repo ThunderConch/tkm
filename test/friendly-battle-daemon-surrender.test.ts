@@ -188,7 +188,7 @@ after(() => {
 // Test
 // ---------------------------------------------------------------------------
 
-describe('friendly-battle daemon surrender (end-to-end)', () => {
+describe('friendly-battle daemon surrender (end-to-end)', { concurrency: false }, () => {
   it(
     'host surrender causes guest to win with reason=surrender',
     { timeout: 30_000 },

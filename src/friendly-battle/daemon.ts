@@ -61,64 +61,7 @@ import type {
   FriendlyBattlePartySnapshot,
 } from './contracts.js';
 import type { FriendlyBattleBattleRuntime } from './battle-adapter.js';
-
-// ---------------------------------------------------------------------------
-// Minimal AsyncQueue — copied from tcp-direct.ts so this module is self-contained
-// ---------------------------------------------------------------------------
-
-class AsyncQueue<T> {
-  private readonly values: T[] = [];
-  private readonly waiters: Array<{
-    resolve: (value: T) => void;
-    reject: (error: Error) => void;
-    timer?: NodeJS.Timeout;
-  }> = [];
-
-  push(value: T): void {
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      if (waiter.timer) clearTimeout(waiter.timer);
-      waiter.resolve(value);
-      return;
-    }
-    this.values.push(value);
-  }
-
-  fail(error: Error): void {
-    while (this.waiters.length > 0) {
-      const waiter = this.waiters.shift();
-      if (!waiter) continue;
-      if (waiter.timer) clearTimeout(waiter.timer);
-      waiter.reject(error);
-    }
-  }
-
-  shift(timeoutMs: number, label: string): Promise<T> {
-    if (this.values.length > 0) {
-      return Promise.resolve(this.values.shift() as T);
-    }
-    return new Promise<T>((resolve, reject) => {
-      const waiter = {
-        resolve,
-        reject,
-      } as {
-        resolve: (value: T) => void;
-        reject: (error: Error) => void;
-        timer?: NodeJS.Timeout;
-      };
-      waiter.timer = setTimeout(() => {
-        const index = this.waiters.indexOf(waiter);
-        if (index >= 0) this.waiters.splice(index, 1);
-        reject(new Error(`${label} timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-      this.waiters.push(waiter);
-    });
-  }
-
-  get size(): number {
-    return this.values.length;
-  }
-}
+import { AsyncQueue } from './async-queue.js';
 
 // ---------------------------------------------------------------------------
 // Options JSON shape

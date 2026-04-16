@@ -176,7 +176,7 @@ after(() => {
 // Tests
 // ---------------------------------------------------------------------------
 
-describe('friendly-battle daemon turn loop (end-to-end)', () => {
+describe('friendly-battle daemon turn loop (end-to-end)', { concurrency: false }, () => {
   it('both daemons emit DAEMON_READY and complete a full battle turn loop', async () => {
     // One shared CLAUDE_CONFIG_DIR so both daemons load the same pokemon profile
     const claudeDir = makeClaudeConfigDir();

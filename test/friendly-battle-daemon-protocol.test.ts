@@ -7,7 +7,7 @@ import {
   type DaemonResponse,
 } from '../src/friendly-battle/daemon-protocol.js';
 
-describe('friendly-battle daemon protocol', () => {
+describe('friendly-battle daemon protocol', { concurrency: false }, () => {
   it('encodes and decodes each DaemonRequest variant', () => {
     const variants: DaemonRequest[] = [
       { op: 'wait_next_event', timeoutMs: 1000 },

@@ -33,7 +33,7 @@ after(() => {
   }
 });
 
-describe('friendly-battle daemon IPC', () => {
+describe('friendly-battle daemon IPC', { concurrency: false }, () => {
   it('round-trips a ping/pong via UNIX socket', async () => {
     const socketPath = tempSocketPath();
     const server = await createDaemonIpcServer(socketPath, (req) => {

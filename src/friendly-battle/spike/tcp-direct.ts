@@ -17,6 +17,7 @@ import {
   createFriendlyBattleChoiceEnvelope,
 } from '../local-harness.js';
 import { assertValidFriendlyBattlePartySnapshot } from '../snapshot.js';
+import { AsyncQueue } from '../async-queue.js';
 
 export class FriendlyBattleTransportError extends Error {
   readonly code: string;
@@ -68,46 +69,6 @@ type GuestInboundMessage =
   | FriendlyBattleStartedMessage
   | FriendlyBattleBattleEventMessage;
 
-class AsyncQueue<T> {
-  private readonly values: T[] = [];
-  private readonly waiters: Array<{ resolve: (value: T) => void; reject: (error: Error) => void; timer?: NodeJS.Timeout }> = [];
-
-  push(value: T): void {
-    const waiter = this.waiters.shift();
-    if (waiter) {
-      if (waiter.timer) clearTimeout(waiter.timer);
-      waiter.resolve(value);
-      return;
-    }
-    this.values.push(value);
-  }
-
-  fail(error: Error): void {
-    while (this.waiters.length > 0) {
-      const waiter = this.waiters.shift();
-      if (!waiter) continue;
-      if (waiter.timer) clearTimeout(waiter.timer);
-      waiter.reject(error);
-    }
-  }
-
-  shift(timeoutMs: number, label: string): Promise<T> {
-    if (this.values.length > 0) {
-      return Promise.resolve(this.values.shift() as T);
-    }
-
-    return new Promise<T>((resolve, reject) => {
-      const waiter = { resolve, reject } as { resolve: (value: T) => void; reject: (error: Error) => void; timer?: NodeJS.Timeout };
-      waiter.timer = setTimeout(() => {
-        const index = this.waiters.indexOf(waiter);
-        if (index >= 0) this.waiters.splice(index, 1);
-        reject(new FriendlyBattleTransportError('timeout', `${label} 대기 중 시간이 초과되었습니다.`));
-      }, timeoutMs);
-      this.waiters.push(waiter);
-    });
-  }
-}
-
 function parseDelimitedMessages<T>(buffer: string, onMessage: (message: T) => void): string {
   let remainder = buffer;
   while (true) {
@@ -132,10 +93,13 @@ function isWildcardHost(host: string): boolean {
   return host === '0.0.0.0' || host === '::' || host === '::0';
 }
 
+const transportTimeoutError = (label: string, _ms: number) =>
+  new FriendlyBattleTransportError('timeout', `${label} 대기 중 시간이 초과되었습니다.`);
+
 export async function createFriendlyBattleSpikeHost(options: HostOptions) {
-  const guestJoinQueue = new AsyncQueue<GuestJoinEvent>();
-  const guestChoiceQueue = new AsyncQueue<FriendlyBattleChoiceEnvelope>();
-  const readyStateQueue = new AsyncQueue<FriendlyBattleReadyState>();
+  const guestJoinQueue = new AsyncQueue<GuestJoinEvent>(transportTimeoutError);
+  const guestChoiceQueue = new AsyncQueue<FriendlyBattleChoiceEnvelope>(transportTimeoutError);
+  const readyStateQueue = new AsyncQueue<FriendlyBattleReadyState>(transportTimeoutError);
   const battleEventLog: FriendlyBattleBattleEvent[] = [];
   const submittedChoiceLog: FriendlyBattleChoiceEnvelope[] = [];
   const server = net.createServer();
@@ -434,9 +398,9 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
 }
 
 export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
-  const readyStateQueue = new AsyncQueue<FriendlyBattleReadyState>();
-  const startedQueue = new AsyncQueue<FriendlyBattleStartedMessage>();
-  const battleEventQueue = new AsyncQueue<FriendlyBattleBattleEvent>();
+  const readyStateQueue = new AsyncQueue<FriendlyBattleReadyState>(transportTimeoutError);
+  const startedQueue = new AsyncQueue<FriendlyBattleStartedMessage>(transportTimeoutError);
+  const battleEventQueue = new AsyncQueue<FriendlyBattleBattleEvent>(transportTimeoutError);
   const socket = new net.Socket();
 
   let closed = false;

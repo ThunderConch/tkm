@@ -190,7 +190,7 @@ after(() => {
 // Test
 // ---------------------------------------------------------------------------
 
-describe('friendly-battle daemon fainted forced-switch (end-to-end)', () => {
+describe('friendly-battle daemon fainted forced-switch (end-to-end)', { concurrency: false }, () => {
   it(
     'guest fainted switch: after KO, guest sees fainted_switch status and battle continues after switch action',
     { timeout: 20_000 },

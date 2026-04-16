@@ -227,7 +227,7 @@ after(async () => {
 // Test
 // ---------------------------------------------------------------------------
 
-describe('friendly-battle daemon leave (end-to-end)', () => {
+describe('friendly-battle daemon leave (end-to-end)', { concurrency: false }, () => {
   it(
     'host leave causes both daemons to shut down and guest sees aborted/disconnect',
     { timeout: 30_000 },
