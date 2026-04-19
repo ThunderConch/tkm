@@ -257,6 +257,7 @@ export interface State {
   gym_badges?: string[];
   rare_weight_multiplier?: number;
   last_codex_xp?: number | null;
+  last_called?: { pokemon: string; ev: number; ts: number } | null;
 }
 
 export interface Config {

@@ -18,10 +18,10 @@ import { getEventsDB, getRegionsDB, getPokedexRewardsDB } from '../core/pokemon-
 import { getTypeMasterProgress } from '../core/pokedex-rewards.js';
 import { t, initLocale, getLocale } from '../i18n/index.js';
 import { withLock, withLockRetry } from '../core/lock.js';
-import { getActiveGeneration, setActiveGenerationCache, clearActiveGenerationCache, PLUGIN_ROOT, GLOBAL_CONFIG_PATH, DATA_DIR } from '../core/paths.js';
+import { getActiveGeneration, setActiveGenerationCache, clearActiveGenerationCache, PLUGIN_ROOT, GLOBAL_CONFIG_PATH, DATA_DIR, SPRITES_BRAILLE_DIR, SPRITES_TERMINAL_DIR } from '../core/paths.js';
 import { execSync } from 'node:child_process';
 import { detectRenderer } from '../core/detect-renderer.js';
-import { isShinyKey, toBaseId, toShinyKey } from '../core/shiny-utils.js';
+import { isShinyKey, toBaseId } from '../core/shiny-utils.js';
 import { readWeatherCache, WEATHER_LABELS, refreshWeatherIfStale, type WeatherCondition } from '../core/weather.js';
 import type { ExpGroup, EvolutionContext } from '../core/types.js';
 
@@ -222,15 +222,7 @@ function cmdStarter(choiceArg?: string): void {
     if (!freshState.pokemon[chosen]) {
       const starterLevel = 5;
       const expGroup: ExpGroup = pData?.exp_group ?? 'medium_fast';
-      freshState.pokemon[chosen] = {
-        id: pData?.id ?? 0,
-        xp: levelToXp(starterLevel, expGroup),
-        level: starterLevel,
-        friendship: 0,
-        ev: 0,
-        met: 'starter',
-        met_detail: { region: freshConfig.current_region, met_level: starterLevel, met_date: new Date().toISOString().split('T')[0] },
-      };
+      freshState.pokemon[chosen] = { id: pData?.id ?? 0, xp: levelToXp(starterLevel, expGroup), level: starterLevel, friendship: 0, ev: 0 };
     }
     if (!freshState.unlocked.includes(chosen)) {
       freshState.unlocked.push(chosen);
@@ -570,16 +562,6 @@ function cmdPokedex(): void {
         if (state.pokemon[pokemonName]) {
           const ps = state.pokemon[pokemonName];
           console.log(`  ${t('cli.pokedex.detail_current_level', { level: ps.level, xp: formatNumber(ps.xp) })}`);
-          if (ps.met) {
-            const metText = formatMetInfo(ps.met, ps.met_detail);
-            if (metText) {
-              console.log('');
-              console.log(`    ${t('cli.pokedex.trainer_memo')}`);
-              for (const line of metText.split('\n')) {
-                console.log(`    ${line}`);
-              }
-            }
-          }
         }
         return;
       }
@@ -754,12 +736,106 @@ function cmdCall(nameOrId: string): void {
       p.call_count = 0;
       evGained = p.ev > prevEv;
     }
+    s.last_called = { pokemon: id, ev: p.ev ?? 0, ts: Date.now() };
     writeState(s);
     return { ev: p.ev, call_count: p.call_count, evGained };
   });
   if (!result.acquired) { error(t('cli.lock_failed')); process.exit(1); }
   if ('error' in result.value) { error(t('cli.call.not_found', { name: nameOrId })); process.exit(1); }
   console.log(JSON.stringify(result.value));
+}
+
+// ── call-sprite: animated sprite with emotion bubble ──────────────────────────
+
+const SPRITE_H = 10;
+const SPRITE_W = 20;
+
+function loadSpriteForCall(pokemonId: number): string[] {
+  const brailleFile = join(SPRITES_BRAILLE_DIR, `${pokemonId}.txt`);
+  const termFile = join(SPRITES_TERMINAL_DIR, `${pokemonId}.txt`);
+  const file = existsSync(brailleFile) ? brailleFile : existsSync(termFile) ? termFile : null;
+  if (!file) return Array(SPRITE_H).fill('');
+  const raw = readFileSync(file, 'utf-8').split('\n');
+  if (raw.length > 0 && raw[raw.length - 1] === '') raw.pop();
+  const lines = raw.map((l: string) => l.replace(/ /g, '\u2800'));
+  while (lines.length < SPRITE_H) lines.push('');
+  return lines.slice(0, SPRITE_H);
+}
+
+function emotionBubble(ev: number): string[] {
+  // Each bubble line is 8 visible cols: ╭──────╮
+  // Middle: │ + space + 5-char content + │ = 8
+  let inner: string;
+  if (ev <= 0)        inner = ' ?   ';
+  else if (ev <= 50)  inner = '...  ';
+  else if (ev <= 120) inner = ':)   ';
+  else if (ev <= 200) inner = '<3   ';
+  else                inner = '<3!  ';
+  return [
+    `╭──────╮`,
+    `│ ${inner}│`,
+    `╰───╮──╯`,
+    `    │   `,
+  ];
+}
+
+function spriteFrameLines(lines: string[], bubble: string[], offset: number): string[] {
+  const result: string[] = [];
+  for (let i = 0; i < SPRITE_H; i++) {
+    const src = i + offset;
+    const spriteLine = (src >= 0 && src < lines.length) ? lines[src] : '';
+    const vLen = spriteLine.replace(/\x1b\[[^m]*m/g, '').length;
+    const padded = spriteLine + (vLen < SPRITE_W ? '\u2800'.repeat(SPRITE_W - vLen) : '');
+    const bubbleLine = (src >= 0 && src < bubble.length) ? bubble[src] : '';
+    result.push(padded.replace(/\u2800/g, ' ') + (bubbleLine ? ' ' + bubbleLine : ''));
+  }
+  return result;
+}
+
+function sleepSync(ms: number): void {
+  const end = Date.now() + ms;
+  while (Date.now() < end) { /* busy-wait */ }
+}
+
+function printFrame(frameLines: string[]): void {
+  for (const line of frameLines) process.stdout.write(line + '\n');
+}
+
+function eraseFrame(n: number): void {
+  for (let i = 0; i < n; i++) process.stdout.write('\x1b[1A\x1b[2K');
+}
+
+async function cmdSprite(nameOrId: string, ev: number): Promise<void> {
+  const state = readState();
+  const pokemonDB = getPokemonDB();
+  const resolvedId = resolveNameToId(nameOrId, state) ?? nameOrId;
+  const baseId = toBaseId(resolvedId);
+  const pData = pokemonDB.pokemon[baseId];
+  if (!pData) return;
+
+  const spriteLines = loadSpriteForCall(pData.id);
+  const bubble = emotionBubble(ev);
+
+  const normalFrame  = spriteFrameLines(spriteLines, bubble, 0);
+
+  // Animate only on real TTY — not when captured by Claude Code or piped
+  if (process.stdout.isTTY) {
+    const bouncedFrame = spriteFrameLines(spriteLines, bubble, 1);
+    printFrame(normalFrame);
+    sleepSync(100);
+    eraseFrame(SPRITE_H);
+    printFrame(bouncedFrame);
+    sleepSync(140);
+    eraseFrame(SPRITE_H);
+    printFrame(normalFrame);
+    sleepSync(90);
+    eraseFrame(SPRITE_H);
+    printFrame(bouncedFrame);
+    sleepSync(120);
+    eraseFrame(SPRITE_H);
+  }
+
+  printFrame(normalFrame);
 }
 
 function cmdNickname(nameOrId: string, nickname?: string): void {
@@ -909,13 +985,7 @@ function cmdCheat(subcmd: string, arg1?: string, arg2?: string): void {
       case 'unlock': {
         const pData = pokemonDB.pokemon[arg1!];
         if (!state.unlocked.includes(arg1!)) state.unlocked.push(arg1!);
-        if (!state.pokemon[arg1!]) {
-          state.pokemon[arg1!] = {
-            id: pData.id, xp: 0, level: 1, friendship: 0, ev: 0,
-            met: 'unknown',
-            met_detail: { met_level: 1, met_date: new Date().toISOString().split('T')[0] },
-          };
-        }
+        if (!state.pokemon[arg1!]) state.pokemon[arg1!] = { id: pData.id, xp: 0, level: 1, friendship: 0, ev: 0 };
         if (!state.pokedex[arg1!]) state.pokedex[arg1!] = { seen: true, caught: true, first_seen: new Date().toISOString().split('T')[0] };
         else { state.pokedex[arg1!].seen = true; state.pokedex[arg1!].caught = true; }
         logCheat(`unlock ${arg1}`);
@@ -998,11 +1068,7 @@ function cmdEvolve(pokemonArg?: string, targetArg?: string): void {
     items: state.items ?? {},
   };
   const branches = getEligibleBranches(pokemonArg, ctx);
-  // UX-only: hide branches whose evolved form is already in unlocked (safety guards are in checkEvolution/applyBranchEvolution)
-  const eligible = branches.filter(b => {
-    const evolvedKey = isShinyKey(pokemonArg) ? toShinyKey(b.name) : b.name;
-    return b.conditionMet && !state.unlocked.includes(evolvedKey);
-  });
+  const eligible = branches.filter(b => b.conditionMet);
 
   if (eligible.length === 0) {
     warn(t('cli.evolve.no_eligible', { pokemon: getPokemonName(pokemonArg) }));
@@ -1331,11 +1397,7 @@ function cmdLegendary(action?: string): void {
     const pokemonDB = getPokemonDB();
     const pData = pokemonDB.pokemon[chosen];
     if (pData && !s.pokemon[chosen]) {
-      s.pokemon[chosen] = {
-        id: pData.id, xp: 0, level: 50, friendship: 0, ev: 0,
-        met: 'fateful_encounter',
-        met_detail: { met_level: 50, met_date: new Date().toISOString().split('T')[0], from: pending.group },
-      };
+      s.pokemon[chosen] = { id: pData.id, xp: 0, level: 50, friendship: 0, ev: 0 };
     }
     if (!s.pokedex[chosen]) {
       s.pokedex[chosen] = { seen: true, caught: true, first_seen: new Date().toISOString().split('T')[0] };
@@ -1720,8 +1782,6 @@ function cmdSetup(args: string[]): void {
           level: starterLevel,
           friendship: 0,
           ev: 0,
-          met: 'starter',
-          met_detail: { region: freshConfig.current_region, met_level: starterLevel, met_date: new Date().toISOString().split('T')[0] },
         };
       }
       if (!freshState.unlocked.includes(starterKey)) {
@@ -1914,7 +1974,6 @@ function cmdHelp(): void {
   console.log(t('cli.help.cmd_uninstall'));
   console.log(t('cli.help.cmd_uninstall_keep'));
   console.log(t('cli.help.cmd_reset'));
-  console.log(t('cli.help.cmd_friendly_battle'));
   console.log(t('cli.help.cmd_cheat'));
   console.log(t('cli.help.cmd_help'));
   console.log('');
@@ -2023,17 +2082,15 @@ switch (command) {
   case 'call':
     cmdCall(args[1] ?? '');
     break;
+  case 'sprite':
+    await cmdSprite(args[1] ?? '', parseInt(args[2] ?? '0', 10));
+    break;
   case 'nickname':
     cmdNickname(args[1] ?? '', args.slice(2).join(' ') || undefined);
     break;
   case 'reset':
     cmdReset(args.includes('--confirm'));
     break;
-  case 'friendly-battle': {
-    const { runFriendlyBattleCli } = await import('./friendly-battle.js');
-    await runFriendlyBattleCli(args.slice(1));
-    break;
-  }
   case 'cheat':
     cmdCheat(args[1], args[2], args[3]);
     break;

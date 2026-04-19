@@ -517,6 +517,22 @@ function main(): void {
     });
   }
 
+  // === Call bubble: appears next to sprite for 15s after tkm call ===
+  const lastCalled = state.last_called;
+  const CALL_BUBBLE_TTL = 15_000;
+  const callBubbleActive = !!(lastCalled && Date.now() - lastCalled.ts < CALL_BUBBLE_TTL);
+  const callBubbleLines: string[] = [];
+  if (callBubbleActive) {
+    const ev = lastCalled!.ev;
+    let inner: string;
+    if (ev <= 0)        inner = ' ?   ';
+    else if (ev <= 50)  inner = '...  ';
+    else if (ev <= 120) inner = ':)   ';
+    else if (ev <= 200) inner = '<3   ';
+    else                inner = '<3!  ';
+    callBubbleLines.push('╭──────╮', `│ ${inner}│`, '╰───╮──╯', '    │   ');
+  }
+
   // === Sprite rendering (responsive 4-tier layout) ===
   // Use printWidth for tier selection so sprites fit in the same budget as text
   const tier = determineTier(printWidth, pokeData.length, spriteMode);
@@ -563,10 +579,18 @@ function main(): void {
         }
       }
       for (let row = firstRow; row <= lastRow; row++) {
-        let rowStr = group.map(s => {
+        const bubbleRow = row - firstRow;
+        let rowStr = group.map((s, gidx) => {
           const line = s[row] ?? '';
           const visibleLen = line.replace(/\x1b\[[^m]*m/g, '').length;
-          return visibleLen < SPRITE_WIDTH ? line + '\u2800'.repeat(SPRITE_WIDTH - visibleLen) : line;
+          const padded = visibleLen < SPRITE_WIDTH ? line + '\u2800'.repeat(SPRITE_WIDTH - visibleLen) : line;
+          // Attach bubble to the right of the called pokemon's sprite
+          const partyIdx = gi + gidx;
+          const isCalledSprite = callBubbleActive && pokeData[partyIdx]?.speciesId === lastCalled?.pokemon;
+          const bubbleSuffix = isCalledSprite && bubbleRow < callBubbleLines.length
+            ? '\u2800' + callBubbleLines[bubbleRow]
+            : '';
+          return padded + bubbleSuffix;
         }).join('\u2800');
         if (weatherCondition) {
           rowStr = scatterWeatherParticles(rowStr, weatherCondition);
