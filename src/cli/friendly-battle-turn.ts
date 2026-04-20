@@ -268,7 +268,10 @@ function readLineUntil(
 async function runInitHost(flags: Record<string, string | boolean | undefined>): Promise<void> {
   // --- Input validation (must run before forking daemon) ---
   const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
-  const listenHost = asStringFlag(flags, 'listen-host') ?? '127.0.0.1';
+  // Run every host-shaped flag through validateHostArg so bad input fails
+  // with a consistent `REASON:` line before we spawn a daemon or open a
+  // socket. --listen-host defaults to 127.0.0.1 when omitted.
+  const listenHost = validateHostArg(asStringFlag(flags, 'listen-host'), 'listen-host') ?? '127.0.0.1';
   // --join-host is the address guests will actually connect to. Required
   // whenever --listen-host is a wildcard (0.0.0.0, ::) because the daemon's
   // TCP transport rejects wildcard-without-advertise combinations upfront.
@@ -406,7 +409,9 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
 async function runInitJoin(flags: Record<string, string | boolean | undefined>): Promise<void> {
   // --- Input validation (must run before forking daemon) ---
   const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
-  const hostAddr = requireFlag(flags, 'host');
+  // --host is required; validateHostArg returns undefined only for empty input,
+  // which requireFlag already rejects, so the `!` assertion is safe.
+  const hostAddr = validateHostArg(requireFlag(flags, 'host'), 'host')!;
   const portStr = asStringFlag(flags, 'port') ?? requireFlag(flags, 'port');
   const port = requirePositiveInt(portStr, 'port');
   const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 4000);
