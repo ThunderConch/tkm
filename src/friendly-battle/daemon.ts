@@ -71,6 +71,10 @@ interface DaemonOptions {
   sessionId: string;
   sessionCode: string;
   host: string;       // listenHost for role=host, remote host for role=guest
+  // Advertise host (role=host only). Passed through to the TCP transport so a
+  // wildcard --listen-host (0.0.0.0, ::) can still publish a concrete address
+  // to guests. Ignored for the guest role.
+  advertiseHost?: string;
   port: number;
   generation: string;
   playerName: string;
@@ -467,7 +471,7 @@ function serializeDaemonAction(action: DaemonAction): string {
 // ---------------------------------------------------------------------------
 
 async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Promise<void> {
-  const { sessionId, sessionCode, host, port, generation, playerName, timeoutMs } = options;
+  const { sessionId, sessionCode, host, advertiseHost, port, generation, playerName, timeoutMs } = options;
 
   // Initialize locale from the user's global config so getPokemonName,
   // getGameI18n, localizeMoveName, and localizePokemonName all render in
@@ -751,6 +755,7 @@ async function runDaemon(role: FriendlyBattleRole, options: DaemonOptions): Prom
   if (role === 'host') {
     const host_transport = await createFriendlyBattleSpikeHost({
       host,
+      advertiseHost,
       port,
       sessionCode,
       hostPlayerName: playerName,
