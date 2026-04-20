@@ -115,13 +115,22 @@ Dispatch on the returned envelope's `phase`:
 
 ### Step 1c — Resume flow (host/guest, after `open`/`join` detached)
 
-Requires a stored `sessionId` from the current session (from Step 1a or Step 1b). If no session is active, tell the user "현재 대화에 friendly-battle 세션이 없습니다. 먼저 `/tkm:friendly-battle open` 또는 `/tkm:friendly-battle join` 을 실행하세요." and stop.
-
-**First, probe the daemon with `--status`** — this never blocks and never fails, so we can decide whether to enter the turn loop without waiting on an empty event queue.
+**Recover `sessionId` first.** If you already have `sessionId` in conversation scope (from the same Step 1a / Step 1b call), use it and skip this block. Otherwise — e.g. the conversation was compacted, handed off, or simply a while ago — ask the CLI which sessions are still alive:
 
 ```bash
 P="${CLAUDE_PLUGIN_ROOT:-$(ls -d ~/.claude/plugins/marketplaces/tkm 2>/dev/null || ls -d ~/.claude/plugins/cache/tkm/tkm/*/ 2>/dev/null | sort -V | tail -1)}"
 GEN=$(node -e "try{const g=JSON.parse(require('fs').readFileSync(require('path').join(require('os').homedir(),'.claude/tokenmon/global-config.json'),'utf-8'));console.log(g.active_generation||'gen1')}catch{console.log('gen1')}")
+"$P/bin/run-friendly-battle-turn.sh" --list-active --generation "$GEN"
+```
+
+The output is a JSON array (possibly empty) of non-terminal sessions whose daemon PID is still alive, sorted by `updatedAt` descending. Each entry includes `sessionId`, `role`, `phase`, `status`, `transport`, `updatedAt`. Dispatch on the array size:
+- `[]` (empty) → tell the user "현재 활성화된 friendly-battle 세션이 없습니다. 먼저 `/tkm:friendly-battle open` 또는 `/tkm:friendly-battle join` 을 실행하세요." and stop.
+- one entry → adopt its `sessionId` and proceed with the `--status` probe below.
+- two or more → use AskUserQuestion to let the user pick which session to resume, labelling each option as `role=<role> code=<sessionCode> updated=<updatedAt>`. After the pick, adopt that `sessionId`.
+
+**Then probe the daemon with `--status`** — this never blocks and never fails, so we can decide whether to enter the turn loop without waiting on an empty event queue.
+
+```bash
 "$P/bin/run-friendly-battle-turn.sh" --status --session "$SESSION_ID" --generation "$GEN"
 ```
 

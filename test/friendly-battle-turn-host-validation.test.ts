@@ -1,13 +1,17 @@
 // test/friendly-battle-turn-host-validation.test.ts
 //
 // Regression coverage for PR #56:
-//   1. --listen-host / --join-host / --host all run through validateHostArg,
+//   1. --listen-host / --join-host / --host all run through sanitizeHostArg,
 //      not just --join-host (reviewer-flagged).
 //   2. Wildcard --listen-host + --join-host writes the advertise host into
 //      the on-disk session record (not the wildcard).
 //   3. The CLI can be invoked from a cwd outside the plugin root without
 //      tripping Node's cwd-relative `--import tsx` resolution (i.e. the
 //      daemon still reaches DAEMON_READY, so `PORT:` appears on stderr).
+//   4. --list-active returns a JSON array that the skill's `resume` flow
+//      can use to recover the sessionId when conversational memory is
+//      lost. An active init-host run is discoverable; an empty sessions
+//      dir yields an empty array.
 
 import { after, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -99,7 +103,7 @@ describe('friendly-battle-turn — host-arg validation is uniform across flags',
     );
 
     assert.notEqual(result.status, 0, `stdout=${result.stdout}\nstderr=${result.stderr}`);
-    assert.match(result.stderr, /REASON: --listen-host must match/);
+    assert.match(result.stderr, /REASON: --listen-host contains characters outside the shell-safe set/);
   });
 
   it('rejects a malformed --join-host with a clean REASON line', () => {
@@ -121,7 +125,7 @@ describe('friendly-battle-turn — host-arg validation is uniform across flags',
     );
 
     assert.notEqual(result.status, 0, `stdout=${result.stdout}\nstderr=${result.stderr}`);
-    assert.match(result.stderr, /REASON: --join-host must match/);
+    assert.match(result.stderr, /REASON: --join-host contains characters outside the shell-safe set/);
   });
 
   it('rejects a malformed --host on the join path with a clean REASON line', () => {
@@ -142,7 +146,7 @@ describe('friendly-battle-turn — host-arg validation is uniform across flags',
     );
 
     assert.notEqual(result.status, 0, `stdout=${result.stdout}\nstderr=${result.stderr}`);
-    assert.match(result.stderr, /REASON: --host must match/);
+    assert.match(result.stderr, /REASON: --host contains characters outside the shell-safe set/);
   });
 });
 
@@ -210,5 +214,92 @@ describe('friendly-battle-turn — cwd outside the plugin root', () => {
     assert.doesNotMatch(combined, /Cannot find package 'tsx'/, combined);
     assert.doesNotMatch(combined, /ERR_MODULE_NOT_FOUND/, combined);
     assert.match(result.stderr, /PORT: \d+/, combined);
+  });
+});
+
+describe('friendly-battle-turn — --list-active recovers sessions when sessionId is lost', () => {
+  async function killAndWait(pid: number | undefined, timeoutMs = 2000): Promise<void> {
+    if (typeof pid !== 'number' || pid <= 0) return;
+    try { process.kill(pid, 'SIGKILL'); } catch { return; /* already dead */ }
+    // Poll until the daemon stops writing to the sessions dir so rmSync
+    // doesn't race with a still-flushing crash log or the final record
+    // write and fail with ENOTEMPTY.
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try { process.kill(pid, 0); } catch { return; }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+  }
+
+  function rmTreeQuietly(path: string): void {
+    // Retry loop protects against the daemon's last-gasp crash-log write
+    // arriving after killAndWait returns (kernel delivery + fs flush can
+    // still complete a fraction of a millisecond after the PID is gone).
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try { rmSync(path, { recursive: true, force: true, maxRetries: 3 }); return; } catch { /* retry */ }
+    }
+  }
+
+  it('returns an empty JSON array when no sessions exist', () => {
+    const profile = makeClaudeConfigDir('list-empty');
+    after(() => rmTreeQuietly(profile));
+
+    const result = runCli(
+      ['--list-active', '--generation', GENERATION],
+      { configDir: profile },
+    );
+
+    assert.equal(result.status, 0, `stdout=${result.stdout}\nstderr=${result.stderr}`);
+    const parsed: unknown = JSON.parse(result.stdout.trim());
+    assert.ok(Array.isArray(parsed), 'expected a JSON array');
+    assert.equal(parsed.length, 0);
+  });
+
+  it('surfaces an active init-host daemon so resume can adopt its sessionId', () => {
+    const profile = makeClaudeConfigDir('list-active');
+    // init-host detaches the daemon and returns quickly after DAEMON_READY.
+    // Give the daemon a generous guest-join timeout so it is still alive
+    // when --list-active probes the sessions dir.
+    const init = runCli(
+      [
+        '--init-host',
+        '--session-code', 'alpha-list-active-123',
+        '--generation', GENERATION,
+        '--listen-host', '127.0.0.1',
+        '--port', '0',
+        '--timeout-ms', '5000',
+        '--player-name', 'Host',
+      ],
+      { configDir: profile },
+    );
+    assert.equal(init.status, 0, `init stderr=${init.stderr}`);
+
+    // Pull the daemonPid off the on-disk record so we can reap it after
+    // the assertion even if the test body throws.
+    const record = readLatestSessionRecord(profile) as { daemonPid?: number; sessionId?: string };
+    const daemonPid = record.daemonPid;
+    after(async () => {
+      await killAndWait(daemonPid);
+      rmTreeQuietly(profile);
+    });
+
+    const list = runCli(
+      ['--list-active', '--generation', GENERATION],
+      { configDir: profile },
+    );
+    assert.equal(list.status, 0, `list stderr=${list.stderr}`);
+    const parsed = JSON.parse(list.stdout.trim()) as Array<{
+      sessionId: string;
+      role: string;
+      phase: string;
+      sessionCode: string;
+    }>;
+    assert.ok(Array.isArray(parsed), 'expected a JSON array');
+    assert.equal(parsed.length, 1, `expected exactly one active session, got ${JSON.stringify(parsed)}`);
+    assert.equal(parsed[0].sessionId, record.sessionId);
+    assert.equal(parsed[0].role, 'host');
+    assert.notEqual(parsed[0].phase, 'finished');
+    assert.notEqual(parsed[0].phase, 'aborted');
+    assert.equal(parsed[0].sessionCode, 'alpha-list-active-123');
   });
 });

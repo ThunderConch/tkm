@@ -9,6 +9,7 @@ import {
   type FriendlyBattleSessionRecord,
   writeFriendlyBattleSessionRecord,
   readFriendlyBattleSessionRecord,
+  listFriendlyBattleSessionRecords,
   isPidAlive,
 } from '../friendly-battle/session-store.js';
 import { formatFriendlyBattleTurnJson } from '../friendly-battle/turn-json.js';
@@ -49,7 +50,8 @@ type Subcommand =
   | 'wait-next-event'
   | 'action'
   | 'status'
-  | 'leave';
+  | 'leave'
+  | 'list-active';
 
 interface ParsedCliArgs {
   subcommand: Subcommand;
@@ -65,6 +67,7 @@ const USAGE = [
   '  --wait-next-event --session <id> --generation <gen> [--timeout-ms 60000]',
   '  --action <move:N|switch:N|surrender> --session <id> --generation <gen>',
   '  --status --session <id> --generation <gen>',
+  '  --list-active --generation <gen>',
   '',
 ].join('\n');
 
@@ -75,6 +78,7 @@ const SUBCOMMAND_FLAGS = new Set<string>([
   // '--action' is intentionally absent: it carries a value and is parsed by parseArgs directly
   '--status',
   '--leave',
+  '--list-active',
 ]);
 
 const CLI_FLAG_SCHEMA = {
@@ -153,15 +157,19 @@ function validateSafeId(value: string, name: string): string {
   return value;
 }
 
-// Host args (listen-host, join-host, --host) are fed straight to Node's net
-// APIs, which do their own parsing. We only strip control chars and cap length
-// so a malformed value is rejected early with a clean REASON instead of
-// crashing deep inside the TCP layer.
+// Host args (listen-host, join-host, --host) are shell-safety filtered only.
+// This is NOT semantic host validation: inputs like `::::`, `foo..bar`, or
+// `[::1` (unmatched bracket) will pass this check and fail later inside
+// Node's net layer with its own error. The purpose here is strictly to
+// reject shell metacharacters and control bytes so a malicious value can't
+// traverse into downstream command paths — semantic parsing (IPv4/IPv6
+// literal, hostname labels) is intentionally deferred to `net.listen` /
+// `net.connect`, which already has the right behavior and error messages.
 const SAFE_HOST = /^[A-Za-z0-9._:\-\[\]%]{1,253}$/;
-function validateHostArg(value: string | undefined, name: string): string | undefined {
+function sanitizeHostArg(value: string | undefined, name: string): string | undefined {
   if (value === undefined || value === '') return undefined;
   if (!SAFE_HOST.test(value)) {
-    process.stderr.write(`REASON: --${name} must match /^[A-Za-z0-9._:\\-\\[\\]%]{1,253}$/, got ${JSON.stringify(value)}\n`);
+    process.stderr.write(`REASON: --${name} contains characters outside the shell-safe set [A-Za-z0-9._:\\-\\[\\]%], got ${JSON.stringify(value)}\n`);
     process.exit(1);
   }
   return value;
@@ -180,6 +188,7 @@ function resolveSubcommand(argv: string[]): Subcommand | null {
   if (argv.includes('--action')) return 'action';
   if (argv.includes('--status')) return 'status';
   if (argv.includes('--leave')) return 'leave';
+  if (argv.includes('--list-active')) return 'list-active';
   return null;
 }
 
@@ -268,14 +277,15 @@ function readLineUntil(
 async function runInitHost(flags: Record<string, string | boolean | undefined>): Promise<void> {
   // --- Input validation (must run before forking daemon) ---
   const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
-  // Run every host-shaped flag through validateHostArg so bad input fails
-  // with a consistent `REASON:` line before we spawn a daemon or open a
-  // socket. --listen-host defaults to 127.0.0.1 when omitted.
-  const listenHost = validateHostArg(asStringFlag(flags, 'listen-host'), 'listen-host') ?? '127.0.0.1';
+  // Run every host-shaped flag through sanitizeHostArg so shell-unsafe
+  // input is rejected with a consistent `REASON:` line before we spawn a
+  // daemon or open a socket. Semantic validity of the host is left to
+  // Node's net layer. --listen-host defaults to 127.0.0.1 when omitted.
+  const listenHost = sanitizeHostArg(asStringFlag(flags, 'listen-host'), 'listen-host') ?? '127.0.0.1';
   // --join-host is the address guests will actually connect to. Required
   // whenever --listen-host is a wildcard (0.0.0.0, ::) because the daemon's
   // TCP transport rejects wildcard-without-advertise combinations upfront.
-  const advertiseHost = validateHostArg(asStringFlag(flags, 'join-host'), 'join-host');
+  const advertiseHost = sanitizeHostArg(asStringFlag(flags, 'join-host'), 'join-host');
   const port = requirePositiveInt(asStringFlag(flags, 'port'), 'port', 0);
   const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 4000);
   const generation = validateGeneration(asStringFlag(flags, 'generation'));
@@ -409,9 +419,9 @@ async function runInitHost(flags: Record<string, string | boolean | undefined>):
 async function runInitJoin(flags: Record<string, string | boolean | undefined>): Promise<void> {
   // --- Input validation (must run before forking daemon) ---
   const sessionCode = validateSessionCode(requireFlag(flags, 'session-code'));
-  // --host is required; validateHostArg returns undefined only for empty input,
+  // --host is required; sanitizeHostArg returns undefined only for empty input,
   // which requireFlag already rejects, so the `!` assertion is safe.
-  const hostAddr = validateHostArg(requireFlag(flags, 'host'), 'host')!;
+  const hostAddr = sanitizeHostArg(requireFlag(flags, 'host'), 'host')!;
   const portStr = asStringFlag(flags, 'port') ?? requireFlag(flags, 'port');
   const port = requirePositiveInt(portStr, 'port');
   const timeoutMs = requirePositiveInt(asStringFlag(flags, 'timeout-ms'), 'timeout-ms', 4000);
@@ -705,6 +715,39 @@ async function runLeave(flags: Record<string, string | boolean | undefined>): Pr
   }
 }
 
+/**
+ * List sessions whose daemon is still alive. Used by the skill's `resume`
+ * flow when the conversation has lost the in-memory `sessionId` (e.g. the
+ * conversation was compacted, restarted, or handed off mid-battle). The
+ * output is a single JSON array on stdout — one entry per live session,
+ * sorted by `updatedAt` descending so the caller can trivially pick the
+ * most recent one.
+ *
+ * Terminal phases (`finished` / `aborted`) and dead daemons are filtered
+ * out so a stale file never gets adopted as an "active" session.
+ */
+function runListActive(flags: Record<string, string | boolean | undefined>): void {
+  const generation = validateGeneration(asStringFlag(flags, 'generation'));
+  const all = listFriendlyBattleSessionRecords(generation);
+  const active = all
+    .filter((r) => r.phase !== 'finished' && r.phase !== 'aborted')
+    .filter((r) => typeof r.daemonPid === 'number' && r.daemonPid > 0 && isPidAlive(r.daemonPid))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  // Keep the payload small and skill-friendly: only the fields the resume
+  // flow actually needs. Full records are still readable via --status.
+  const payload = active.map((r) => ({
+    sessionId: r.sessionId,
+    role: r.role,
+    generation: r.generation,
+    sessionCode: r.sessionCode,
+    phase: r.phase,
+    status: r.status,
+    transport: r.transport,
+    updatedAt: r.updatedAt,
+  }));
+  process.stdout.write(`${JSON.stringify(payload)}\n`);
+}
+
 function requireFlag(flags: Record<string, string | boolean | undefined>, name: string): string {
   const v = flags[name];
   if (typeof v === 'string') return v;
@@ -732,6 +775,9 @@ async function main(argv: string[]): Promise<void> {
       return;
     case 'leave':
       await runLeave(parsed.flags);
+      return;
+    case 'list-active':
+      runListActive(parsed.flags);
       return;
   }
 }
