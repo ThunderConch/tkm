@@ -578,19 +578,24 @@ function main(): void {
           if (!isBlankLine(s[r])) { firstRow = Math.min(firstRow, r); lastRow = Math.max(lastRow, r); }
         }
       }
+      // === Call bubble: print above the called pokemon's column ===
+      if (callBubbleActive) {
+        const calledIdx = Array.from({ length: group.length }, (_, i) => gi + i)
+          .findIndex(pi => pokeData[pi]?.speciesId === lastCalled?.pokemon);
+        if (calledIdx >= 0) {
+          const BUBBLE_WIDTH = 8;
+          const bubbleLeftPad = calledIdx * SPRITE_COL_WIDTH + Math.floor((SPRITE_WIDTH - BUBBLE_WIDTH) / 2);
+          for (const bubbleLine of callBubbleLines) {
+            console.log(' '.repeat(bubbleLeftPad) + bubbleLine);
+          }
+        }
+      }
+
       for (let row = firstRow; row <= lastRow; row++) {
-        const bubbleRow = row - firstRow;
-        let rowStr = group.map((s, gidx) => {
+        let rowStr = group.map(s => {
           const line = s[row] ?? '';
           const visibleLen = line.replace(/\x1b\[[^m]*m/g, '').length;
-          const padded = visibleLen < SPRITE_WIDTH ? line + '\u2800'.repeat(SPRITE_WIDTH - visibleLen) : line;
-          // Attach bubble to the right of the called pokemon's sprite
-          const partyIdx = gi + gidx;
-          const isCalledSprite = callBubbleActive && pokeData[partyIdx]?.speciesId === lastCalled?.pokemon;
-          const bubbleSuffix = isCalledSprite && bubbleRow < callBubbleLines.length
-            ? '\u2800' + callBubbleLines[bubbleRow]
-            : '';
-          return padded + bubbleSuffix;
+          return visibleLen < SPRITE_WIDTH ? line + '\u2800'.repeat(SPRITE_WIDTH - visibleLen) : line;
         }).join('\u2800');
         if (weatherCondition) {
           rowStr = scatterWeatherParticles(rowStr, weatherCondition);
