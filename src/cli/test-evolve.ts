@@ -54,8 +54,28 @@ function writeSeed(gen: string, scenario: Scenario, backupDir: string): void {
   const baseConfig: Record<string, unknown> = existsSync(cBackup)
     ? JSON.parse(readFileSync(cBackup, 'utf-8')) : {};
 
-  writeFileSync(sfile, JSON.stringify({ ...baseState, pokemon: scenario.seed.pokemon, unlocked: scenario.seed.unlocked }, null, 2), 'utf-8');
-  writeFileSync(cfile, JSON.stringify({ ...baseConfig, party: scenario.seed.party, starter_chosen: true }, null, 2), 'utf-8');
+  // Merge scenario items on top of backed-up state.items so the evolve CLI's
+  // condition check sees the needed stones/held-items. Backs-up take
+  // precedence only for keys the scenario did not set.
+  const mergedItems = {
+    ...(baseState.items as Record<string, number> | undefined ?? {}),
+    ...(scenario.seed.items ?? {}),
+  };
+
+  writeFileSync(sfile, JSON.stringify({
+    ...baseState,
+    pokemon: scenario.seed.pokemon,
+    unlocked: scenario.seed.unlocked,
+    items: mergedItems,
+  }, null, 2), 'utf-8');
+
+  const configOverlay: Record<string, unknown> = {
+    ...baseConfig,
+    party: scenario.seed.party,
+    starter_chosen: true,
+  };
+  if (scenario.seed.current_region) configOverlay.current_region = scenario.seed.current_region;
+  writeFileSync(cfile, JSON.stringify(configOverlay, null, 2), 'utf-8');
 }
 
 // ── Subcommands ──

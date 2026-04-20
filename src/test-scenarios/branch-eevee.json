@@ -1,6 +1,6 @@
 {
   "name": "branch-eevee",
-  "description": "Eevee (#133) branch evolution — user picks Vaporeon (#134) from 8 options",
+  "description": "Eevee (#133) branch evolution — 5 eligible branches seeded (water-stone, thunder-stone, fire-stone, friendship). Tests 4+ overflow: 3 targets as buttons + Refuse, remaining listed in question body.",
   "seed": {
     "party": ["133"],
     "pokemon": {
@@ -10,15 +10,20 @@
         "xp": 15625,
         "friendship": 220,
         "evolution_ready": true,
-        "evolution_options": ["134", "135", "136", "196", "197", "470", "471", "700"],
+        "evolution_options": ["134", "135", "136", "196", "197"],
         "met": "starter"
       }
     },
-    "unlocked": ["133"]
+    "unlocked": ["133"],
+    "items": {
+      "water-stone": 1,
+      "thunder-stone": 1,
+      "fire-stone": 1
+    }
   },
   "expected_block": {
     "decision": "block",
-    "reason_contains": ["Eevee", "AskUserQuestion", "tokenmon evolve"]
+    "reason_contains": ["이브이", "Eevee", "AskUserQuestion", "tokenmon evolve"]
   },
   "expected_choice": "134",
   "expected_after": {

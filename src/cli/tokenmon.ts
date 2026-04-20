@@ -945,6 +945,10 @@ function cmdCheat(subcmd: string, arg1?: string, arg2?: string): void {
 
 function cmdEvolve(pokemonArg?: string, targetArg?: string): void {
   if (pokemonArg) pokemonArg = resolvePokemonArg(pokemonArg);
+  // Also resolve the target so the user (or Claude) may pass a localized name
+  // (e.g., "샤미드") instead of the numeric ID — branch.name values in the
+  // database are IDs, so the downstream string-equal comparison needs the ID.
+  if (targetArg) targetArg = resolvePokemonArg(targetArg);
   const config = readConfig();
   const state = readState();
   const pokemonDB = getPokemonDB();

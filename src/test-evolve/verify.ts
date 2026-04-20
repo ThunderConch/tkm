@@ -16,6 +16,10 @@ export interface Scenario {
     party: string[];
     pokemon: Record<string, any>;
     unlocked: string[];
+    /** Optional bag items keyed by canonical item id (e.g. "water-stone"). */
+    items?: Record<string, number>;
+    /** Optional current_region override on config (e.g. "4") for location-based evolutions. */
+    current_region?: string;
   };
   expected_block: {
     decision: string;
