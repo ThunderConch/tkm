@@ -27,11 +27,17 @@ The command outputs JSON: `{"ev": N, "call_count": N, "evGained": true/false}`
 If `evGained` is true, append a subtle note after the reaction:
 > *(사이가 조금 가까워진 것 같다... EV +1)*
 
-## Step 3: Show sprite
+## Step 3: Show animated sprite with emotion bubble
+
+Run with the Pokémon's ID and the EV value returned from Step 2:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT}/bin/tsx-resolve.sh" "${CLAUDE_PLUGIN_ROOT}/src/cli/tokenmon.ts" pokedex <포켓몬_ID>
+"${CLAUDE_PLUGIN_ROOT}/bin/tsx-resolve.sh" "${CLAUDE_PLUGIN_ROOT}/src/cli/tokenmon.ts" sprite <포켓몬_ID> <EV>
 ```
+
+This renders the Pokémon's braille sprite with:
+- A speech bubble showing its emotional state (? / ... / :) / <3 / <3!) based on EV
+- A brief bounce animation (sprite hops up and down when called)
 
 ## Step 4: React based on EV
 
