@@ -34,14 +34,34 @@ export interface BackupManifest {
  * harness fails loudly instead of writing to a non-existent path.
  */
 export function getInstalledHooksPath(): string {
+  const checked: string[] = [];
+
   const pluginRootHooks = join(PLUGIN_ROOT, 'hooks', 'hooks.json');
+  checked.push(pluginRootHooks);
   if (existsSync(pluginRootHooks)) return pluginRootHooks;
 
   const marketplaceHooks = join(homedir(), '.claude', 'plugins', 'marketplaces', 'tkm', 'hooks', 'hooks.json');
+  checked.push(marketplaceHooks);
   if (existsSync(marketplaceHooks)) return marketplaceHooks;
 
+  // Cached install location: ~/.claude/plugins/cache/tkm/tkm/<version>/hooks/hooks.json
+  // Scan every installed version directory so a release-style install still works.
+  const cacheBase = join(homedir(), '.claude', 'plugins', 'cache', 'tkm', 'tkm');
+  checked.push(join(cacheBase, '<version>', 'hooks', 'hooks.json'));
+  if (existsSync(cacheBase)) {
+    try {
+      const versions = readdirSync(cacheBase).sort().reverse();
+      for (const v of versions) {
+        const candidate = join(cacheBase, v, 'hooks', 'hooks.json');
+        if (existsSync(candidate)) return candidate;
+      }
+    } catch {
+      // Directory read errors fall through to the throw below.
+    }
+  }
+
   throw new Error(
-    `Cannot locate active hooks.json. Checked:\n  - ${pluginRootHooks}\n  - ${marketplaceHooks}\n` +
+    `Cannot locate active hooks.json. Checked:\n${checked.map(p => `  - ${p}`).join('\n')}\n` +
     `Set CLAUDE_PLUGIN_ROOT to your tkm install location and retry.`,
   );
 }

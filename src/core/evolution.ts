@@ -261,13 +261,18 @@ export function applySingleChainEvolution(
     if (crossRef) {
       resolvedTarget = crossRef.id;
       targetData = ensurePokemonInDB(resolvedTarget) ?? undefined;
+    } else if (!targetData) {
+      // Plain numeric ID target that only lives in another generation's dex
+      // (e.g. Charmeleon #5 on a gen4-active save). Pull it in so single-chain
+      // evolutions complete instead of erroring out after the prompt.
+      targetData = ensurePokemonInDB(resolvedTarget) ?? undefined;
     }
   } else {
     // Legacy path: line[stage+1]
     const nextStage = data.stage + 1;
     if (nextStage < data.line.length) {
       resolvedTarget = data.line[nextStage];
-      targetData = db.pokemon[resolvedTarget];
+      targetData = db.pokemon[resolvedTarget] ?? ensurePokemonInDB(resolvedTarget) ?? undefined;
     }
   }
 
