@@ -78,6 +78,9 @@ export function checkEvolution(
     if (crossRef) {
       targetName = crossRef.id;
       targetData = ensurePokemonInDB(targetName) ?? undefined;
+    } else if (!targetData) {
+      // Plain ID that's not in the active gen's db — try cross-gen injection.
+      targetData = ensurePokemonInDB(targetName) ?? undefined;
     }
 
     if (!targetData) return null;
@@ -111,7 +114,7 @@ export function checkEvolution(
   const nextStage = data.stage + 1;
   if (nextStage >= data.line.length) return null;
   const nextPokemon = data.line[nextStage];
-  const nextData = db.pokemon[nextPokemon];
+  const nextData = db.pokemon[nextPokemon] ?? ensurePokemonInDB(nextPokemon) ?? undefined;
   if (!nextData) return null;
 
   // Block re-evolution if direct evolved form already in unlocked

@@ -50,7 +50,8 @@
         "met": "wild"
       }
     },
-    "unlocked": ["4", "7", "25", "133", "172"]
+    "unlocked": ["4", "7", "25", "133", "172"],
+    "items": { "water-stone": 1, "thunder-stone": 1, "fire-stone": 1 }
   },
   "expected_block": {
     "decision": "block",
