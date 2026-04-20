@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readlinkSync, openSync, writeSync } from 'fs';
+import { existsSync, readFileSync, readlinkSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { readState, readSession } from './core/state.js';
@@ -610,38 +610,9 @@ function main(): void {
         renderedSpriteRows.push(rowStr);
       }
 
-      // === Print bubble + sprite, with bounce animation if called ===
-      // When animating, route ALL output through /dev/tty to avoid stdout buffer flush
-      // racing with /dev/tty cursor movement and printing frames in the chat window.
-      if (calledGroupIdx >= 0) {
-        let ttyFd: number | null = null;
-        try { ttyFd = openSync('/dev/tty', 'w'); } catch { /* no tty available */ }
-        if (ttyFd !== null) {
-          const totalLines = paddedBubbleLines.length + renderedSpriteRows.length;
-          const w = (s: string) => writeSync(ttyFd!, s);
-          const eraseLines = (n: number) => { for (let i = 0; i < n; i++) w('\x1b[1A\x1b[2K'); };
-          const printLines = (lines: string[]) => { for (const l of lines) w(l + '\n'); };
-          const sleepMs = (ms: number) => { const end = Date.now() + ms; while (Date.now() < end) {} };
-          const normalFrame = [...paddedBubbleLines, ...renderedSpriteRows];
-          const bouncedFrame = [...paddedBubbleLines, ...renderedSpriteRows.slice(1), ''];
-          // Initial print via /dev/tty (not stdout) to keep cursor tracking consistent
-          printLines(normalFrame);
-          sleepMs(80);
-          eraseLines(totalLines); printLines(bouncedFrame);
-          sleepMs(140);
-          eraseLines(totalLines); printLines(normalFrame);
-          sleepMs(90);
-          eraseLines(totalLines); printLines(bouncedFrame);
-          sleepMs(120);
-          eraseLines(totalLines); printLines(normalFrame);
-        } else {
-          for (const bl of paddedBubbleLines) console.log(bl);
-          for (const sl of renderedSpriteRows) console.log(sl);
-        }
-      } else {
-        for (const bl of paddedBubbleLines) console.log(bl);
-        for (const sl of renderedSpriteRows) console.log(sl);
-      }
+      // Print bubble + sprite
+      for (const bl of paddedBubbleLines) console.log(bl);
+      for (const sl of renderedSpriteRows) console.log(sl);
     }
   }
 
