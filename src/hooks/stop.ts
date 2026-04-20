@@ -613,7 +613,17 @@ async function main(): Promise<void> {
         .join('\n');
       const reason = t('hook.evolution_block_reason', { candidateList });
       playCry();
-      console.log(JSON.stringify({ decision: 'block', reason }));
+      // Preserve level-up/achievement messages from the parent lock; systemMessage is
+      // user-facing only, so merging it here does not interfere with the block reason
+      // that Claude consumes.
+      const blockOutput: { decision: 'block'; reason: string; system_message?: string } = {
+        decision: 'block',
+        reason,
+      };
+      if (messages.length > 0) {
+        blockOutput.system_message = messages.join('\n');
+      }
+      console.log(JSON.stringify(blockOutput));
 
       // Set evolution_prompt_shown AFTER block emission to avoid silent loss on crash.
       // If this write fails, the block will re-emit on next Stop — duplicate prompt
