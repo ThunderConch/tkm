@@ -11,7 +11,7 @@ import { getCompletion, getPokedexList, syncPokedexFromUnlocked, getRegionSummar
 import { getBoxList } from '../core/box.js';
 import { getCurrentRegion, getRegionList, moveToRegion } from '../core/regions.js';
 import { renderGuide, renderGuideIndex } from '../core/guide.js';
-import { getEligibleBranches, applyBranchEvolution } from '../core/evolution.js';
+import { getEligibleBranches, applyBranchEvolution, applySingleChainEvolution } from '../core/evolution.js';
 import { getActiveNotifications, dismissAll } from '../core/notifications.js';
 import { getActiveEvents } from '../core/encounter.js';
 import { getEventsDB, getRegionsDB, getPokedexRewardsDB } from '../core/pokemon-data.js';
@@ -1058,8 +1058,26 @@ function executeEvolve(pokemonName: string, targetName: string, _config: unknown
   const evolveResult = withLock(() => {
     const freshState = readState();
     const freshConfig = readConfig();
-    const result = applyBranchEvolution(freshState, freshConfig, pokemonName, targetName);
+    const db = getPokemonDB();
+    const data = db.pokemon[toBaseId(pokemonName)];
+
+    let result = null;
+    if (data && Array.isArray(data.evolves_to)) {
+      // Branch evolution (e.g., Kirlia -> Gardevoir/Gallade)
+      result = applyBranchEvolution(freshState, freshConfig, pokemonName, targetName);
+    } else {
+      // Single-chain evolution (e.g., Turtwig -> Grotle)
+      result = applySingleChainEvolution(freshState, freshConfig, pokemonName, targetName);
+    }
+
     if (!result) return { ok: false as const };
+
+    // Clear evolution_prompt_shown on the new pokemon key (if carried over)
+    const newKey = isShinyKey(pokemonName) ? toShinyKey(result.newPokemon) : result.newPokemon;
+    if (freshState.pokemon[newKey]) {
+      freshState.pokemon[newKey].evolution_prompt_shown = undefined;
+    }
+
     writeState(freshState);
     writeConfig(freshConfig);
     return { ok: true as const, result };

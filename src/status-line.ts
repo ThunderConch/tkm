@@ -600,7 +600,7 @@ function main(): void {
     // Show evolution_ready hint for party pokemon with pending branching evolution
     for (const pokemonName of config.party) {
       const pState = state.pokemon[pokemonName];
-      if (pState?.evolution_ready) {
+      if (pState?.evolution_ready && !pState?.evolution_prompt_shown) {
         print(t('statusline.evolution_ready', { pokemon: getPokemonName(pokemonName) }));
         break;
       }

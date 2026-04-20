@@ -5,7 +5,7 @@ import { readState, writeState, pruneSessionTokens, readSessionGenMap, writeSess
 import { readConfig, writeConfig, readGlobalConfig, writeGlobalConfig } from '../core/config.js';
 import { getPokemonDB, getPokemonName, ensurePokemonInDB } from '../core/pokemon-data.js';
 import { levelToXp, xpToLevel } from '../core/xp.js';
-import { checkEvolution, applyEvolution, addFriendship, FRIENDSHIP_PER_LEVELUP, FRIENDSHIP_PER_SESSION } from '../core/evolution.js';
+import { checkEvolution, addFriendship, FRIENDSHIP_PER_LEVELUP, FRIENDSHIP_PER_SESSION } from '../core/evolution.js';
 import { checkAchievements, checkCommonAchievements, formatAchievementMessage } from '../core/achievements.js';
 import { t, initLocale } from '../i18n/index.js';
 import type { HookInput, HookOutput, ExpGroup } from '../core/types.js';
@@ -334,20 +334,10 @@ async function main(): Promise<void> {
         unlockedAchievements: Object.keys(state.achievements).filter(k => state.achievements[k]),
         items: state.items ?? {},
       };
-      const evolution = checkEvolution(pokemonName, evoContext, state);
-      if (evolution) {
-        applyEvolution(state, config, evolution, newXp);
-        messages.push(t('hook.evolution', { pokemon: getPokemonName(pokemonName), newPokemon: getPokemonName(evolution.newPokemon) }));
-        playSfx('gacha');
-
-        // Check first_evolution achievement immediately
-        const achEvents = checkAchievements(state, config, commonState, gen);
-        for (const achEvent of achEvents) {
-          const msg = formatAchievementMessage(achEvent);
-          messages.push(msg);
-          achievementMessages.push(msg);
-        }
-      }
+      // Flag-based evolution: checkEvolution sets evolution_ready on the state
+      // for both branch and single-chain evolutions. Auto-evolve no longer happens
+      // here — block emission in post-lock scan triggers AskUserQuestion flow.
+      checkEvolution(pokemonName, evoContext, state);
     }
 
     // ── Codex flat XP (no volume tier / rest bonus, normal turn) ──
@@ -597,6 +587,53 @@ async function main(): Promise<void> {
 
   if (messages.length > 0) {
     output.system_message = messages.join('\n');
+  }
+
+  // ── Evolution block detection (post-lock) ──
+  // Scan party for pokemon with evolution_ready && !evolution_prompt_shown.
+  // If found, emit decision:"block" with a reason instructing Claude to use
+  // AskUserQuestion. Flag is set AFTER block emission (Risk 6: duplication > loss).
+  {
+    const postConfig = readConfig(gen);
+    const postState = readState(gen);
+    const candidates: Array<{ name: string; options: string[] }> = [];
+    for (const name of postConfig.party) {
+      const ps = postState.pokemon[name];
+      if (ps?.evolution_ready && !ps.evolution_prompt_shown) {
+        candidates.push({ name, options: ps.evolution_options ?? [] });
+      }
+    }
+    if (candidates.length > 0) {
+      const batch = candidates.slice(0, 4);
+      const candidateList = batch
+        .map(c => t('hook.evolution_candidate_line', {
+          pokemon: getPokemonName(c.name),
+          targets: c.options.map(o => getPokemonName(o)).join(', '),
+        }))
+        .join('\n');
+      const reason = t('hook.evolution_block_reason', { candidateList });
+      playCry();
+      console.log(JSON.stringify({ decision: 'block', reason }));
+
+      // Set evolution_prompt_shown AFTER block emission to avoid silent loss on crash.
+      // If this write fails, the block will re-emit on next Stop — duplicate prompt
+      // (UX degradation) is strictly preferable to silent infinite-block loops.
+      try {
+        const lockResult = withLock(() => {
+          const s = readState(gen);
+          for (const c of batch) {
+            if (s.pokemon[c.name]) s.pokemon[c.name].evolution_prompt_shown = true;
+          }
+          writeState(s, gen);
+        });
+        if (!lockResult.acquired) {
+          process.stderr.write('tokenmon stop: lock busy during evolution_prompt_shown write; will re-prompt next stop\n');
+        }
+      } catch (err) {
+        process.stderr.write(`tokenmon stop: evolution_prompt_shown write failed: ${err}\n`);
+      }
+      return;
+    }
   }
 
   playCry();

@@ -16,6 +16,7 @@ export function checkPendingNotifications(state: State, config: Config, commonSt
   // 1. Evolution ready
   for (const [name, pState] of Object.entries(state.pokemon)) {
     if (!pState.evolution_ready) continue;
+    if (pState.evolution_prompt_shown) continue;  // already prompted via stop block
     if (!config.party.includes(name)) continue;
     const id = `evolution_ready:${name}`;
     if (state.dismissed_notifications.includes(id)) continue;

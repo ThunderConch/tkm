@@ -404,6 +404,8 @@
   "hook.levelup": "⬆️ {pokemon} Lv.{from} → Lv.{to}! (XP: +{xp})",
   "hook.evolution": "✨ {pokemon:이/가} {newPokemon}(으)로 진화했습니다!",
   "hook.party_join": "🎊 {pokemon:이/가} 파티에 합류했습니다!",
+  "hook.evolution_candidate_line": "- {pokemon} 진화 가능: {targets} (또는 거부)",
+  "hook.evolution_block_reason": "다음 파티 포켓몬이 진화할 준비가 되었습니다. 반드시 AskUserQuestion을 호출하여 각 포켓몬에 대해 사용자에게 진화를 물어보세요 (포켓몬당 하나의 subquestion, 최대 4개).\n\n{candidateList}\n\n각 포켓몬마다 진화 대상 옵션들과 \"거부\" 옵션을 함께 제시하세요. 사용자가 대상을 선택하면 `tokenmon evolve <pokemon> <target>`을 실행하세요. 사용자가 거부하면 아무것도 하지 마세요 — 해당 포켓몬은 자동으로 다시 묻지 않습니다.",
 
   "tier.heated": "풀숲이 크게 흔들리고 있다... (다음 턴 조우율 1.5x, XP 1.5x)",
   "tier.intense": "주변에 수상한 기운이 감돌고 있다... (다음 턴 조우율 2.5x, XP 2.5x)",

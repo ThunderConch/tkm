@@ -1,6 +1,6 @@
 import { getPokemonDB, parseCrossGenRef, ensurePokemonInDB } from './pokemon-data.js';
 import { isShinyKey, toBaseId, toShinyKey } from './shiny-utils.js';
-import type { State, Config, EvolutionResult, EvolutionContext, BranchEvolution } from './types.js';
+import type { State, Config, EvolutionResult, EvolutionContext, BranchEvolution, PokemonState } from './types.js';
 
 const FRIENDSHIP_THRESHOLD = 220;
 
@@ -8,6 +8,19 @@ export interface BranchInfo {
   name: string;
   conditionMet: boolean;
   conditionLabel: string;
+}
+
+/**
+ * Mark a pokemon ready for evolution prompt. Returns true if already prompted
+ * (caller should return null). Used by both single-chain paths in checkEvolution.
+ */
+function markEvolutionReady(pState: PokemonState, target: string): boolean {
+  if (pState.evolution_prompt_shown) return true;
+  if (!pState.evolution_ready) {
+    pState.evolution_ready = true;
+    pState.evolution_options = [target];
+  }
+  return false;
 }
 
 /**
@@ -40,7 +53,7 @@ export function checkEvolution(
       });
       const conditionMet = filtered.filter(b => b.conditionMet);
       const pState = state.pokemon[pokemonName];
-      if (pState) {
+      if (pState && !pState.evolution_prompt_shown) {
         if (conditionMet.length > 0 && !pState.evolution_ready) {
           pState.evolution_ready = true;
           pState.evolution_options = conditionMet.map(b => b.name);
@@ -82,6 +95,14 @@ export function checkEvolution(
     } else {
       return null;
     }
+
+    // Flag-based flow when state is provided (mirrors branch evolution pattern)
+    if (state) {
+      const pState = state.pokemon[pokemonName];
+      if (pState) markEvolutionReady(pState, targetName);
+      return null;
+    }
+
     return { oldPokemon: pokemonName, newPokemon: targetName, newId: targetData.id, level: context.newLevel };
   }
 
@@ -105,6 +126,13 @@ export function checkEvolution(
     const triggered = checkCondition(condition, context);
     if (!triggered) return null;
 
+    // Flag-based flow when state is provided
+    if (state) {
+      const pState = state.pokemon[pokemonName];
+      if (pState) markEvolutionReady(pState, nextPokemon);
+      return null;
+    }
+
     return {
       oldPokemon: pokemonName,
       newPokemon: nextPokemon,
@@ -116,6 +144,13 @@ export function checkEvolution(
   // Level-based evolution (default)
   if (data.evolves_at == null) return null;
   if (context.newLevel >= data.evolves_at && context.oldLevel < data.evolves_at) {
+    // Flag-based flow when state is provided
+    if (state) {
+      const pState = state.pokemon[pokemonName];
+      if (pState) markEvolutionReady(pState, nextPokemon);
+      return null;
+    }
+
     return {
       oldPokemon: pokemonName,
       newPokemon: nextPokemon,
@@ -183,6 +218,72 @@ export function applyBranchEvolution(
   // Clear branching flags
   pState.evolution_ready = undefined;
   pState.evolution_options = undefined;
+  pState.evolution_prompt_shown = undefined;
+
+  return result;
+}
+
+/**
+ * Apply a user-selected single-chain evolution (string `evolves_to` or legacy line[stage+1]).
+ * Mirrors applyBranchEvolution for non-branching pokemon.
+ */
+export function applySingleChainEvolution(
+  state: State,
+  config: Config,
+  pokemonName: string,
+  targetName: string,
+): EvolutionResult | null {
+  const db = getPokemonDB();
+  const data = db.pokemon[toBaseId(pokemonName)];
+  if (!data) return null;
+
+  // Must be single-chain (not branching)
+  if (Array.isArray(data.evolves_to)) return null;
+
+  // Validate target: either string evolves_to (optionally cross-gen) or legacy line[stage+1]
+  let resolvedTarget: string | null = null;
+  let targetData: typeof db.pokemon[string] | undefined;
+
+  if (typeof data.evolves_to === 'string') {
+    resolvedTarget = data.evolves_to;
+    targetData = db.pokemon[resolvedTarget];
+    const crossRef = parseCrossGenRef(resolvedTarget);
+    if (crossRef) {
+      resolvedTarget = crossRef.id;
+      targetData = ensurePokemonInDB(resolvedTarget) ?? undefined;
+    }
+  } else {
+    // Legacy path: line[stage+1]
+    const nextStage = data.stage + 1;
+    if (nextStage < data.line.length) {
+      resolvedTarget = data.line[nextStage];
+      targetData = db.pokemon[resolvedTarget];
+    }
+  }
+
+  if (!resolvedTarget || !targetData) return null;
+  if (resolvedTarget !== targetName) return null;
+
+  // Block re-evolution if already unlocked (defense-in-depth)
+  const evolvedKey = isShinyKey(pokemonName) ? toShinyKey(targetName) : targetName;
+  if (state.unlocked.includes(evolvedKey)) return null;
+
+  const pState = state.pokemon[pokemonName];
+  if (!pState) return null;
+
+  const result: EvolutionResult = {
+    oldPokemon: pokemonName,
+    newPokemon: targetName,
+    newId: targetData.id,
+    level: pState.level,
+  };
+
+  applyEvolution(state, config, result, pState.xp);
+
+  // Clear flags
+  pState.evolution_ready = undefined;
+  pState.evolution_options = undefined;
+  pState.evolution_prompt_shown = undefined;
 
   return result;
 }

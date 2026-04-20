@@ -92,6 +92,7 @@ export interface PokemonState {
   call_count?: number;
   evolution_ready?: boolean;
   evolution_options?: string[];
+  evolution_prompt_shown?: boolean;
   moves?: number[];
   met?: MetType;
   met_detail?: MetDetail;

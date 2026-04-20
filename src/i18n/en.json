@@ -404,6 +404,8 @@
   "hook.levelup": "⬆️ {pokemon} Lv.{from} → Lv.{to}! (XP: +{xp})",
   "hook.evolution": "✨ {pokemon} evolved into {newPokemon}!",
   "hook.party_join": "🎊 {pokemon} joined the party!",
+  "hook.evolution_candidate_line": "- {pokemon} can evolve to: {targets} (or refuse)",
+  "hook.evolution_block_reason": "The following party pokemon are ready to evolve. You MUST call AskUserQuestion to ask the user which evolution they want for each one (one subquestion per pokemon, up to 4 subquestions).\n\n{candidateList}\n\nFor each pokemon, present the evolution targets as options plus a \"Refuse\" option. If the user selects a target, run: `tokenmon evolve <pokemon> <target>`. If the user refuses, do nothing — the pokemon will not be re-prompted automatically.",
 
   "tier.heated": "The tall grass is rustling intensely... (Next: encounter 1.5x, XP 1.5x)",
   "tier.intense": "Something seems to be lurking nearby... (Next: encounter 2.5x, XP 2.5x)",
