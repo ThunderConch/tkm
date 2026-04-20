@@ -191,9 +191,10 @@ export function swapHooksJson(worktreePath: string): { mode: 'template' | 'baked
   }
 
   // Baked form: extract the common plugin-root prefix and replace.
-  // Heuristic: find the first baked absolute path matching `/…/hooks/hooks.json`
-  // or `/…/bin/tsx-resolve.sh` and extract its directory prefix.
-  const m = original.match(/"((?:\/[^"\s$]+))\/bin\/tsx-resolve\.sh"/);
+  // Heuristic: find the first baked absolute path ending in `/bin/tsx-resolve.sh`.
+  // Terminator is NOT required to be `"` because hook command strings store the
+  // quote as the JSON escape `\"`, leaving `\` right after `.sh`. Accept anything.
+  const m = original.match(/(\/(?:[^"\s$\\]|\\(?!["\s$]))+)\/bin\/tsx-resolve\.sh/);
   if (m?.[1]) {
     const bakedRoot = m[1];
     if (bakedRoot !== worktreePath) {
