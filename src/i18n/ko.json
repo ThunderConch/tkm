@@ -404,8 +404,8 @@
   "hook.levelup": "⬆️ {pokemon} Lv.{from} → Lv.{to}! (XP: +{xp})",
   "hook.evolution": "✨ {pokemon:이/가} {newPokemon}(으)로 진화했습니다!",
   "hook.party_join": "🎊 {pokemon:이/가} 파티에 합류했습니다!",
-  "hook.evolution_candidate_line": "- {pokemon} 진화 가능: {targets} (또는 거부)",
-  "hook.evolution_block_reason": "다음 파티 포켓몬이 진화할 준비가 되었습니다. 반드시 AskUserQuestion을 호출하여 각 포켓몬에 대해 사용자에게 진화를 물어보세요 (포켓몬당 하나의 subquestion, 최대 4개).\n\n{candidateList}\n\n각 포켓몬마다 진화 대상 옵션들과 \"거부\" 옵션을 함께 제시하세요. 사용자가 대상을 선택하면 `tokenmon evolve <pokemon> <target>`을 실행하세요. 사용자가 거부하면 아무것도 하지 마세요 — 해당 포켓몬은 자동으로 다시 묻지 않습니다.",
+  "hook.evolution_candidate_line": "- 포켓몬: {pokemon}\n  그대로 쓸 질문 (AskUserQuestion.question, 한 글자도 바꾸지 말 것): \"{pokemon:이/가} 진화할 준비가 되었어! 어느 폼으로 진화할까?\"\n  진화 대상 전체: {targets}",
+  "hook.evolution_block_reason": "파티 포켓몬이 진화할 준비가 되었습니다.\n\n반드시 AskUserQuestion을 호출하세요. 포켓몬당 하나의 subquestion (최대 4 포켓몬까지 배치).\n\n각 subquestion 규칙:\n- `question` 필드: 아래 후보 항목의 '그대로 쓸 질문'을 문자 그대로(paraphrase 금지) 복사해서 사용합니다.\n- `options` (버튼, 최대 4개):\n  - 진화 대상 3개 이하 → 모든 대상 + '거부'.\n  - 진화 대상 4개 이상 → 앞 3개 대상 + '거부'. 나머지 대상은 question 본문 뒤에 별도 줄로 \"다른 폼: A, B, C\" 처럼 나열해 사용자가 'Other'로 이름을 타이핑할 수 있게 합니다.\n- `multiSelect`: false\n\n후보:\n{candidateList}\n\n사용자 응답 처리:\n- 버튼 또는 Other로 대상 이름 선택 → `tokenmon evolve <pokemon> <target>` 실행.\n- '거부' 또는 Other로 '거부'/'no' → 아무것도 하지 않음 (자동 재질문 없음).",
 
   "tier.heated": "풀숲이 크게 흔들리고 있다... (다음 턴 조우율 1.5x, XP 1.5x)",
   "tier.intense": "주변에 수상한 기운이 감돌고 있다... (다음 턴 조우율 2.5x, XP 2.5x)",

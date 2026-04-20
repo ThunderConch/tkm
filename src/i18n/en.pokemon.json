@@ -371,8 +371,8 @@
   "hook.levelup": "⬆️ {pokemon} Lv.{from} grew to Lv.{to}! (XP +{xp})",
   "hook.evolution": "✨ What? {pokemon} evolved into {newPokemon}!",
   "hook.party_join": "✨ {pokemon} joined the team!",
-  "hook.evolution_candidate_line": "- What? {pokemon} is ready to evolve into: {targets} (or refuse)",
-  "hook.evolution_block_reason": "What?! The following party pokemon are ready to evolve! You MUST call AskUserQuestion to ask the Trainer which evolution they want for each one (one subquestion per pokemon, up to 4 subquestions).\n\n{candidateList}\n\nFor each pokemon, present the evolution targets as options plus a \"Refuse\" option. If the Trainer selects a target, run: `tokenmon evolve <pokemon> <target>`. If the Trainer refuses, do nothing — that pokemon will not be re-prompted automatically.",
+  "hook.evolution_candidate_line": "- Pokemon: {pokemon}\n  Use this question VERBATIM (AskUserQuestion.question, do NOT paraphrase): \"What? {pokemon} is trying to evolve!\"\n  All evolution targets: {targets}",
+  "hook.evolution_block_reason": "What?! Party pokemon are trying to evolve!\n\nYou MUST call AskUserQuestion. One subquestion per pokemon (batch up to 4 pokemon per call).\n\nPer-subquestion rules:\n- `question` field: copy the candidate's 'Use this question VERBATIM' line EXACTLY — do not paraphrase, do not reformat.\n- `options` (buttons, max 4):\n  - 3 or fewer targets → all targets + 'Refuse'.\n  - 4+ targets → first 3 targets + 'Refuse'. List the remaining targets on a separate line appended to the question body as 'Other forms: A, B, C' so the Trainer can type one via 'Other'.\n- `multiSelect`: false\n\nCandidates:\n{candidateList}\n\nHandling the Trainer's answer:\n- Button or Other with a target name → run `tokenmon evolve <pokemon> <target>`.\n- 'Refuse' button or Other with 'refuse'/'no' → do nothing (no auto re-prompt).",
 
   "tier.heated": "The tall grass is rustling intensely... (Next: encounter 1.5x, XP 1.5x)",
   "tier.intense": "Something seems to be lurking nearby... (Next: encounter 2.5x, XP 2.5x)",

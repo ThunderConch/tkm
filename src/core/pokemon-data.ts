@@ -222,13 +222,29 @@ export function getGameI18n(locale?: string, gen?: string): GameI18nData {
   return _gameI18n[key];
 }
 
+const NAME_LOOKUP_GENS = ['gen1', 'gen2', 'gen3', 'gen4', 'gen5', 'gen6', 'gen7', 'gen8', 'gen9'];
+
 export function getPokemonName(id: string | number, gen?: string, shiny?: boolean): string {
   const g = gen ?? getActiveGeneration();
   getPokemonDB(g);
   const strId = String(id);
   const baseId = toBaseId(strId);
-  const i18n = getGameI18n(undefined, g);
-  const name = i18n.pokemon[baseId] || baseId;
+  let name = getGameI18n(undefined, g).pokemon[baseId];
+  if (!name) {
+    // Cross-gen fallback: a pokemon may be displayed in an active gen that
+    // does not natively index it (e.g. seed data, migration, cross-gen refs).
+    // Search other gens' i18n so we surface a real name instead of the ID.
+    for (const og of NAME_LOOKUP_GENS) {
+      if (og === g) continue;
+      try {
+        const hit = getGameI18n(undefined, og).pokemon[baseId];
+        if (hit) { name = hit; break; }
+      } catch {
+        // gen's data not installed — skip silently
+      }
+    }
+  }
+  if (!name) name = baseId;
   if (shiny || isShinyKey(strId)) return '★' + name;
   return name;
 }
