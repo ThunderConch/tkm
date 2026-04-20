@@ -1,6 +1,6 @@
 {
   "name": "branch-eevee",
-  "description": "Eevee (#133) full 8-way branch evolution. 3 eligible via seeded stones (water/thunder/fire), 2 via friendship (Espeon/Umbreon), 3 ineligible without extra context (Leafeon location, Glaceon location, Sylveon fairy-move). Exercises the 4+ overflow rule: first 3 eligible as buttons + Refuse, remaining listed as 'Other forms' in question body.",
+  "description": "Eevee (#133) branch evolution — 3 eligible branches in the data (Vaporeon/Jolteon/Flareon via stones). All 3 fit as buttons alongside Refuse (4 options total, no overflow). Cross-gen data path: Eevee is gen1-only, so this also exercises the cross-gen ensurePokemonInDB fallback when the save is on gen4+.",
   "seed": {
     "party": ["133"],
     "pokemon": {
@@ -10,7 +10,7 @@
         "xp": 15625,
         "friendship": 220,
         "evolution_ready": true,
-        "evolution_options": ["134", "135", "136", "196", "197", "470", "471", "700"],
+        "evolution_options": ["134", "135", "136"],
         "met": "starter"
       }
     },

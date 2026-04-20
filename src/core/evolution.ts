@@ -37,7 +37,8 @@ export function checkEvolution(
   state?: State,
 ): EvolutionResult | null {
   const db = getPokemonDB();
-  const data = db.pokemon[toBaseId(pokemonName)];
+  const baseId = toBaseId(pokemonName);
+  const data = db.pokemon[baseId] ?? ensurePokemonInDB(baseId) ?? undefined;
   if (!data) return null;
 
   // Branching evolution: block auto-evolve, set flags on state.
@@ -170,7 +171,10 @@ export function getEligibleBranches(
   context: EvolutionContext,
 ): BranchInfo[] {
   const db = getPokemonDB();
-  const data = db.pokemon[toBaseId(pokemonName)];
+  const baseId = toBaseId(pokemonName);
+  // Cross-gen fallback: load the source pokemon into the active generation's
+  // DB when it originates from another gen (e.g. Eevee in a gen4 save).
+  const data = db.pokemon[baseId] ?? ensurePokemonInDB(baseId) ?? undefined;
   if (!data || !Array.isArray(data.evolves_to)) return [];
 
   return (data.evolves_to as BranchEvolution[]).map(branch => ({
@@ -190,13 +194,15 @@ export function applyBranchEvolution(
   targetName: string,
 ): EvolutionResult | null {
   const db = getPokemonDB();
-  const data = db.pokemon[toBaseId(pokemonName)];
+  const baseId = toBaseId(pokemonName);
+  const data = db.pokemon[baseId] ?? ensurePokemonInDB(baseId) ?? undefined;
   if (!data || !Array.isArray(data.evolves_to)) return null;
 
   const branch = (data.evolves_to as BranchEvolution[]).find(b => b.name === targetName);
   if (!branch) return null;
 
-  const targetData = db.pokemon[targetName];
+  // Cross-gen fallback for the target data too (Vaporeon etc. may live in gen1).
+  const targetData = db.pokemon[targetName] ?? ensurePokemonInDB(targetName) ?? undefined;
   if (!targetData) return null;
 
   // Block re-evolution if direct evolved form already in unlocked (defense-in-depth)
@@ -234,7 +240,8 @@ export function applySingleChainEvolution(
   targetName: string,
 ): EvolutionResult | null {
   const db = getPokemonDB();
-  const data = db.pokemon[toBaseId(pokemonName)];
+  const baseId = toBaseId(pokemonName);
+  const data = db.pokemon[baseId] ?? ensurePokemonInDB(baseId) ?? undefined;
   if (!data) return null;
 
   // Must be single-chain (not branching)
