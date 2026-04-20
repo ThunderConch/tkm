@@ -1,6 +1,6 @@
 {
   "name": "branch-eevee",
-  "description": "Eevee (#133) branch evolution — 5 eligible branches seeded (water-stone, thunder-stone, fire-stone, friendship). Tests 4+ overflow: 3 targets as buttons + Refuse, remaining listed in question body.",
+  "description": "Eevee (#133) full 8-way branch evolution. 3 eligible via seeded stones (water/thunder/fire), 2 via friendship (Espeon/Umbreon), 3 ineligible without extra context (Leafeon location, Glaceon location, Sylveon fairy-move). Exercises the 4+ overflow rule: first 3 eligible as buttons + Refuse, remaining listed as 'Other forms' in question body.",
   "seed": {
     "party": ["133"],
     "pokemon": {
@@ -10,7 +10,7 @@
         "xp": 15625,
         "friendship": 220,
         "evolution_ready": true,
-        "evolution_options": ["134", "135", "136", "196", "197"],
+        "evolution_options": ["134", "135", "136", "196", "197", "470", "471", "700"],
         "met": "starter"
       }
     },
