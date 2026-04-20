@@ -579,20 +579,14 @@ async function main(): Promise<void> {
     return;
   }
 
-  if (result.value === 'first_stop' || result.value === 'no_delta') {
-    playCry();
-    console.log(JSON.stringify(output));
-    return;
-  }
-
-  if (messages.length > 0) {
-    output.system_message = messages.join('\n');
-  }
-
-  // ── Evolution block detection (post-lock) ──
+  // ── Evolution block detection (post-lock, runs regardless of result type) ──
   // Scan party for pokemon with evolution_ready && !evolution_prompt_shown.
   // If found, emit decision:"block" with a reason instructing Claude to use
-  // AskUserQuestion. Flag is set AFTER block emission (Risk 6: duplication > loss).
+  // AskUserQuestion. Runs BEFORE the first_stop/no_delta early return so the
+  // prompt fires on the very first turn of a session where evolution is
+  // already pending (e.g. after a cheat/test seed, or a resumed session
+  // where evolution conditions were met but the user had not yet been
+  // prompted). Flag is set AFTER block emission (Risk 6: duplication > loss).
   {
     const postConfig = readConfig(gen);
     const postState = readState(gen);
@@ -644,6 +638,16 @@ async function main(): Promise<void> {
       }
       return;
     }
+  }
+
+  if (result.value === 'first_stop' || result.value === 'no_delta') {
+    playCry();
+    console.log(JSON.stringify(output));
+    return;
+  }
+
+  if (messages.length > 0) {
+    output.system_message = messages.join('\n');
   }
 
   playCry();

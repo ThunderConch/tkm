@@ -596,16 +596,11 @@ function main(): void {
     print(state.last_drop);
   } else if (state.last_tip) {
     print(state.last_tip.text);
-  } else {
-    // Show evolution_ready hint for party pokemon with pending branching evolution
-    for (const pokemonName of config.party) {
-      const pState = state.pokemon[pokemonName];
-      if (pState?.evolution_ready && !pState?.evolution_prompt_shown) {
-        print(t('statusline.evolution_ready', { pokemon: getPokemonName(pokemonName) }));
-        break;
-      }
-    }
   }
+  // Note: evolution_ready no longer shows in the status line. The Stop hook
+  // emits a decision:"block" with an AskUserQuestion instruction on any stop
+  // where evolution is pending, so surfacing the same pokemon twice (status
+  // line + block prompt) is redundant noise.
 
   // === Tier preview line (independent, always shown when non-normal) ===
   if (state.pending_tier) {
