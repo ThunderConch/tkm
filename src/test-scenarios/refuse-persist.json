@@ -1,0 +1,30 @@
+{
+  "name": "refuse-persist",
+  "description": "User refuses evolution via Other:no — evolution_prompt_shown set, no re-prompt next turn",
+  "seed": {
+    "party": ["4"],
+    "pokemon": {
+      "4": {
+        "id": 4,
+        "level": 16,
+        "xp": 4096,
+        "friendship": 70,
+        "evolution_ready": true,
+        "evolution_options": ["5"],
+        "met": "starter"
+      }
+    },
+    "unlocked": ["4"]
+  },
+  "expected_block": {
+    "decision": "block",
+    "reason_contains": ["Charmander", "AskUserQuestion"]
+  },
+  "expected_choice": "no",
+  "expected_after": {
+    "pokemon.4.evolution_prompt_shown": true,
+    "pokemon.4.evolution_ready": true,
+    "unlocked.excludes": ["5"],
+    "party.includes": ["4"]
+  }
+}

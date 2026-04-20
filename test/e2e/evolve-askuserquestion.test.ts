@@ -17,12 +17,13 @@
 
 import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { makeState, makeConfig } from '../helpers.js';
+import type { State, Config } from '../../src/core/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, '..', '..');
@@ -61,7 +62,7 @@ function runStopHook(dataDir: string, stdinJson: string): RunOutput {
   };
 }
 
-function seedState(dataDir: string, gen: string, stateOverrides: any, configOverrides: any): void {
+function seedState(dataDir: string, gen: string, stateOverrides: Partial<State>, configOverrides: Partial<Config>): void {
   const genDir = join(dataDir, 'tokenmon', gen);
   mkdirSync(genDir, { recursive: true });
   const state = makeState(stateOverrides);

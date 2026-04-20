@@ -1,0 +1,31 @@
+{
+  "name": "branch-eevee",
+  "description": "Eevee (#133) branch evolution — user picks Vaporeon (#134) from 8 options",
+  "seed": {
+    "party": ["133"],
+    "pokemon": {
+      "133": {
+        "id": 133,
+        "level": 25,
+        "xp": 15625,
+        "friendship": 220,
+        "evolution_ready": true,
+        "evolution_options": ["134", "135", "136", "196", "197", "470", "471", "700"],
+        "met": "starter"
+      }
+    },
+    "unlocked": ["133"]
+  },
+  "expected_block": {
+    "decision": "block",
+    "reason_contains": ["Eevee", "AskUserQuestion", "tokenmon evolve"]
+  },
+  "expected_choice": "134",
+  "expected_after": {
+    "pokemon.134.met": "evolution",
+    "unlocked.includes": ["134"],
+    "unlocked.excludes": [],
+    "party.includes": ["134"],
+    "pokemon.133.evolution_prompt_shown": null
+  }
+}

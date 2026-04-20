@@ -1,0 +1,31 @@
+{
+  "name": "accept-clear-reprompt",
+  "description": "User accepts evolve — evolution_prompt_shown cleared on new pokemon key (tokenmon.ts:1078)",
+  "seed": {
+    "party": ["4"],
+    "pokemon": {
+      "4": {
+        "id": 4,
+        "level": 16,
+        "xp": 4096,
+        "friendship": 70,
+        "evolution_ready": true,
+        "evolution_options": ["5"],
+        "met": "starter"
+      }
+    },
+    "unlocked": ["4"]
+  },
+  "expected_block": {
+    "decision": "block",
+    "reason_contains": ["Charmander", "AskUserQuestion", "tokenmon evolve"]
+  },
+  "expected_choice": "5",
+  "expected_after": {
+    "pokemon.5.met": "evolution",
+    "pokemon.5.evolution_prompt_shown": null,
+    "unlocked.includes": ["5"],
+    "party.includes": ["5"],
+    "pokemon.4.evolution_prompt_shown": null
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "single-charmander",
+  "description": "Charmander (#4) single-chain evolution — user accepts Charmeleon (#5)",
+  "seed": {
+    "party": ["4"],
+    "pokemon": {
+      "4": {
+        "id": 4,
+        "level": 16,
+        "xp": 4096,
+        "friendship": 70,
+        "evolution_ready": true,
+        "evolution_options": ["5"],
+        "met": "starter"
+      }
+    },
+    "unlocked": ["4"]
+  },
+  "expected_block": {
+    "decision": "block",
+    "reason_contains": ["Charmander", "AskUserQuestion", "tokenmon evolve"]
+  },
+  "expected_choice": "5",
+  "expected_after": {
+    "pokemon.5.met": "evolution",
+    "unlocked.includes": ["5"],
+    "unlocked.excludes": [],
+    "party.includes": ["5"],
+    "pokemon.4.evolution_prompt_shown": null
+  }
+}

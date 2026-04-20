@@ -9,3 +9,4 @@ config.json
 .claude/
 .worktrees/
 TODO.txt
+.tokenmon/test-backup/
