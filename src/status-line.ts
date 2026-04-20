@@ -578,36 +578,58 @@ function main(): void {
           if (!isBlankLine(s[r])) { firstRow = Math.min(firstRow, r); lastRow = Math.max(lastRow, r); }
         }
       }
-      // === Call bubble: print above the called pokemon's column ===
+      // Collect padded bubble lines for this group
+      let paddedBubbleLines: string[] = [];
+      let calledGroupIdx = -1;
       if (callBubbleActive) {
-        const calledIdx = Array.from({ length: group.length }, (_, i) => gi + i)
+        calledGroupIdx = Array.from({ length: group.length }, (_, i) => gi + i)
           .findIndex(pi => pokeData[pi]?.speciesId === lastCalled?.pokemon);
-        if (calledIdx >= 0) {
+        if (calledGroupIdx >= 0) {
           const BUBBLE_WIDTH = 8;
-          const bubbleLeftPad = calledIdx * SPRITE_COL_WIDTH + Math.floor((SPRITE_WIDTH - BUBBLE_WIDTH) / 2);
-          for (const bubbleLine of callBubbleLines) {
-            console.log(' '.repeat(bubbleLeftPad) + bubbleLine);
-          }
+          const bubbleLeftPad = calledGroupIdx * SPRITE_COL_WIDTH + Math.floor((SPRITE_WIDTH - BUBBLE_WIDTH) / 2);
+          paddedBubbleLines = callBubbleLines.map(bl => ' '.repeat(bubbleLeftPad) + bl);
         }
       }
 
+      // Collect sprite rows
+      // Keep \u2800 (braille blank) in output instead of converting to ASCII space.
+      // In some CJK terminals, non-zero braille (sprite art) and \u2800 are both
+      // rendered at the same width while ASCII space is narrower — mixing them
+      // causes per-row width variance proportional to sprite opacity, which is
+      // invisible without weather but blatant once particles land on random cells.
+      // Keeping every transparent position as \u2800 guarantees uniform row width
+      // regardless of the terminal's actual braille glyph width.
+      const renderedSpriteRows: string[] = [];
       for (let row = firstRow; row <= lastRow; row++) {
         let rowStr = group.map(s => {
           const line = s[row] ?? '';
           const visibleLen = line.replace(/\x1b\[[^m]*m/g, '').length;
           return visibleLen < SPRITE_WIDTH ? line + '\u2800'.repeat(SPRITE_WIDTH - visibleLen) : line;
         }).join('\u2800');
-        if (weatherCondition) {
-          rowStr = scatterWeatherParticles(rowStr, weatherCondition);
-        }
-        // Keep \u2800 (braille blank) in output instead of converting to ASCII space.
-        // In some CJK terminals, non-zero braille (sprite art) and \u2800 are both
-        // rendered at the same width while ASCII space is narrower — mixing them
-        // causes per-row width variance proportional to sprite opacity, which is
-        // invisible without weather but blatant once particles land on random cells.
-        // Keeping every transparent position as \u2800 guarantees uniform row width
-        // regardless of the terminal's actual braille glyph width.
-        console.log(rowStr);
+        if (weatherCondition) rowStr = scatterWeatherParticles(rowStr, weatherCondition);
+        renderedSpriteRows.push(rowStr);
+      }
+
+      // Print bubble + sprite
+      for (const bl of paddedBubbleLines) console.log(bl);
+      for (const sl of renderedSpriteRows) console.log(sl);
+
+      // === Bounce animation (only when a pokemon was just called, TTY only) ===
+      if (calledGroupIdx >= 0 && process.stdout.isTTY) {
+        const totalLines = paddedBubbleLines.length + renderedSpriteRows.length;
+        const eraseLines = (n: number) => { for (let i = 0; i < n; i++) process.stdout.write('\x1b[1A\x1b[2K'); };
+        const printLines = (lines: string[]) => { for (const l of lines) process.stdout.write(l + '\n'); };
+        const sleepMs = (ms: number) => { const end = Date.now() + ms; while (Date.now() < end) {} };
+        const normalFrame = [...paddedBubbleLines, ...renderedSpriteRows];
+        const bouncedFrame = [...paddedBubbleLines, ...renderedSpriteRows.slice(1), ''];
+        sleepMs(80);
+        eraseLines(totalLines); printLines(bouncedFrame);
+        sleepMs(140);
+        eraseLines(totalLines); printLines(normalFrame);
+        sleepMs(90);
+        eraseLines(totalLines); printLines(bouncedFrame);
+        sleepMs(120);
+        eraseLines(totalLines); printLines(normalFrame);
       }
     }
   }
