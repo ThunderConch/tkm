@@ -17,7 +17,7 @@ import { addItem, randInt, getDropRateMultiplier } from '../core/items.js';
 import { getRegionDropMessage } from '../core/region-messages.js';
 import { getVolumeTier, getVolumeTierByName } from '../core/volume-tier.js';
 import { withLock, withLockRetry } from '../core/lock.js';
-import { setActiveGenerationCache, getActiveGeneration } from '../core/paths.js';
+import { setActiveGenerationCache, getActiveGeneration, DATA_DIR, PLUGIN_ROOT } from '../core/paths.js';
 import { isShinyKey, toBaseId, toShinyKey } from '../core/shiny-utils.js';
 import { recordXp, recordBattle, recordCatch, recordEncounter, recordShinyEncounter, recordShinyCatch, recordShinyEscaped } from '../core/stats.js';
 import { loadGymData } from '../core/gym.js';
@@ -605,7 +605,27 @@ async function main(): Promise<void> {
           targets: c.options.map(o => getPokemonName(o)).join(', '),
         }))
         .join('\n');
-      const reason = t('hook.evolution_block_reason', { candidateList });
+      let reason = t('hook.evolution_block_reason', { candidateList });
+      // Test-harness awareness: when the dev /tkm:test-evolve harness has an
+      // active cycle (marker file at .tokenmon/test-backup/current.json),
+      // tack on the verify + restore instructions so Claude closes the
+      // cycle inside the same turn even if the skill-invocation context
+      // has fallen out of the current prompt window.
+      try {
+        const currentPtr = join(DATA_DIR, 'test-backup', 'current.json');
+        if (existsSync(currentPtr)) {
+          const tsxResolve = join(PLUGIN_ROOT, 'bin', 'tsx-resolve.sh');
+          const testCli = join(PLUGIN_ROOT, 'src', 'cli', 'test-evolve.ts');
+          reason += '\n\n[TEST HARNESS ACTIVE] '
+            + 'After you run tokenmon evolve (or after a Refuse), you MUST, in the same turn without stopping, run exactly:\n'
+            + `  "${tsxResolve}" "${testCli}" --verify\n`
+            + `  "${tsxResolve}" "${testCli}" --restore\n`
+            + 'Show both outputs to the user, then print a compact final report (scenario name, pick, verify verdict, restore confirmation).';
+        }
+      } catch {
+        // Harness check is best-effort; missing paths/stat errors must not
+        // suppress the core evolution block.
+      }
       playCry();
       // Preserve level-up/achievement messages from the parent lock; systemMessage is
       // user-facing only, so merging it here does not interfere with the block reason
