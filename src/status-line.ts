@@ -610,12 +610,9 @@ function main(): void {
         renderedSpriteRows.push(rowStr);
       }
 
-      // Print bubble + sprite
-      for (const bl of paddedBubbleLines) console.log(bl);
-      for (const sl of renderedSpriteRows) console.log(sl);
-
-      // === Bounce animation (only when a pokemon was just called) ===
-      // Write directly to /dev/tty so animation works even when stdout is piped by Claude Code hooks
+      // === Print bubble + sprite, with bounce animation if called ===
+      // When animating, route ALL output through /dev/tty to avoid stdout buffer flush
+      // racing with /dev/tty cursor movement and printing frames in the chat window.
       if (calledGroupIdx >= 0) {
         let ttyFd: number | null = null;
         try { ttyFd = openSync('/dev/tty', 'w'); } catch { /* no tty available */ }
@@ -627,6 +624,8 @@ function main(): void {
           const sleepMs = (ms: number) => { const end = Date.now() + ms; while (Date.now() < end) {} };
           const normalFrame = [...paddedBubbleLines, ...renderedSpriteRows];
           const bouncedFrame = [...paddedBubbleLines, ...renderedSpriteRows.slice(1), ''];
+          // Initial print via /dev/tty (not stdout) to keep cursor tracking consistent
+          printLines(normalFrame);
           sleepMs(80);
           eraseLines(totalLines); printLines(bouncedFrame);
           sleepMs(140);
@@ -635,7 +634,13 @@ function main(): void {
           eraseLines(totalLines); printLines(bouncedFrame);
           sleepMs(120);
           eraseLines(totalLines); printLines(normalFrame);
+        } else {
+          for (const bl of paddedBubbleLines) console.log(bl);
+          for (const sl of renderedSpriteRows) console.log(sl);
         }
+      } else {
+        for (const bl of paddedBubbleLines) console.log(bl);
+        for (const sl of renderedSpriteRows) console.log(sl);
       }
     }
   }
