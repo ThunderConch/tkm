@@ -211,6 +211,7 @@ export function checkCommonAchievements(commonState: CommonState, config: Config
     if (!triggered) continue;
 
     commonState.achievements[ach.id] = true;
+    state.achievements[ach.id] = true;
 
     const event: AchievementEvent = {
       id: ach.id,

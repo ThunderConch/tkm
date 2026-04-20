@@ -2,7 +2,7 @@
 import * as readline from 'readline';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
-import { readState, writeState, readCommonState } from '../core/state.js';
+import { readState, readCommonState, writeState } from '../core/state.js';
 import { readConfig, writeConfig, getDefaultConfig, readGlobalConfig, writeGlobalConfig } from '../core/config.js';
 import { getPokemonDB, getAchievementsDB, getCommonAchievementsDB, getAchievementName, getAchievementDescription, getAchievementRarityLabel, getRegionName, getRegionDescription, getPokemonName, getGenerationsDB, invalidateGenCache, pokemonIdByName, resolveNameToId, getDisplayName, formatMetInfo, ensurePokemonInDB } from '../core/pokemon-data.js';
 import { levelToXp } from '../core/xp.js';
@@ -374,34 +374,29 @@ function cmdAchievements(): void {
   const state = readState();
   const commonState = readCommonState();
   const achDB = getAchievementsDB();
-  const commonDB = getCommonAchievementsDB();
+  const commonAchDB = getCommonAchievementsDB();
+
+  // Merge per-gen and common achievements, deduplicate by id
+  const seen = new Set<string>();
+  const allAchievements: Array<{ id: string }> = [];
+  for (const ach of achDB.achievements) {
+    if (!seen.has(ach.id)) { seen.add(ach.id); allAchievements.push(ach); }
+  }
+  for (const ach of commonAchDB.achievements) {
+    if (!seen.has(ach.id)) { seen.add(ach.id); allAchievements.push(ach); }
+  }
 
   bold(t('cli.achievements.header'));
   console.log('');
 
-  // Gen-specific achievements come from the active generation's state map,
-  // common/cross-generation achievements (e.g. all_gen_badges) live in
-  // commonState.achievements and must be surfaced alongside so previously
-  // unlocked common titles do not silently disappear from the listing.
-  const seen = new Set<string>();
-  const rows: Array<{ id: string; unlocked: boolean }> = [];
-  for (const ach of achDB.achievements) {
-    rows.push({ id: ach.id, unlocked: !!state.achievements[ach.id] });
-    seen.add(ach.id);
-  }
-  for (const ach of commonDB.achievements) {
-    if (seen.has(ach.id)) continue;
-    rows.push({ id: ach.id, unlocked: !!commonState.achievements[ach.id] });
-    seen.add(ach.id);
-  }
-
-  for (const row of rows) {
-    if (row.unlocked) {
-      console.log(`  ${GREEN}✓${RESET} ${BOLD}${getAchievementName(row.id)}${RESET} ${getAchievementRarityLabel(row.id)}`);
+  for (const ach of allAchievements) {
+    const achieved = !!state.achievements[ach.id] || !!commonState.achievements[ach.id];
+    if (achieved) {
+      console.log(`  ${GREEN}✓${RESET} ${BOLD}${getAchievementName(ach.id)}${RESET} ${getAchievementRarityLabel(ach.id)}`);
     } else {
-      console.log(`  ${GRAY}○ ${getAchievementName(row.id)} ${getAchievementRarityLabel(row.id)}${RESET}`);
+      console.log(`  ${GRAY}○ ${getAchievementName(ach.id)} ${getAchievementRarityLabel(ach.id)}${RESET}`);
     }
-    console.log(`    ${GRAY}${getAchievementDescription(row.id)}${RESET}`);
+    console.log(`    ${GRAY}${getAchievementDescription(ach.id)}${RESET}`);
     console.log('');
   }
 }
