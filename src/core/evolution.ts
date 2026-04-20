@@ -226,8 +226,9 @@ function checkCondition(condition: string, context: EvolutionContext): boolean {
     return context.newLevel > context.oldLevel;
   }
   if (condition === 'special') {
-    // Generic special: trigger on level up as fallback
-    return context.newLevel > context.oldLevel;
+    // Special evolutions (e.g. walk-based) require high friendship instead of
+    // triggering on any level-up, which caused 3-stage chains to skip stage 1.
+    return context.friendship >= 200;
   }
   return false;
 }
