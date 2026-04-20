@@ -1,4 +1,4 @@
-import { existsSync, readFileSync, readlinkSync } from 'fs';
+import { existsSync, readFileSync, readlinkSync, openSync, writeSync } from 'fs';
 import { execSync } from 'child_process';
 import { join } from 'path';
 import { readState, readSession } from './core/state.js';
@@ -614,22 +614,28 @@ function main(): void {
       for (const bl of paddedBubbleLines) console.log(bl);
       for (const sl of renderedSpriteRows) console.log(sl);
 
-      // === Bounce animation (only when a pokemon was just called, TTY only) ===
-      if (calledGroupIdx >= 0 && process.stdout.isTTY) {
-        const totalLines = paddedBubbleLines.length + renderedSpriteRows.length;
-        const eraseLines = (n: number) => { for (let i = 0; i < n; i++) process.stdout.write('\x1b[1A\x1b[2K'); };
-        const printLines = (lines: string[]) => { for (const l of lines) process.stdout.write(l + '\n'); };
-        const sleepMs = (ms: number) => { const end = Date.now() + ms; while (Date.now() < end) {} };
-        const normalFrame = [...paddedBubbleLines, ...renderedSpriteRows];
-        const bouncedFrame = [...paddedBubbleLines, ...renderedSpriteRows.slice(1), ''];
-        sleepMs(80);
-        eraseLines(totalLines); printLines(bouncedFrame);
-        sleepMs(140);
-        eraseLines(totalLines); printLines(normalFrame);
-        sleepMs(90);
-        eraseLines(totalLines); printLines(bouncedFrame);
-        sleepMs(120);
-        eraseLines(totalLines); printLines(normalFrame);
+      // === Bounce animation (only when a pokemon was just called) ===
+      // Write directly to /dev/tty so animation works even when stdout is piped by Claude Code hooks
+      if (calledGroupIdx >= 0) {
+        let ttyFd: number | null = null;
+        try { ttyFd = openSync('/dev/tty', 'w'); } catch { /* no tty available */ }
+        if (ttyFd !== null) {
+          const totalLines = paddedBubbleLines.length + renderedSpriteRows.length;
+          const w = (s: string) => writeSync(ttyFd!, s);
+          const eraseLines = (n: number) => { for (let i = 0; i < n; i++) w('\x1b[1A\x1b[2K'); };
+          const printLines = (lines: string[]) => { for (const l of lines) w(l + '\n'); };
+          const sleepMs = (ms: number) => { const end = Date.now() + ms; while (Date.now() < end) {} };
+          const normalFrame = [...paddedBubbleLines, ...renderedSpriteRows];
+          const bouncedFrame = [...paddedBubbleLines, ...renderedSpriteRows.slice(1), ''];
+          sleepMs(80);
+          eraseLines(totalLines); printLines(bouncedFrame);
+          sleepMs(140);
+          eraseLines(totalLines); printLines(normalFrame);
+          sleepMs(90);
+          eraseLines(totalLines); printLines(bouncedFrame);
+          sleepMs(120);
+          eraseLines(totalLines); printLines(normalFrame);
+        }
       }
     }
   }
