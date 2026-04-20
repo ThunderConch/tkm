@@ -22,8 +22,10 @@ import { getActiveGeneration, setActiveGenerationCache, clearActiveGenerationCac
 import { execSync } from 'node:child_process';
 import { detectRenderer } from '../core/detect-renderer.js';
 import { isShinyKey, toBaseId } from '../core/shiny-utils.js';
+import { shiftAnsiHue } from '../sprites/shiny.js';
 import { readWeatherCache, WEATHER_LABELS, refreshWeatherIfStale, type WeatherCondition } from '../core/weather.js';
 import type { ExpGroup, EvolutionContext } from '../core/types.js';
+import { getEmotionInner } from '../core/emotion.js';
 
 // ANSI color helpers
 const BOLD = '\x1b[1m';
@@ -750,7 +752,7 @@ function cmdCall(nameOrId: string): void {
 const SPRITE_H = 10;
 const SPRITE_W = 20;
 
-function loadSpriteForCall(pokemonId: number): string[] {
+function loadSpriteForCall(pokemonId: number, isShiny: boolean = false): string[] {
   const brailleFile = join(SPRITES_BRAILLE_DIR, `${pokemonId}.txt`);
   const termFile = join(SPRITES_TERMINAL_DIR, `${pokemonId}.txt`);
   const file = existsSync(brailleFile) ? brailleFile : existsSync(termFile) ? termFile : null;
@@ -758,19 +760,15 @@ function loadSpriteForCall(pokemonId: number): string[] {
   const raw = readFileSync(file, 'utf-8').split('\n');
   if (raw.length > 0 && raw[raw.length - 1] === '') raw.pop();
   const lines = raw.map((l: string) => l.replace(/ /g, '\u2800'));
-  while (lines.length < SPRITE_H) lines.push('');
-  return lines.slice(0, SPRITE_H);
+  const result = isShiny ? lines.map(l => shiftAnsiHue(l)) : lines;
+  while (result.length < SPRITE_H) result.push('');
+  return result.slice(0, SPRITE_H);
 }
 
 function emotionBubble(ev: number): string[] {
   // Each bubble line is 8 visible cols: ╭──────╮
   // Middle: │ + space + 5-char content + │ = 8
-  let inner: string;
-  if (ev <= 0)        inner = ' ?   ';
-  else if (ev <= 50)  inner = '...  ';
-  else if (ev <= 120) inner = ':)   ';
-  else if (ev <= 200) inner = '<3   ';
-  else                inner = '<3!  ';
+  const inner = getEmotionInner(ev);
   return [
     `╭──────╮`,
     `│ ${inner}│`,
@@ -787,14 +785,16 @@ function spriteFrameLines(lines: string[], bubble: string[], offset: number): st
     const vLen = spriteLine.replace(/\x1b\[[^m]*m/g, '').length;
     const padded = spriteLine + (vLen < SPRITE_W ? '\u2800'.repeat(SPRITE_W - vLen) : '');
     const bubbleLine = (src >= 0 && src < bubble.length) ? bubble[src] : '';
+    // CLI output converts \u2800 → ASCII space (unlike status-line.ts which keeps \u2800
+    // for CJK terminal width consistency). Here we control the column via fixed SPRITE_W,
+    // so ASCII spaces are fine and avoid non-printable characters in terminal output.
     result.push(padded.replace(/\u2800/g, ' ') + (bubbleLine ? ' ' + bubbleLine : ''));
   }
   return result;
 }
 
 function sleepSync(ms: number): void {
-  const end = Date.now() + ms;
-  while (Date.now() < end) { /* busy-wait */ }
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
 function printFrame(frameLines: string[]): void {
@@ -813,7 +813,7 @@ async function cmdSprite(nameOrId: string, ev: number): Promise<void> {
   const pData = pokemonDB.pokemon[baseId];
   if (!pData) return;
 
-  const spriteLines = loadSpriteForCall(pData.id);
+  const spriteLines = loadSpriteForCall(pData.id, isShinyKey(resolvedId));
   const bubble = emotionBubble(ev);
 
   const normalFrame  = spriteFrameLines(spriteLines, bubble, 0);
@@ -921,6 +921,7 @@ function doReset(): void {
       legendary_pool: [], legendary_pending: [], titles: [],
       completed_chains: [],
       star_dismissed: false,
+      last_called: null,
     };
     writeState(defaultState);
   });
@@ -2083,7 +2084,7 @@ switch (command) {
     cmdCall(args[1] ?? '');
     break;
   case 'sprite':
-    await cmdSprite(args[1] ?? '', parseInt(args[2] ?? '0', 10));
+    await cmdSprite(args[1] ?? '', Math.max(0, parseInt(args[2] ?? '0', 10) || 0));
     break;
   case 'nickname':
     cmdNickname(args[1] ?? '', args.slice(2).join(' ') || undefined);

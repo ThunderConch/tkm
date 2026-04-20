@@ -14,6 +14,7 @@ import { readWeatherCache, WEATHER_LABELS, type WeatherCondition } from './core/
 import { ppBar } from './core/pp.js';
 import type { ExpGroup, StdinData } from './core/types.js';
 import { determineTier, SPRITE_WIDTH, SPRITE_COL_WIDTH } from './core/layout.js';
+import { getEmotionInner } from './core/emotion.js';
 
 interface SignatureMove {
   move: string;
@@ -523,13 +524,7 @@ function main(): void {
   const callBubbleActive = !!(lastCalled && Date.now() - lastCalled.ts < CALL_BUBBLE_TTL);
   const callBubbleLines: string[] = [];
   if (callBubbleActive) {
-    const ev = lastCalled!.ev;
-    let inner: string;
-    if (ev <= 0)        inner = ' ?   ';
-    else if (ev <= 50)  inner = '...  ';
-    else if (ev <= 120) inner = ':)   ';
-    else if (ev <= 200) inner = '<3   ';
-    else                inner = '<3!  ';
+    const inner = getEmotionInner(lastCalled!.ev);
     callBubbleLines.push('╭──────╮', `│ ${inner}│`, '╰───╮──╯', '    │   ');
   }
 
