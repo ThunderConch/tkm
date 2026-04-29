@@ -457,7 +457,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
       assert.notEqual(result.exitCode, 0, 'host should fail when port is already in use');
       assert.match(result.stderr, /FAILED_STAGE: listen/);
-      assert.match(result.stderr, /NEXT_ACTION: .*포트.*다시 host/i);
+      assert.match(result.stderr, /NEXT_ACTION: .*host\/port.*retry host/i);
       assert.match(result.stderr, /INPUT_HINT: .*host=127\.0\.0\.1.*sessionCode=alpha-123/);
       assert.match(result.stderr, new RegExp(`RETRY_HINT: .*--port ${address.port} .*--session-code alpha-123`));
     } finally {
@@ -497,7 +497,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
       assert.notEqual(result.exitCode, 0, 'host should fail when guest never becomes ready');
       assert.match(result.stderr, /FAILED_STAGE: ready/);
-      assert.match(result.stderr, /NEXT_ACTION: .*ready 단계/i);
+      assert.match(result.stderr, /NEXT_ACTION: .*ready phase.*retry host/i);
       assert.match(result.stderr, /INPUT_HINT: .*sessionCode=alpha-123/);
       assert.match(result.stderr, /RETRY_HINT: .*friendly-battle-spike\.ts host/);
     } finally {
@@ -554,8 +554,8 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       assert.match(result.stdout, /STAGE: guest_joined \(BattleDropGuest\)/);
       assert.match(result.stdout, /STAGE: battle_started/);
       assert.match(result.stderr, /FAILED_STAGE: battle/);
-      assert.match(result.stderr, /NEXT_ACTION: .*상대 행동이 도착하는지 확인/i);
-      assert.match(result.stderr, /guest 연결이 종료되었습니다/);
+      assert.match(result.stderr, /NEXT_ACTION: .*opponent action arrives.*retry host/i);
+      assert.match(result.stderr, /Guest connection was closed\./);
     } finally {
       socket.destroy();
     }
@@ -600,7 +600,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       assert.match(result.stderr, /NEXT_ACTION: .*host.*session code/i);
       assert.match(result.stderr, /INPUT_HINT: .*sessionCode=alpha-123/);
       assert.match(result.stderr, /RETRY_HINT: .*--timeout-ms 200/);
-      assert.match(result.stderr, /hello (acknowledgement|handshake) 대기 중 시간이 초과/);
+      assert.match(result.stderr, /hello (acknowledgement|handshake) timed out/i);
       // Wall-clock timing signal is unreliable on CI runners when other test
       // files are spawning child processes in parallel — a 200ms setTimeout
       // can drift past 1s via scheduler starvation. Keep the check as a local
@@ -674,8 +674,8 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       assert.match(result.stdout, /STAGE: connected/);
       assert.doesNotMatch(result.stdout, /STAGE: ready/);
       assert.match(result.stderr, /FAILED_STAGE: ready/);
-      assert.match(result.stderr, /NEXT_ACTION: .*다시 join/i);
-      assert.match(result.stderr, /host 연결이 종료되었습니다/);
+      assert.match(result.stderr, /NEXT_ACTION: .*retry join/i);
+      assert.match(result.stderr, /Host connection was closed\./);
     } finally {
       await new Promise<void>((resolve, reject) => {
         dummyServer.close((error) => (error ? reject(error) : resolve()));
@@ -742,8 +742,8 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
       assert.match(result.stdout, /STAGE: ready/);
       assert.doesNotMatch(result.stdout, /STAGE: battle_started/);
       assert.match(result.stderr, /FAILED_STAGE: battle/);
-      assert.match(result.stderr, /NEXT_ACTION: .*battle 시작 단계/i);
-      assert.match(result.stderr, /host 연결이 종료되었습니다/);
+      assert.match(result.stderr, /NEXT_ACTION: .*battle start stage.*retry join/i);
+      assert.match(result.stderr, /Host connection was closed\./);
     } finally {
       await new Promise<void>((resolve, reject) => {
         dummyServer.close((error) => (error ? reject(error) : resolve()));
