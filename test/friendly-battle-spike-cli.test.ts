@@ -373,7 +373,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
     assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
     assert.notEqual(result.exitCode, 0, 'host should fail fast without a guest-facing join host');
     assert.match(result.stderr, /FAILED_STAGE: listen/);
-    assert.match(result.stderr, /NEXT_ACTION: .*join host/i);
+    assert.match(result.stderr, /NEXT_ACTION: .*--join-host.*retry host/i);
     assert.match(result.stderr, /INPUT_HINT: .*listenHost=0\.0\.0\.0/);
     assert.match(result.stderr, /RETRY_HINT: .*--listen-host 0\.0\.0\.0/);
   });
@@ -395,7 +395,7 @@ describe('friendly battle spike CLI', { concurrency: false }, () => {
     assert.equal(result.signal, null, `host stderr:\n${result.stderr}`);
     assert.notEqual(result.exitCode, 0, 'host should fail fast with a wildcard guest-facing join host');
     assert.match(result.stderr, /FAILED_STAGE: listen/);
-    assert.match(result.stderr, /NEXT_ACTION: .*join host/i);
+    assert.match(result.stderr, /NEXT_ACTION: .*--join-host.*retry host/i);
     assert.match(result.stderr, /INPUT_HINT: .*joinHost=0\.0\.0\.0/);
     assert.match(result.stderr, /RETRY_HINT: .*--join-host 0\.0\.0\.0/);
   });
