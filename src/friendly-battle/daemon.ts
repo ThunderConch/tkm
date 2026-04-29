@@ -178,16 +178,16 @@ function buildBattleContext(
     const self = selfTeam.pokemon[selfTeam.activeIndex];
     const opp  = oppTeam.pokemon[oppTeam.activeIndex];
     if (self && opp) {
-      const oppLabel  = `상대 ${opp.displayName ?? 'Unknown'} Lv.${opp.level} HP:${opp.currentHp}/${opp.maxHp}`;
-      const selfLabel = `내 ${self.displayName ?? 'Me'} Lv.${self.level} HP:${self.currentHp}/${self.maxHp}`;
+      const oppLabel  = t('battle.opp_label', { name: opp.displayName ?? 'Unknown', level: opp.level, hp: opp.currentHp, maxHp: opp.maxHp });
+      const selfLabel = t('battle.self_label', { name: self.displayName ?? 'Me', level: self.level, hp: self.currentHp, maxHp: self.maxHp });
       return `${headline}\n⚔️ ${oppLabel} | ${selfLabel}`;
     }
   }
   if (ownSnapshot) {
     const own = ownSnapshot.pokemon.slice().sort((a, b) => a.slot - b.slot)[0];
     if (own) {
-      const selfLabel = `내 ${own.displayName} Lv.${own.level} HP:${own.baseStats.hp}/${own.baseStats.hp}`;
-      return `${headline}\n${selfLabel} (상대 HP는 다음 턴 결과에서 확인)`;
+      const selfLabel = t('battle.self_label', { name: own.displayName, level: own.level, hp: own.baseStats.hp, maxHp: own.baseStats.hp });
+      return `${headline}\n${selfLabel} ${t('battle.self_hp_next_turn')}`;
     }
   }
   return headline;
@@ -272,8 +272,8 @@ function buildEnvelopeFieldsFromLiveState(input: {
 
   const oppName  = localizePokemonName(opp.active.pokemonId, opp.active.name);
   const selfName = localizePokemonName(self.active.pokemonId, self.active.name);
-  const oppLabel  = `상대 ${oppName} Lv.${opp.active.level} HP:${opp.active.hp}/${opp.active.maxHp}`;
-  const selfLabel = `내 ${selfName} Lv.${self.active.level} HP:${self.active.hp}/${self.active.maxHp}`;
+  const oppLabel  = t('battle.opp_label', { name: oppName, level: opp.active.level, hp: opp.active.hp, maxHp: opp.active.maxHp });
+  const selfLabel = t('battle.self_label', { name: selfName, level: self.active.level, hp: self.active.hp, maxHp: self.active.maxHp });
   const questionContext = `${input.headline}\n⚔️ ${oppLabel} | ${selfLabel}`;
 
   return {

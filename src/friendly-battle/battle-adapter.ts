@@ -4,6 +4,7 @@ import {
   hasAlivePokemon,
   resolveTurn,
 } from '../core/turn-battle.js';
+import { t } from '../i18n/index.js';
 import type { BattlePokemon, BattleState, BattleTeam, TurnAction } from '../core/types.js';
 import type {
   FriendlyBattleBattleEvent,
@@ -154,7 +155,7 @@ function resolveFaintedSwitchTurn(runtime: FriendlyBattleBattleRuntime): Friendl
 
     if (envelope.choice.type === 'surrender') {
       return finalizeResolution(runtime, {
-        messages: ['항복했다...'],
+        messages: [t('battle.surrender')],
         winner: role === 'host' ? 'guest' : 'host',
         reason: 'surrender',
         submittedAt: latestSubmittedAt(runtime.pendingChoices),

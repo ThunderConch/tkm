@@ -163,16 +163,16 @@ async function runHost(values: Map<string, string>): Promise<void> {
             : 'host';
 
     const nextAction = stage === 'listen' && error.code === 'advertise_host_required'
-      ? 'guest가 접속할 실제 join host를 --join-host 로 지정한 뒤 다시 host 하세요.'
+      ? 'Specify --join-host with the actual host guests can connect to, then retry.'
       : stage === 'listen'
-        ? '입력한 host/port를 확인하거나 이미 같은 포트를 쓰는 프로세스를 종료한 뒤 다시 host 하세요.'
+        ? 'Check host/port or stop any process using the same port, then retry host.'
       : stage === 'ready'
-        ? 'guest가 join 후 ready 단계까지 완료했는지 확인한 뒤 다시 host 하세요.'
+        ? 'Check that guest completed the ready phase after joining, then retry host.'
         : stage === 'join'
-          ? 'guest가 올바른 host/port/session code로 join 했는지 확인하세요.'
+          ? 'Check that guest joined with the correct host/port/session code.'
           : stage === 'battle'
-            ? 'battle 시작 후 상대 행동이 도착하는지 확인하고, 필요하면 다시 host 하세요.'
-          : '입력한 host/port/session code와 guest 진행 상태를 확인한 뒤 다시 host 하세요.';
+            ? 'Check that opponent action arrives after battle start and retry host if needed.'
+          : 'Check host/port/session code and guest progress, then retry host.';
 
     printFriendlyBattleFailure({
       stage,
@@ -226,7 +226,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
     const joined = await withStageTimeout(
       host.waitForGuestJoin(timeoutMs),
       'join_timeout',
-      'guest join 대기 중 시간이 초과되었습니다.',
+      'Timed out waiting for guest to join.',
     );
     console.log(`STAGE: guest_joined (${joined.guestPlayerName})`);
 
@@ -235,7 +235,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
     await withStageTimeout(
       host.waitUntilCanStart(timeoutMs),
       'ready_timeout',
-      'guest ready 대기 중 시간이 초과되었습니다.',
+      'Timed out waiting for guest ready.',
     );
     const battleId = `spike-${sessionCode}`;
     await host.startBattle(battleId);
@@ -263,7 +263,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
     const guestChoice = await withStageTimeout(
       host.waitForGuestChoice(timeoutMs),
       'guest_choice_timeout',
-      'guest choice 대기 중 시간이 초과되었습니다.',
+      'Timed out waiting for guest choice.',
     );
     console.log(`GUEST_CHOICE: ${formatFriendlyBattleChoice(guestChoice.choice)}`);
 
@@ -336,12 +336,12 @@ async function runJoin(values: Map<string, string>): Promise<void> {
           : currentStage;
 
     const nextAction = stage === 'handshake'
-      ? 'host가 보여준 session code를 다시 확인한 뒤 다시 join 하세요.'
+      ? 'Double-check the session code shown by the host and retry join.'
       : stage === 'connect' || stage === 'join'
-        ? 'host 프로세스와 입력한 host/port/session code를 다시 확인하세요.'
+        ? 'Check the host process and verify host/port/session code.'
         : stage === 'ready'
-          ? 'host가 battle 시작 전까지 유지되고 있는지 확인한 뒤 다시 join 하세요.'
-          : 'host가 battle 시작 단계까지 진행됐는지 확인한 뒤 다시 join 하세요.';
+          ? 'Check that host is still running before battle starts, then retry join.'
+          : 'Check that host has progressed to the battle start stage, then retry join.';
 
     printFriendlyBattleFailure({
       stage,
