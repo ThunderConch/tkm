@@ -315,19 +315,19 @@ function executeMove(
   if (!hasUsableMoves) {
     move = STRUGGLE_MOVE;
     isStruggle = true;
-    messages.push(`${attacker.displayName}은(는) 발버둥쳤다!`);
+    messages.push(t('battle.struggle', { name: attacker.displayName }));
   } else if (moveIndex < 0 || moveIndex >= attacker.moves.length) {
     // Invalid moveIndex → treat as struggle
     move = STRUGGLE_MOVE;
     isStruggle = true;
-    messages.push(`${attacker.displayName}은(는) 발버둥쳤다!`);
+    messages.push(t('battle.struggle', { name: attacker.displayName }));
   } else {
     const chosen = attacker.moves[moveIndex];
     if (chosen.currentPp <= 0) {
       // Requested move has 0 PP → struggle
       move = STRUGGLE_MOVE;
       isStruggle = true;
-      messages.push(`${attacker.displayName}은(는) 발버둥쳤다!`);
+      messages.push(t('battle.struggle', { name: attacker.displayName }));
     } else {
       move = chosen;
       // Defer PP decrement + move announcement until after paralysis check so
@@ -526,13 +526,13 @@ export function resolveTurn(
 
   // Handle surrender
   if (playerAction.type === 'surrender') {
-    messages.push('항복했다...');
+    messages.push(t('battle.surrender'));
     state.phase = 'battle_end';
     state.winner = 'opponent';
     return { messages, playerFainted: false, opponentFainted: false };
   }
   if (opponentAction.type === 'surrender') {
-    messages.push('항복했다...');
+    messages.push(t('battle.surrender'));
     state.phase = 'battle_end';
     state.winner = 'player';
     return { messages, playerFainted: false, opponentFainted: false };

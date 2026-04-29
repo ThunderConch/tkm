@@ -250,7 +250,7 @@ function handleInit(): void {
       output({
         status: 'rejected',
         messages: [
-          `이 지역(${currentRegion})의 체육관은 이미 클리어했어. 다른 지역으로 이동해야 새 체육관에 도전할 수 있어.`,
+          t('gym.already_cleared', { region: currentRegion }),
         ],
       });
       process.exit(0);

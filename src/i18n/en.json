@@ -598,5 +598,8 @@
   "battle.effect_not_very": "It's not very effective...",
   "battle.effect_immune": "It has no effect...",
   "battle.fainted": "{name} fainted!",
-  "gym.status_line": "⚔️ {leader}'s Gym — {type}"
+  "gym.status_line": "⚔️ {leader}'s Gym — {type}",
+  "battle.struggle": "{name} used Struggle!",
+  "battle.surrender": "Gave up...",
+  "gym.already_cleared": "This region's gym is already cleared. Move to another region to find a new gym."
 }

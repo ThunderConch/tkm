@@ -598,5 +598,8 @@
   "battle.effect_not_very": "효과가 별로인 듯하다...",
   "battle.effect_immune": "효과가 없는 듯하다...",
   "battle.fainted": "{name}은(는) 쓰러졌다!",
-  "gym.status_line": "⚔️ {leader}의 체육관 — {type}"
+  "gym.status_line": "⚔️ {leader}의 체육관 — {type}",
+  "battle.struggle": "{name}은(는) 발버둥쳤다!",
+  "battle.surrender": "항복했다...",
+  "gym.already_cleared": "이 지역({region})의 체육관은 이미 클리어했어. 다른 지역으로 이동해야 새 체육관에 도전할 수 있어."
 }
