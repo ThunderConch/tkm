@@ -6,6 +6,10 @@ import { loadGymData } from '../core/gym.js';
 import { readState } from '../core/state.js';
 import { getActiveGeneration } from '../core/paths.js';
 import { getSharedDB } from '../core/pokemon-data.js';
+import { t, initLocale, getLocale } from '../i18n/index.js';
+import { readGlobalConfig } from '../core/config.js';
+
+initLocale(readGlobalConfig().language);
 
 // ANSI helpers
 const BOLD = '\x1b[1m';
@@ -49,19 +53,19 @@ try {
 
   const genLabel = gen.toUpperCase().replace('GEN', 'GEN');
   console.log();
-  console.log(`  ${BOLD}🏟️  ${genLabel} 체육관${RESET}`);
+  console.log(`  ${BOLD}🏟️  ${t('cli.gym_list.title', { gen: genLabel })}${RESET}`);
   console.log();
 
   if (gyms.length === 0) {
-    console.log(`  ${GRAY}체육관 데이터가 없습니다.${RESET}`);
+    console.log(`  ${GRAY}${t('cli.gym_list.empty')}${RESET}`);
   }
 
   for (const gym of gyms) {
     const cleared = badges.includes(gym.badge);
     const icon = cleared ? `${GREEN}✅` : `${GRAY}⬜`;
     const tc = typeColor(gym.type);
-    const leaderDisplay = gym.leaderKo || gym.leader;
-    const badgeDisplay = gym.badgeKo || gym.badge;
+    const leaderDisplay = getLocale() === 'ko' ? (gym.leaderKo || gym.leader) : gym.leader;
+    const badgeDisplay = getLocale() === 'ko' ? (gym.badgeKo || gym.badge) : (gym.badge ? `${gym.badge.charAt(0).toUpperCase() + gym.badge.slice(1)} Badge` : gym.badge);
     const maxLevel = gym.team.length > 0 ? Math.max(...gym.team.map(p => p.level)) : 0;
     const levelDisplay = maxLevel > 0 ? `${GRAY}Lv.${maxLevel}${RESET}` : '';
 
@@ -72,9 +76,9 @@ try {
 
   const clearedCount = gyms.filter(g => badges.includes(g.badge)).length;
   console.log();
-  console.log(`  ${CYAN}배지: ${clearedCount}/${gyms.length}${RESET}`);
+  console.log(`  ${CYAN}${t('cli.gym_list.badge_count', { count: clearedCount, total: gyms.length })}${RESET}`);
   console.log();
 } catch (err: any) {
-  console.error(`  ⚠️  ${gen} 체육관 데이터를 찾을 수 없습니다.`);
+  console.error(`  ⚠️  ${t('cli.gym_list.error', { gen })}`)
   process.exit(1);
 }

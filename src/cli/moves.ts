@@ -10,10 +10,13 @@
  */
 import { readState, writeState } from '../core/state.js';
 import { withLockRetry } from '../core/lock.js';
-import { readConfig } from '../core/config.js';
+import { readConfig, readGlobalConfig } from '../core/config.js';
 import { getMoveData, getPokemonMovePool, assignDefaultMoves } from '../core/moves.js';
 import { getPokemonName, getPokemonDB, resolveNameToId, getDisplayName } from '../core/pokemon-data.js';
 import { getActiveGeneration } from '../core/paths.js';
+import { t, initLocale, getLocale } from '../i18n/index.js';
+
+initLocale(readGlobalConfig().language);
 
 // ANSI helpers
 const BOLD = '\x1b[1m';
@@ -49,7 +52,7 @@ function typeColor(type: string): string {
 }
 
 function categoryLabel(cat: string): string {
-  return cat === 'physical' ? '물리' : '특수';
+  return cat === 'physical' ? t('cli.moves.physical') : t('cli.moves.special');
 }
 
 const gen = getActiveGeneration();
@@ -62,7 +65,7 @@ const args = process.argv.slice(2);
 function showPokemonMoves(pokemonId: string): void {
   const pState = state.pokemon[pokemonId];
   if (!pState) {
-    console.error(`  ${RED}${getPokemonName(pokemonId, gen)}은(는) 보유하지 않은 포켓몬입니다.${RESET}`);
+    console.error(`  ${RED}${t('cli.moves.not_owned', { name: getPokemonName(pokemonId, gen) })}${RESET}`);
     return;
   }
 
@@ -73,7 +76,7 @@ function showPokemonMoves(pokemonId: string): void {
   console.log(`  ${BOLD}${displayName}${RESET} ${GRAY}Lv.${pState.level}${RESET}`);
 
   if (moves.length === 0) {
-    console.log(`    ${GRAY}(기술 없음)${RESET}`);
+    console.log(`    ${GRAY}${t('cli.moves.no_moves')}${RESET}`);
     return;
   }
 
@@ -84,7 +87,7 @@ function showPokemonMoves(pokemonId: string): void {
       continue;
     }
     const tc = typeColor(moveData.type);
-    const nameDisplay = moveData.nameKo || moveData.name;
+    const nameDisplay = getLocale() === 'ko' ? (moveData.nameKo || moveData.name) : (moveData.nameEn || moveData.nameKo || moveData.name);
     const cat = categoryLabel(moveData.category);
     console.log(
       `    ${i + 1}. ${BOLD}${nameDisplay}${RESET} ${GRAY}(${tc}${moveData.type}${GRAY}/${cat})${RESET} 위력:${moveData.power} PP:${moveData.pp}`,
@@ -96,7 +99,7 @@ function showPokemonMoves(pokemonId: string): void {
 function showLearnableMoves(pokemonId: string): void {
   const pState = state.pokemon[pokemonId];
   if (!pState) {
-    console.error(`  ${RED}${getPokemonName(pokemonId, gen)}은(는) 보유하지 않은 포켓몬입니다.${RESET}`);
+    console.error(`  ${RED}${t('cli.moves.not_owned', { name: getPokemonName(pokemonId, gen) })}${RESET}`);
     return;
   }
 
@@ -105,11 +108,12 @@ function showLearnableMoves(pokemonId: string): void {
   const currentMoves = new Set(pState.moves ?? []);
 
   console.log();
-  console.log(`  ${BOLD}${displayName}${RESET} ${GRAY}Lv.${pState.level}${RESET} — 습득 가능 기술`);
+  const learnableLabel = getLocale() === 'ko' ? '습득 가능 기술' : 'Learnable moves';
+  console.log(`  ${BOLD}${displayName}${RESET} ${GRAY}Lv.${pState.level}${RESET} — ${learnableLabel}`);
   console.log();
 
   if (pool.length === 0) {
-    console.log(`    ${GRAY}(습득 가능한 기술이 없습니다)${RESET}`);
+    console.log(`    ${GRAY}${t('cli.moves.no_learnable')}${RESET}`);
     return;
   }
 
@@ -120,7 +124,7 @@ function showLearnableMoves(pokemonId: string): void {
     const learned = currentMoves.has(entry.moveId);
     const canLearn = entry.learnLevel <= pState.level;
     const tc = typeColor(moveData.type);
-    const nameDisplay = moveData.nameKo || moveData.name;
+    const nameDisplay = getLocale() === 'ko' ? (moveData.nameKo || moveData.name) : (moveData.nameEn || moveData.nameKo || moveData.name);
     const cat = categoryLabel(moveData.category);
     const icon = learned ? `${GREEN}●` : canLearn ? `${CYAN}○` : `${GRAY}·`;
     const levelTag = canLearn ? '' : ` ${GRAY}(Lv.${entry.learnLevel})${RESET}`;
@@ -131,7 +135,11 @@ function showLearnableMoves(pokemonId: string): void {
   }
 
   console.log();
-  console.log(`    ${GREEN}●${RESET} 장착중  ${CYAN}○${RESET} 습득 가능  ${GRAY}·${RESET} 레벨 부족`);
+  if (getLocale() === 'ko') {
+    console.log(`    ${GREEN}●${RESET} 장착중  ${CYAN}○${RESET} 습득 가능  ${GRAY}·${RESET} 레벨 부족`);
+  } else {
+    console.log(`    ${GREEN}●${RESET} Equipped  ${CYAN}○${RESET} Learnable  ${GRAY}·${RESET} Level insufficient`);
+  }
   console.log();
 }
 
@@ -147,19 +155,19 @@ function swapMove(pokemonId: string, slot: number, moveId: number): void {
   const pool = getPokemonMovePool(pState.id);
   const poolEntry = pool.find(e => e.moveId === moveId);
   if (!poolEntry) {
-    console.error(`  ${RED}기술 ID ${moveId}은(는) 이 포켓몬이 배울 수 없는 기술입니다.${RESET}`);
+    console.error(`  ${RED}${t('cli.moves.not_learnable', { id: moveId })}${RESET}`);
     process.exit(1);
   }
 
   if (poolEntry.learnLevel > pState.level) {
-    console.error(`  ${RED}레벨이 부족합니다. (필요: Lv.${poolEntry.learnLevel}, 현재: Lv.${pState.level})${RESET}`);
+    console.error(`  ${RED}${t('cli.moves.level_required', { required: poolEntry.learnLevel, current: pState.level })}${RESET}`);
     process.exit(1);
   }
 
   // Validate slot
   const moves = pState.moves ?? assignDefaultMoves(pState.id, pState.level);
   if (slot < 1 || slot > 4) {
-    console.error(`  ${RED}슬롯 번호는 1-4 사이여야 합니다.${RESET}`);
+    console.error(`  ${RED}${t('cli.moves.invalid_slot')}${RESET}`);
     process.exit(1);
   }
 
@@ -188,15 +196,15 @@ function swapMove(pokemonId: string, slot: number, moveId: number): void {
   });
 
   if (!lockResult.acquired) {
-    console.error(`  ${RED}상태 잠금을 획득하지 못했습니다. 다시 시도해 주세요.${RESET}`);
+    console.error(`  ${RED}${t('cli.moves.lock_failed')}${RESET}`);
     process.exit(1);
   }
 
-  const oldName = oldMove ? (oldMove.nameKo || oldMove.name) : '(없음)';
-  const newName = newMove ? (newMove.nameKo || newMove.name) : `ID:${moveId}`;
+  const oldName = oldMove ? (getLocale() === 'ko' ? (oldMove.nameKo || oldMove.name) : (oldMove.nameEn || oldMove.nameKo || oldMove.name)) : (getLocale() === 'ko' ? '(없음)' : '(none)');
+  const newName = newMove ? (getLocale() === 'ko' ? (newMove.nameKo || newMove.name) : (newMove.nameEn || newMove.nameKo || newMove.name)) : `ID:${moveId}`;
 
   console.log();
-  console.log(`  ${GREEN}${displayName}의 슬롯 ${slot} 기술을 변경했습니다.${RESET}`);
+  console.log(`  ${GREEN}${t('cli.moves.swap_success', { name: displayName, slot })}${RESET}`);
   console.log(`    ${GRAY}${oldName}${RESET} → ${BOLD}${newName}${RESET}`);
   console.log();
 }
@@ -206,7 +214,7 @@ function swapMove(pokemonId: string, slot: number, moveId: number): void {
 if (args.length === 0) {
   // Show moves for all party pokemon
   if (config.party.length === 0) {
-    console.log(`  ${GRAY}파티에 포켓몬이 없습니다.${RESET}`);
+    console.log(`  ${GRAY}${t('cli.moves.no_pokemon')}${RESET}`);
     process.exit(0);
   }
   for (const pokemonId of config.party) {
@@ -225,7 +233,7 @@ if (args.length === 0) {
     const slot = parseInt(args[2], 10);
     const moveId = parseInt(args[3], 10);
     if (isNaN(slot) || isNaN(moveId)) {
-      console.error(`  ${RED}사용법: moves <포켓몬> swap <슬롯(1-4)> <기술ID>${RESET}`);
+      console.error(`  ${RED}${t('cli.moves.swap_usage')}${RESET}`);
       process.exit(1);
     }
     swapMove(pokemonId, slot, moveId);
