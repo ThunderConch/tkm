@@ -75,8 +75,8 @@ function shellEscape(value: string): string {
 }
 
 function formatRetryHintFromError(errorMessage: string, fallbackCommand: string): string {
-  const sessionCodeInParens = errorMessage.match(/session code\(([^)\n]+)\)/i);
-  const sessionCodeAfterColon = errorMessage.match(/session code:\s*([^\n]+)/i);
+  const sessionCodeInParens = errorMessage.match(/session code\(([^)]+)\)/i);
+  const sessionCodeAfterColon = errorMessage.match(/session code:\s*(\S+)/i);
   const sessionCodeMatch = sessionCodeInParens ?? sessionCodeAfterColon;
   if (!sessionCodeMatch) {
     return fallbackCommand;
