@@ -1,4 +1,4 @@
-import { t } from '../i18n/index.js';
+import { t, getLocale } from '../i18n/index.js';
 import { getTypeEffectiveness } from './type-chart.js';
 import {
   applyStatChange,
@@ -362,7 +362,7 @@ function executeMove(
   // announced above and has no persistent PP).
   if (!isStruggle) {
     move.currentPp--;
-    messages.push(`${attacker.displayName}의 ${move.data.nameKo}!`);
+    messages.push(t('battle.used_move', { name: attacker.displayName, move: getLocale() === 'ko' ? move.data.nameKo : move.data.nameEn }));
   }
 
   const moveEffect = move.data.moveEffect;
@@ -413,7 +413,7 @@ function executeMove(
     hasOpponentChange &&
     !hasSelfChange
   ) {
-    messages.push('효과가 없는 듯하다...');
+    messages.push(t('battle.effect_immune'));
     return { defenderFainted: false };
   }
 
@@ -451,9 +451,9 @@ function executeMove(
   }
 
   // Effectiveness messages
-  if (effMsg === 'effect_super') messages.push('효과가 굉장했다!');
-  else if (effMsg === 'effect_not_very') messages.push('효과가 별로인 듯하다...');
-  else if (effMsg === 'effect_immune') messages.push('효과가 없는 듯하다...');
+  if (effMsg === 'effect_super') messages.push(t('battle.effect_super'));
+  else if (effMsg === 'effect_not_very') messages.push(t('battle.effect_not_very'));
+  else if (effMsg === 'effect_immune') messages.push(t('battle.effect_immune'));
 
   if (damageDealt > 0 && moveEffect?.type === 'recoil') {
     const recoil = Math.max(1, Math.floor(damageDealt * moveEffect.fraction));
@@ -473,7 +473,7 @@ function executeMove(
   // Faint check
   if (defender.currentHp <= 0) {
     defender.fainted = true;
-    messages.push(`${defender.displayName}은(는) 쓰러졌다!`);
+    messages.push(t('battle.fainted', { name: defender.displayName }));
     return { defenderFainted: true };
   }
 

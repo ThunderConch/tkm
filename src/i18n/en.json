@@ -18,14 +18,12 @@
   "cli.status.stat_pokeballs": "  🔴 Poké Balls: {count}",
   "cli.status.stat_region": "  Current region: {region}",
   "cli.status.stat_shiny_catches": "  ★Shiny catches: {count}",
-
   "cli.starter.already_chosen": "You have already chosen a starter.",
   "cli.starter.current_party": "Current party: {party}",
   "cli.starter.prompt_title": "Choose your starter Pokemon:",
   "cli.starter.prompt_input": "Enter number (1-{count}): ",
   "cli.starter.invalid_choice": "Invalid choice.",
   "cli.starter.chosen": "✓ You chose {pokemon}! Let the adventure begin!",
-
   "cli.party.header": "[ Current Party ]",
   "cli.party.dispatch_current": "Current dispatch: {current}",
   "cli.party.dispatch_auto": "auto (not set)",
@@ -41,13 +39,10 @@
   "cli.party.remove_usage": "Usage: tokenmon party remove <pokemon>",
   "cli.party.remove_min": "Party must have at least 1 Pokemon.",
   "cli.party.remove_success": "✓ Removed {pokemon} from the party.",
-
   "cli.unlock.header": "[ Unlocked Pokemon ]",
   "cli.unlock.empty": "  Nothing yet.",
   "cli.unlock.usage": "Usage: tokenmon unlock list",
-
   "cli.achievements.header": "[ Achievements ]",
-
   "cli.config.usage": "Usage: tokenmon config set <key> <value>",
   "cli.config.keys_header": "Configurable keys:",
   "cli.config.key_tokens_per_xp": "  tokens_per_xp    - Tokens per XP (default: 10000)",
@@ -60,7 +55,6 @@
   "cli.config.bool_error": "Please enter true or false.",
   "cli.config.set_success": "✓ {key} = {value} set.",
   "cli.config.usage_set": "Usage: tokenmon config set <key> <value>",
-
   "cli.pokedex.not_found": "Pokemon \"{name}\" not found.",
   "cli.pokedex.status_caught": "Caught",
   "cli.pokedex.status_seen": "Seen",
@@ -98,12 +92,10 @@
   "cli.pokedex.summary_row": "  {region}: {caught}/{total} caught ({pct}%)",
   "cli.pokedex.summary_total": "  Total: {caught}/{total} ({pct}%)",
   "cli.pokedex.no_results": "  No pokemon match the filters.",
-
   "cli.items.header": "[ Items ]",
   "cli.items.empty": "  No items.",
   "cli.items.pokeball": "Poké Ball",
   "cli.items.count": "{name}: {count}",
-
   "cli.region.moved": "Moved to {region}!",
   "cli.region.list_title": "=== Region List ===",
   "cli.region.current_marker": " ← current",
@@ -115,12 +107,10 @@
   "cli.region.current_title": "=== Current Region: {name} ===",
   "cli.region.level_range": "  Level range: Lv.{min} ~ Lv.{max}",
   "cli.region.pokemon_pool": "  Pokemon pool: {count} species",
-
   "cli.reset.warning": "Warning: All data will be reset! (Pokemon, achievements, items, etc.)",
   "cli.reset.confirm": "Are you sure? (y/N): ",
   "cli.reset.cancelled": "Reset cancelled.",
   "cli.reset.done": "All data has been reset. (Cheat log preserved)",
-
   "cli.cheat.xp_usage": "Usage: tokenmon cheat xp <pokemon> <amount>",
   "cli.cheat.xp_no_pokemon": "{pokemon} not found.",
   "cli.cheat.xp_success": "Added {amount} XP to {pokemon} (total {total})",
@@ -136,7 +126,6 @@
   "cli.cheat.multiplier_usage": "Usage: tokenmon cheat multiplier <value>",
   "cli.cheat.multiplier_success": "XP multiplier set to {value}",
   "cli.cheat.unknown": "Usage: tokenmon cheat <xp|level|unlock|achievement|item|multiplier> ...",
-
   "cli.help.title": "Tokénmon - Claude Code Pokemon Partner",
   "cli.help.usage": "Usage: tokenmon <command> [options]",
   "cli.help.commands": "Commands:",
@@ -162,26 +151,21 @@
   "cli.evolve.cancelled": "Evolution cancelled.",
   "cli.evolve.failed": "Evolution failed.",
   "cli.evolve.success": "✨ {old} evolved into {new}!",
-
   "cli.notifications.header": "[ Notifications ]",
   "cli.notifications.empty": "  No notifications.",
   "cli.notifications.cleared": "✓ All notifications cleared.",
   "cli.notifications.clear_hint": "Use tokenmon notifications clear to dismiss all.",
-
   "cli.config.key_notifications": "  notifications_enabled - Show notifications true/false",
   "cli.config.key_pp_enabled": "  pp_enabled           - Show PP (Substitute) meter true/false",
-
   "cli.help.cmd_evolve": "  evolve              List evolution-ready Pokemon",
   "cli.help.cmd_evolve_pokemon": "  evolve <name>       Evolve a Pokemon (branch selection)",
   "cli.help.cmd_notifications": "  notifications       View notifications",
   "cli.help.cmd_notifications_clear": "  notifications clear Clear all notifications",
   "cli.help.cmd_friendly_battle": "  friendly-battle     Friendly battle commands (local v1)",
-
   "notification.evolution_ready": "{pokemon} is ready to evolve! Run: tokenmon evolve {pokemon}",
   "statusline.evolution_ready": "✨ {pokemon} is ready to evolve! /tkm evolve {pokemon}",
   "notification.region_unlocked": "{count} new region(s) unlocked! Run: tokenmon region list",
   "notification.achievement_near": "Achievement \"{name}\" is {pct}% complete!",
-
   "cli.help.cmd_items": "  items               List items",
   "cli.help.cmd_region": "  region              View current region",
   "cli.help.cmd_region_list": "  region list         List all regions",
@@ -204,8 +188,7 @@
   "cli.help.ex3": "  tokenmon party add Piplup",
   "cli.help.ex4": "  tokenmon config set cry_enabled false",
   "cli.unknown_command": "Unknown command: {command}",
-
-  "cli.lock_failed": "Failed to acquire lock. Please try again later.",
+  "cli.lock_failed": "Failed to acquire lock. Please try again.",
   "cli.lock_busy": "Another process is using the data. Please try again later.",
   "cli.config.help_renderer": "  renderer             - Sprite renderer (kitty/sixel/iterm2/braille)",
   "cli.config.key_voice_tone": "  voice_tone           - Text style claude/pokemon (default: claude)",
@@ -217,14 +200,11 @@
   "cli.cheat.achievement_unlocked": "Achievement {name} unlocked",
   "cli.cheat.item_added": "Added {name} x{count} (total: {total})",
   "cli.cheat.xp_multiplier_set": "Set XP multiplier to {value}",
-
   "renderer.kitty_desc": "Kitty Graphics Protocol (experimental — highest quality, original PNG)",
   "renderer.sixel_desc": "Sixel (experimental — DEC compatible, wide terminal support)",
   "renderer.iterm2_desc": "iTerm2 Inline Images (experimental — macOS iTerm2/WezTerm)",
   "renderer.braille_desc": "Braille (recommended — classic method, all terminals compatible)",
-
   "setup.recommended": " [Recommended]",
-
   "guide.index.title": "=== Tokenmon Guide ===",
   "guide.index.usage": "Usage: tokenmon guide <topic>",
   "guide.index.topics": "Topics:",
@@ -234,7 +214,6 @@
   "guide.index.topic_xp": "  xp            XP / leveling (formula, party share, dispatch bonus)",
   "guide.index.topic_item": "  item          Items (Poké Ball, drop rates, catching)",
   "guide.unknown_topic": "Unknown topic: {topic}",
-
   "guide.battle.title": "=== Battle Guide ===",
   "guide.battle.encounter_header": "[ Encounters ]",
   "guide.battle.encounter_desc1": "  15% chance to encounter a wild Pokemon per session start.",
@@ -266,7 +245,6 @@
   "guide.battle.reward_lose": "  Lose XP = 0",
   "guide.battle.reward_catch": "  Catch chance on win = determined by each Pokemon's catch rate",
   "guide.battle.reward_rarity": "  {gray}Rarity bonus: common=0, uncommon=30, rare=80, legendary=200, mythical=500{reset}",
-
   "guide.region.title": "=== Region Guide ===",
   "guide.region.move_header": "[ Moving Regions ]",
   "guide.region.move_list": "  tokenmon region list    List all regions",
@@ -282,7 +260,6 @@
   "guide.region.tip1": "  Higher level region = stronger wild Pokemon = more XP",
   "guide.region.tip2": "  Each region has a unique Pokemon pool — travel to complete the Pokedex",
   "guide.region.tip3": "  Champion Road requires 50 catches — legendary Pokemon appear there",
-
   "guide.achievement.title": "=== Achievement Guide ===",
   "guide.achievement.check_header": "[ Checking Achievements ]",
   "guide.achievement.check_cmd": "  tokenmon achievements   Full achievement list with status",
@@ -295,7 +272,6 @@
   "guide.achievement.reward_xp": "  XP bonus: permanent XP multiplier increase (stackable)",
   "guide.achievement.reward_ball": "  Poké Ball: used to catch wild Pokemon",
   "guide.achievement.reward_slot": "  Party slot: increase max party size",
-
   "guide.xp.title": "=== XP / Leveling Guide ===",
   "guide.xp.gain_header": "[ Gaining XP ]",
   "guide.xp.gain_desc": "  Earn XP on battle win (0 on loss)",
@@ -318,7 +294,6 @@
   "guide.xp.expgroup_desc1": "  Each Pokemon has a different exp group (fast, medium_fast, medium_slow, slow, etc.)",
   "guide.xp.expgroup_desc2": "  Required XP can differ even at the same level",
   "guide.xp.expgroup_hint": "  {gray}Check a Pokemon's group: tokenmon pokedex <name>{reset}",
-
   "guide.item.title": "=== Item Guide ===",
   "guide.item.check_header": "[ Checking Items ]",
   "guide.item.check_cmd": "  tokenmon items   Current held items",
@@ -333,7 +308,6 @@
   "guide.item.catch_desc2": "  No ball = no catch even on win (Pokedex registered + XP only)",
   "guide.item.catch_desc3": "  No ball consumed when battling already-caught Pokemon.",
   "guide.item.catch_tip": "  {yellow}Tip: Stock up on Poké Balls before encountering new Pokemon{reset}",
-
   "setup.postinstall.title": "  Tokénmon initial setup...",
   "setup.postinstall.already_exists": "  ✓ {path} already exists (preserved)",
   "setup.postinstall.backup_created": "  ℹ Backup created: {path}",
@@ -346,11 +320,9 @@
   "setup.postinstall.legacy_old": "    Previous data: {path}",
   "setup.postinstall.legacy_new": "    New data:      {path}",
   "setup.postinstall.legacy_cleanup": "    Please clean up the old bash hooks manually.",
-
   "statusline.no_starter": "[Choose a starter: /tkm:tkm starter]",
   "statusline.party_empty": "[Party is empty]",
   "statusline.pp_label": "🔋",
-
   "setup.statusline.already_set": "  ✓ tokenmon statusLine already configured (skipped)",
   "setup.statusline.wrapper_updated": "  ✓ tokenmon wrapper updated to latest version",
   "setup.statusline.wrapper_already": "  ✓ tokenmon wrapper already configured (skipped)",
@@ -358,7 +330,6 @@
   "setup.statusline.wrapper_created": "  ✓ Wrapper created: {path}",
   "setup.statusline.combined": "  ✓ Configured to display both existing statusLine and tokenmon",
   "setup.statusline.registered": "  ✓ tokenmon statusLine registered",
-
   "battle.win": "⚔️ vs wild {defender} (Lv.{level}) → Win! (XP +{xp})",
   "battle.win_dispatch": "⚔️ vs wild {defender} (Lv.{level}) → Win! (XP +{xp}, dispatch +{dispatch})",
   "battle.win_catch": "\n🎉 Caught {defender}! (tokenmon party add {defender})",
@@ -370,7 +341,6 @@
   "battle.shiny_appeared": "✦ A shiny {pokemon} appeared!",
   "battle.shiny_catch": "\n★ Shiny caught!",
   "battle.shiny_escaped": "\nThe shiny {pokemon} got away...",
-
   "battle.gym_challenge": "{leader} wants to battle!",
   "battle.send_out": "{leader} sent out {pokemon}!",
   "battle.go": "Go, {pokemon}!",
@@ -391,30 +361,24 @@
   "move.rest.success": "{name} went to sleep and restored its HP!",
   "move.recoil": "{name} is hit by recoil!",
   "move.drain": "{name} drained HP!",
-
   "achievement.unlocked": "🏆 Achievement unlocked: {name}! ",
   "achievement.unlocked_pokemon": "🏆 Achievement unlocked: {name}! You got {pokemon}!",
   "achievement.unlocked_message": "🏆 Achievement unlocked: {name}! {message}",
-
   "region.not_found": "Region \"{name}\" not found.",
   "region.locked_caught": "caught",
   "region.locked_seen": "seen",
   "region.locked": "This region unlocks after catching/seeing {count} {label} Pokemon.",
-
   "hook.levelup": "⬆️ {pokemon} Lv.{from} → Lv.{to}! (XP: +{xp})",
   "hook.evolution": "✨ {pokemon} evolved into {newPokemon}!",
   "hook.party_join": "🎊 {pokemon} joined the party!",
   "hook.evolution_candidate_line": "- Pokemon: {pokemon}\n  Use this question VERBATIM (AskUserQuestion.question, do NOT paraphrase): \"{pokemon} is ready to evolve! Choose a form:\"\n  All evolution targets: {targets}",
   "hook.evolution_block_reason": "Party pokemon are ready to evolve.\n\nYou MUST call AskUserQuestion. One subquestion per pokemon (batch up to 4 pokemon per call).\n\nPer-subquestion rules:\n- `question` field: copy the candidate's 'Use this question VERBATIM' line EXACTLY — do not paraphrase, do not reformat.\n- `options` (buttons, max 4):\n  - 3 or fewer targets → all targets + 'Refuse'.\n  - 4+ targets → first 3 targets + 'Refuse'. List the remaining targets on a separate line appended to the question body as 'Other forms: A, B, C' so the user can type one via 'Other'.\n- `multiSelect`: false\n\nCandidates:\n{candidateList}\n\nHandling the user's answer:\n- Button selecting a target → run `tokenmon evolve <pokemon> <target>`.\n- 'Refuse' button or Other with 'refuse'/'no'/'cancel' → do nothing (no auto re-prompt).\n- For free-text 'Other' input, VALIDATE before running `tokenmon evolve`:\n  - If the input (case-insensitive, accepting localized or English names) matches a pokemon name in the 'All evolution targets' list, evolve to that target.\n  - If it doesn't match, reply briefly with something like \"I didn't recognize that — please pick a button or type one of: {targets}, refuse\" and re-invoke the same AskUserQuestion (cap at 2 re-prompts to avoid loops; after that, treat as 'Refuse').",
-
   "tier.heated": "The tall grass is rustling intensely... (Next: encounter 1.5x, XP 1.5x)",
   "tier.intense": "Something seems to be lurking nearby... (Next: encounter 2.5x, XP 2.5x)",
   "tier.legendary": "The air is crackling with powerful energy! (Next: encounter 4x, XP 5x)",
-
   "tip.volume_xp": "Using more tokens at once seems to yield more experience points.",
   "tip.volume_encounter": "Wild Pokémon appear more often during longer tasks.",
   "tip.volume_rare": "There are rumors that stronger Pokémon appear during complex tasks.",
-
   "tip.battle_type_advantage": "💡 Type matchups greatly affect win rate! Target weaknesses.",
   "tip.battle_level_matters": "💡 Large level gaps sharply shift win rate (Lv.4 vs Lv.12 = ~17%).",
   "tip.battle_best_pokemon": "💡 The party member with the best type matchup is chosen automatically.",
@@ -445,12 +409,10 @@
   "tip.item_ball_count": "🔴 Current Poké Balls: {count}. Get ready for new encounters!",
   "tip.item_achievement_balls": "🔴 Achievement rewards can give you large batches of Poké Balls (up to 10!).",
   "tip.item_ball_strategy": "🔴 Battling already-caught Pokemon does not consume a Poké Ball.",
-
   "item_drop.tool": "You found a Poké Ball during your adventure! Obtained {n} Poké Ball(s)!",
   "item_drop.subagent": "Your companion brought back Poké Balls! Obtained {n} Poké Ball(s)!",
   "item_drop.session_end": "Received {n} Poké Ball(s) as today's adventure reward!",
   "item_drop.generic": "Found {n} Poké Ball(s)!",
-
   "cli.dashboard.region": "Region: {region} (Lv.{min}-{max})",
   "cli.dashboard.streak": "Day streak: {days} (best: {best})",
   "cli.dashboard.pokedex": "Pokedex: {caught}/{total} ({pct}%)",
@@ -463,7 +425,6 @@
   "cli.dashboard.activity_encounters": "• {count} encounters",
   "cli.dashboard.events_title": "Today's Event",
   "cli.dashboard.events_none": "No active events",
-
   "cli.stats.header": "=== Stats ===",
   "cli.stats.streak_header": "[ Streak ]",
   "cli.stats.streak_days": "  Current streak: {days} days",
@@ -478,13 +439,10 @@
   "cli.stats.alltime_battles": "  Battles: {wins}W / {losses}L",
   "cli.stats.alltime_catches": "  Catches: {count}",
   "cli.stats.alltime_encounters": "  Encounters: {count}",
-
   "cli.help.cmd_dashboard": "  dashboard           Full summary dashboard",
   "cli.help.cmd_stats": "  stats               View stats (weekly + all-time)",
-
   "event.active_header": "Active Event",
   "event.none": "No active events",
-
   "rewards.milestone_reached": "🎉 Pokédex Milestone: {label}",
   "rewards.pokeball_reward": "  → Poké Ball x{count} received!",
   "rewards.xp_multiplier_reward": "  → XP multiplier +{value}% permanent boost!",
@@ -495,7 +453,6 @@
   "rewards.type_master": "⭐ Type Master: {type}! (Battle XP 1.2x)",
   "rewards.chain_complete": "🔗 Evolution chain complete! (Poké Ball x{count} received)",
   "rewards.type_master_legendary": "⭐ {count} types mastered! Special legendary group unlocked!",
-
   "cli.legendary.header": "=== Legendary Pokémon ===",
   "cli.legendary.no_pending": "No legendary groups pending. Catch more Pokémon to unlock!",
   "cli.legendary.pool_header": "[ Legendary Pool (wild encounters) ]",
@@ -503,7 +460,6 @@
   "cli.legendary.invalid_choice": "Invalid selection.",
   "cli.legendary.selected": "✨ {pokemon} has joined your team!",
   "cli.legendary.pool_added": "  {names} added to wild encounter pool.",
-
   "cli.box.header": "[ Box ]",
   "cli.box.empty": "  Box is empty.",
   "cli.box.sort_hint": "Use --sort level|type|name|rarity to sort. Use --search to filter by name.",
@@ -511,7 +467,6 @@
   "cli.box.filter": "  Filter: {filter}",
   "cli.box.no_results": "  No pokemon match the filters.",
   "cli.box.shiny_tag": "★",
-
   "cli.party.swap_usage": "Usage: tokenmon party swap <slot> <pokemon>",
   "cli.party.swap_invalid_slot": "Invalid slot number. (1-{max})",
   "cli.party.swap_not_in_box": "{pokemon} is not in the box.",
@@ -522,69 +477,55 @@
   "cli.party.reorder_success": "✓ {pokemon}: slot {from} → slot {to}",
   "cli.party.suggest_header": "[ Recommended for {region} ]",
   "cli.party.suggest_no_region": "No region set.",
-
   "cli.help.cmd_legendary": "  legendary           View/select legendary Pokémon",
   "cli.help.cmd_box": "  box [--sort key]    View box (stored Pokémon)",
   "cli.help.cmd_party_swap": "  party swap <s> <p>  Swap party slot with box Pokémon",
   "cli.help.cmd_party_reorder": "  party reorder <f> <t> Reorder party slots",
   "cli.help.cmd_party_suggest": "  party suggest       Suggest party for current region",
-
   "notification.legendary_unlocked": "Legendary group unlocked! Run: tokenmon legendary",
-
   "cli.pokedex.type_master_header": "[ Type Masters ]",
   "cli.pokedex.type_progress": "  {type}: {caught}/{total} ({pct}%)",
   "cli.pokedex.type_mastered": "  {type}: Mastered ✓ (XP 1.2x)",
-
-  "star.prompt": "⭐ Enjoying Tok\u00e9mon? Run tokenmon star to give us a GitHub star!",
-  "star.success": "⭐ Thanks for starring Tok\u00e9mon! You're awesome!",
+  "star.prompt": "⭐ Enjoying Tokémon? Run tokenmon star to give us a GitHub star!",
+  "star.success": "⭐ Thanks for starring Tokémon! You're awesome!",
   "star.failed": "Failed to star. Make sure gh CLI is installed and authenticated.",
   "star.dismissed": "Star prompt dismissed.",
   "rest.activate": "💤 {hours}h rest bonus activated! XP ×{mult} for {turns} turns",
   "tip.rest_info": "💤 Take a break sometimes for an XP bonus!",
   "tip.rest_threshold": "💤 Rest for 2+ hours to activate rest bonus.",
-
-  "cli.lock_failed": "Failed to acquire lock. Please try again.",
   "cli.call.not_found": "Pokemon not found: {name}",
   "cli.nickname.not_found": "Pokemon not found: {name}",
   "cli.nickname.too_long": "Nickname must be 7 characters or fewer.",
   "cli.nickname.current": "{species}'s nickname: {nickname}",
   "cli.nickname.none": "{species} doesn't have a nickname yet.",
   "cli.nickname.set": "Set {species}'s nickname to '{nickname}'!",
-
   "rarity.common": "Common",
   "rarity.uncommon": "Uncommon",
   "rarity.rare": "Rare",
   "rarity.legendary": "Legendary",
   "rarity.mythical": "Mythical",
-
   "exp_group.medium_fast": "Medium Fast",
   "exp_group.medium_slow": "Medium Slow",
   "exp_group.fast": "Fast",
   "exp_group.slow": "Slow",
   "exp_group.erratic": "Erratic",
   "exp_group.fluctuating": "Fluctuating",
-
   "weather.location_set": "Weather location set to {location}. Weather will update each session.",
   "weather.fetch_failed": "Could not fetch weather data. Will retry next session.",
-
   "gym.gate_rejected": "You need to explore more of this region's Pokédex or train your party before challenging this gym! (Pokédex: {caught}/{required}, Party avg level: Lv.{avgLevel}/{requiredLevel})",
-
   "tip.gym_region_rumor": "Rumors say a powerful Gym Leader awaits in each region.",
   "tip.gym_badge_reward": "They say you earn a special badge for defeating a Gym Leader.",
   "tip.gym_gate_hint": "🏟️ Fill the regional Pokédex or train your party to challenge a gym!",
   "tip.gym_badge_collect": "🏟️ Collect badges to challenge the Champion! Check with `/tkm gym list`",
   "tip.gym_next_info": "🏟️ Next gym: {leaderName} ({type} type) — prepare your type matchups!",
   "tip.gym_badge_progress": "You've collected {badgeCount} badges. They say {remaining} more until the Champion.",
-
   "gym.champion_badge_required": "You must collect all 8 badges before challenging the Champion! (Current badges: {badgeCount}/8)",
-
   "gym.badge_earned": "🥊 {badge} earned! ({leader} defeated) [{count}/8]",
   "gym.champion_victory_header": "CHAMPION VICTORY!",
   "gym.champion_victory_detail": "{region} Champion {leader} defeated!",
   "gym.title_earned": "Title earned: {title}",
   "gym.reward_pokemon": "Reward: {pokemon} obtained!",
   "gym.reward_xp_dump": "{pokemon} gained {xp} XP! (Lv.{oldLevel} → Lv.{newLevel})",
-
   "achievement.first_badge": "First Badge",
   "achievement.four_badges": "Badge Collector",
   "achievement.eight_badges": "Gym Master",
@@ -593,7 +534,6 @@
   "achievement.total_badges_30": "Badge Maniac",
   "achievement.three_gen_champion": "Multi Champion",
   "achievement.all_gen_champion": "Pokémon Master",
-
   "title.champion_kanto": "Kanto Champion",
   "title.champion_johto": "Johto Champion",
   "title.champion_hoenn": "Hoenn Champion",
@@ -605,7 +545,6 @@
   "title.champion_paldea": "Paldea Champion",
   "title.multi_champion": "Multi Champion",
   "title.pokemon_master": "Pokémon Master",
-
   "status.paralysis.inflicted": "{name} is paralyzed! It may be unable to move!",
   "status.paralysis.immobile": "{name} is paralyzed! It can't move!",
   "status.sleep.inflicted": "{name} fell asleep!",
@@ -653,5 +592,11 @@
   "stat.name.sp_defense": "Sp. Def",
   "stat.name.speed": "Speed",
   "stat.name.accuracy": "Accuracy",
-  "stat.name.evasion": "Evasion"
+  "stat.name.evasion": "Evasion",
+  "battle.used_move": "{name} used {move}!",
+  "battle.effect_super": "It's super effective!",
+  "battle.effect_not_very": "It's not very effective...",
+  "battle.effect_immune": "It has no effect...",
+  "battle.fainted": "{name} fainted!",
+  "gym.status_line": "⚔️ {leader}'s Gym — {type}"
 }
