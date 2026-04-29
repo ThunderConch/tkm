@@ -7,7 +7,7 @@ import { createBattlePokemon } from '../core/turn-battle.js';
 import { getGymById, awardGymVictory, canChallengeGym, loadGymData } from '../core/gym.js';
 import { getPokemonName, getPokemonDB, speciesIdToGeneration } from '../core/pokemon-data.js';
 import { getActiveGeneration } from '../core/paths.js';
-import { initLocale, t } from '../i18n/index.js';
+import { initLocale, t, getLocale } from '../i18n/index.js';
 import { readGlobalConfig, readConfig, writeConfig } from '../core/config.js';
 import { checkAchievements, checkCommonAchievements, formatAchievementMessage } from '../core/achievements.js';
 import { readCommonState, readState, writeCommonState, writeState } from '../core/state.js';
@@ -225,13 +225,19 @@ function main(): void {
         if (isChampion) {
           process.stderr.write('\n═══════════════════════════════\n');
           process.stderr.write(`  🏆 ${t('gym.champion_victory_header')} 🏆\n`);
-          process.stderr.write(`  ${t('gym.champion_victory_detail', { region: gym.badgeKo.replace(/ 챔피언배지$/, ''), leader: gym.leaderKo })}\n`);
+          const champRegion = getLocale() === 'ko'
+            ? gym.badgeKo.replace(/ 챔피언배지$/, '')
+            : gym.badge.replace(/^champion_/, '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+          const champLeader = getLocale() === 'ko' ? gym.leaderKo : gym.leader;
+          process.stderr.write(`  ${t('gym.champion_victory_detail', { region: champRegion, leader: champLeader })}\n`);
           for (const achEvent of achEvents) {
             process.stderr.write(`  ${formatAchievementMessage(achEvent)}\n`);
           }
           process.stderr.write('═══════════════════════════════\n');
         } else {
-          process.stderr.write(`\n${t('gym.badge_earned', { badge: gym.badgeKo, leader: gym.leaderKo, count: badgeCount })}\n`);
+          const badgeName = getLocale() === 'ko' ? gym.badgeKo : `${gym.badge.charAt(0).toUpperCase() + gym.badge.slice(1)} Badge`;
+          const leaderName = getLocale() === 'ko' ? gym.leaderKo : gym.leader;
+          process.stderr.write(`\n${t('gym.badge_earned', { badge: badgeName, leader: leaderName, count: badgeCount })}\n`);
           for (const achEvent of achEvents) {
             process.stderr.write(`${formatAchievementMessage(achEvent)}\n`);
           }
