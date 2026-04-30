@@ -18,14 +18,12 @@
   "cli.status.stat_pokeballs": "  🔴 몬스터볼: {count}개",
   "cli.status.stat_region": "  현재 지역: {region}",
   "cli.status.stat_shiny_catches": "  ★색이 다른 포켓몬 포획: {count}종",
-
   "cli.starter.already_chosen": "이미 스타터를 선택했습니다.",
   "cli.starter.current_party": "현재 파티: {party}",
   "cli.starter.prompt_title": "스타터 포켓몬을 선택하세요:",
   "cli.starter.prompt_input": "번호를 입력하세요 (1-{count}): ",
   "cli.starter.invalid_choice": "잘못된 선택입니다.",
   "cli.starter.chosen": "✓ {pokemon:을/를} 선택했습니다! 모험을 시작하세요!",
-
   "cli.party.header": "[ 현재 파티 ]",
   "cli.party.dispatch_current": "현재 디스패치: {current}",
   "cli.party.dispatch_auto": "자동 (미지정)",
@@ -41,13 +39,10 @@
   "cli.party.remove_usage": "사용법: tokenmon party remove <포켓몬이름>",
   "cli.party.remove_min": "파티에 최소 1마리는 있어야 합니다.",
   "cli.party.remove_success": "✓ {pokemon:을/를} 파티에서 제외했습니다.",
-
   "cli.unlock.header": "[ 잠금 해제된 포켓몬 ]",
   "cli.unlock.empty": "  아직 아무것도 없습니다.",
   "cli.unlock.usage": "사용법: tokenmon unlock list",
-
   "cli.achievements.header": "[ 업적 ]",
-
   "cli.config.usage": "사용법: tokenmon config set <키> <값>",
   "cli.config.keys_header": "설정 가능한 키:",
   "cli.config.key_tokens_per_xp": "  tokens_per_xp    - 토큰당 XP 비율 (기본: 10000)",
@@ -60,7 +55,6 @@
   "cli.config.bool_error": "true 또는 false 값을 입력하세요.",
   "cli.config.set_success": "✓ {key} = {value} 로 설정했습니다.",
   "cli.config.usage_set": "사용법: tokenmon config set <키> <값>",
-
   "cli.pokedex.not_found": "\"{name}\" 포켓몬을 찾을 수 없습니다.",
   "cli.pokedex.status_caught": "포획됨",
   "cli.pokedex.status_seen": "목격됨",
@@ -98,12 +92,10 @@
   "cli.pokedex.summary_row": "  {region}: {caught}/{total} 포획 ({pct}%)",
   "cli.pokedex.summary_total": "  합계: {caught}/{total} ({pct}%)",
   "cli.pokedex.no_results": "  필터에 맞는 포켓몬이 없습니다.",
-
   "cli.items.header": "[ 아이템 ]",
   "cli.items.empty": "  아이템이 없습니다.",
   "cli.items.pokeball": "몬스터볼",
   "cli.items.count": "{name}: {count}개",
-
   "cli.region.moved": "{region}(으)로 이동했습니다!",
   "cli.region.list_title": "=== 지역 목록 ===",
   "cli.region.current_marker": " ← 현재",
@@ -115,12 +107,10 @@
   "cli.region.current_title": "=== 현재 지역: {name} ===",
   "cli.region.level_range": "  레벨 범위: Lv.{min} ~ Lv.{max}",
   "cli.region.pokemon_pool": "  출현 포켓몬: {count}종",
-
   "cli.reset.warning": "경고: 모든 데이터가 초기화됩니다! (포켓몬, 업적, 아이템 등)",
   "cli.reset.confirm": "정말 초기화하시겠습니까? (y/N): ",
   "cli.reset.cancelled": "초기화가 취소되었습니다.",
   "cli.reset.done": "모든 데이터가 초기화되었습니다. (치트 로그는 보존됨)",
-
   "cli.cheat.xp_usage": "사용법: tokenmon cheat xp <포켓몬> <양>",
   "cli.cheat.xp_no_pokemon": "{pokemon} 포켓몬이 없습니다.",
   "cli.cheat.xp_success": "{pokemon}에게 XP {amount} 추가 (총 {total})",
@@ -136,7 +126,6 @@
   "cli.cheat.multiplier_usage": "사용법: tokenmon cheat multiplier <값>",
   "cli.cheat.multiplier_success": "XP 배율을 {value}로 설정",
   "cli.cheat.unknown": "사용법: tokenmon cheat <xp|level|unlock|achievement|item|multiplier> ...",
-
   "cli.help.title": "토큰몬 (Tokénmon) - Claude Code 포켓몬 파트너",
   "cli.help.usage": "사용법: tokenmon <명령> [옵션]",
   "cli.help.commands": "명령어:",
@@ -162,26 +151,21 @@
   "cli.evolve.cancelled": "진화를 취소했습니다.",
   "cli.evolve.failed": "진화에 실패했습니다.",
   "cli.evolve.success": "✨ {old:이/가} {new}(으)로 진화했습니다!",
-
   "cli.notifications.header": "[ 알림 ]",
   "cli.notifications.empty": "  알림이 없습니다.",
   "cli.notifications.cleared": "✓ 모든 알림을 삭제했습니다.",
   "cli.notifications.clear_hint": "tokenmon notifications clear 로 알림을 모두 삭제할 수 있습니다.",
-
   "cli.config.key_notifications": "  notifications_enabled - 알림 표시 true/false",
   "cli.config.key_pp_enabled": "  pp_enabled           - AI대타출동(PP) 표시 true/false",
-
   "cli.help.cmd_evolve": "  evolve              진화 대기 포켓몬 목록",
   "cli.help.cmd_evolve_pokemon": "  evolve <이름>       포켓몬 진화 (분기 선택)",
   "cli.help.cmd_notifications": "  notifications       알림 보기",
   "cli.help.cmd_notifications_clear": "  notifications clear 알림 모두 삭제",
   "cli.help.cmd_friendly_battle": "  friendly-battle     친선 배틀 명령 (local v1)",
-
   "notification.evolution_ready": "{pokemon:이/가} 진화 준비 완료! 실행: tokenmon evolve {pokemon}",
   "statusline.evolution_ready": "✨ {pokemon:이/가} 진화 준비 완료! /tkm evolve {pokemon}",
   "notification.region_unlocked": "새로운 지역 {count}개 해금! 실행: tokenmon region list",
   "notification.achievement_near": "업적 \"{name}\" 달성률 {pct}%!",
-
   "cli.help.cmd_items": "  items               아이템 목록",
   "cli.help.cmd_region": "  region              현재 지역 보기",
   "cli.help.cmd_region_list": "  region list         전체 지역 목록",
@@ -204,8 +188,7 @@
   "cli.help.ex3": "  tokenmon party add 팽도리",
   "cli.help.ex4": "  tokenmon config set cry_enabled false",
   "cli.unknown_command": "알 수 없는 명령어: {command}",
-
-  "cli.lock_failed": "락 획득 실패. 잠시 후 다시 시도하세요.",
+  "cli.lock_failed": "잠금 획득에 실패했습니다. 다시 시도해주세요.",
   "cli.lock_busy": "다른 프로세스가 데이터를 사용 중입니다. 잠시 후 다시 시도하세요.",
   "cli.config.help_renderer": "  renderer             - 스프라이트 렌더러 (kitty/sixel/iterm2/braille)",
   "cli.config.key_voice_tone": "  voice_tone           - 텍스트 말투 claude/pokemon (기본: claude)",
@@ -217,14 +200,11 @@
   "cli.cheat.achievement_unlocked": "업적 {name} 해금",
   "cli.cheat.item_added": "{name} x{count} 추가 (총 {total})",
   "cli.cheat.xp_multiplier_set": "XP 배율을 {value}로 설정",
-
   "renderer.kitty_desc": "Kitty Graphics Protocol (실험적 — 최고 품질, 원본 PNG)",
   "renderer.sixel_desc": "Sixel (실험적 — DEC 호환, 넓은 터미널 지원)",
   "renderer.iterm2_desc": "iTerm2 Inline Images (실험적 — macOS iTerm2/WezTerm)",
   "renderer.braille_desc": "Braille (권장 — 기존 방식, 모든 터미널 호환)",
-
   "setup.recommended": " [추천]",
-
   "guide.index.title": "=== 토큰몬 가이드 ===",
   "guide.index.usage": "사용법: tokenmon guide <주제>",
   "guide.index.topics": "주제:",
@@ -234,7 +214,6 @@
   "guide.index.topic_xp": "  xp            XP / 레벨링 (계산식, 파티 분배, 파견 보너스)",
   "guide.index.topic_item": "  item          아이템 (몬스터볼, 드랍률, 포획)",
   "guide.unknown_topic": "알 수 없는 주제: {topic}",
-
   "guide.battle.title": "=== 전투 가이드 ===",
   "guide.battle.encounter_header": "[ 전투 발생 ]",
   "guide.battle.encounter_desc1": "  세션 시작 시 15% 확률로 야생 포켓몬과 조우합니다.",
@@ -266,7 +245,6 @@
   "guide.battle.reward_lose": "  패배 시 XP = 0",
   "guide.battle.reward_catch": "  승리 시 포획 확률 = 포켓몬별 포획률에 따라 결정",
   "guide.battle.reward_rarity": "  {gray}희귀도 보너스: 일반=0, 고급=30, 희귀=80, 전설=200, 환상=500{reset}",
-
   "guide.region.title": "=== 지역 가이드 ===",
   "guide.region.move_header": "[ 지역 이동 ]",
   "guide.region.move_list": "  tokenmon region list    전체 지역 목록",
@@ -282,7 +260,6 @@
   "guide.region.tip1": "  높은 레벨 지역 = 더 강한 야생 포켓몬 = 더 많은 XP",
   "guide.region.tip2": "  각 지역의 고유 포켓몬 풀이 다르므로 도감 완성엔 지역 이동 필수",
   "guide.region.tip3": "  챔피언 로드는 50종 포획 필요 — 전설 포켓몬이 출현합니다",
-
   "guide.achievement.title": "=== 업적 가이드 ===",
   "guide.achievement.check_header": "[ 업적 확인 ]",
   "guide.achievement.check_cmd": "  tokenmon achievements   전체 업적 목록 및 달성 여부",
@@ -295,7 +272,6 @@
   "guide.achievement.reward_xp": "  XP 보너스: 영구적 XP 배율 증가 (중첩 가능)",
   "guide.achievement.reward_ball": "  몬스터볼: 야생 포켓몬 포획에 사용",
   "guide.achievement.reward_slot": "  파티 슬롯: 최대 파티 크기 증가",
-
   "guide.xp.title": "=== XP / 레벨링 가이드 ===",
   "guide.xp.gain_header": "[ XP 획득 ]",
   "guide.xp.gain_desc": "  전투 승리 시 XP 획득 (패배 시 0)",
@@ -318,7 +294,6 @@
   "guide.xp.expgroup_desc1": "  포켓몬마다 경험치 그룹이 다릅니다 (fast, medium_fast, medium_slow, slow 등)",
   "guide.xp.expgroup_desc2": "  같은 레벨이라도 필요 XP가 다를 수 있습니다",
   "guide.xp.expgroup_hint": "  {gray}각 포켓몬의 그룹: tokenmon pokedex <이름>{reset}",
-
   "guide.item.title": "=== 아이템 가이드 ===",
   "guide.item.check_header": "[ 아이템 확인 ]",
   "guide.item.check_cmd": "  tokenmon items   현재 보유 아이템",
@@ -333,7 +308,6 @@
   "guide.item.catch_desc2": "  볼이 없으면 승리해도 포획 불가 (도감 등록 + XP만 획득)",
   "guide.item.catch_desc3": "  이미 포획한 포켓몬과의 전투에서는 볼이 소비되지 않습니다.",
   "guide.item.catch_tip": "  {yellow}팁: 새로운 포켓몬을 만나기 전에 몬스터볼을 충분히 확보하세요{reset}",
-
   "setup.postinstall.title": "  토큰몬 (Tokénmon) 초기 설정...",
   "setup.postinstall.already_exists": "  ✓ {path} 이미 존재 (보존)",
   "setup.postinstall.backup_created": "  ℹ 백업 생성: {path}",
@@ -346,11 +320,9 @@
   "setup.postinstall.legacy_old": "    이전 데이터: {path}",
   "setup.postinstall.legacy_new": "    새 데이터:   {path}",
   "setup.postinstall.legacy_cleanup": "    기존 bash 훅은 수동으로 정리하세요.",
-
   "statusline.no_starter": "[스타터를 선택하세요: /tkm:tkm starter]",
   "statusline.party_empty": "[파티가 비어있습니다]",
   "statusline.pp_label": "🔋",
-
   "setup.statusline.already_set": "  ✓ tokenmon statusLine 이미 설정됨 (건너뜀)",
   "setup.statusline.wrapper_updated": "  ✓ tokenmon 래퍼 최신 버전으로 갱신됨",
   "setup.statusline.wrapper_already": "  ✓ tokenmon 래퍼 이미 설정됨 (건너뜀)",
@@ -358,7 +330,6 @@
   "setup.statusline.wrapper_created": "  ✓ 래퍼 생성: {path}",
   "setup.statusline.combined": "  ✓ 기존 statusLine과 tokenmon을 함께 표시하도록 설정됨",
   "setup.statusline.registered": "  ✓ tokenmon statusLine 등록 완료",
-
   "battle.win": "⚔️ vs 야생 {defender} (Lv.{level}) → 승리! (XP +{xp})",
   "battle.win_dispatch": "⚔️ vs 야생 {defender} (Lv.{level}) → 승리! (XP +{xp}, 파견 +{dispatch})",
   "battle.win_catch": "\n🎉 {defender:을/를} 포획했습니다! (tokenmon party add {defender})",
@@ -370,7 +341,6 @@
   "battle.shiny_appeared": "✦ 색이 다른 {pokemon:이/가} 나타났다!",
   "battle.shiny_catch": "\n★ 색이 다른 포켓몬 포획 성공!",
   "battle.shiny_escaped": "\n색이 다른 {pokemon:이/가} 도망쳤다...",
-
   "battle.gym_challenge": "{leader:이/가} 승부를 걸어왔다!",
   "battle.send_out": "{leader:은/는} {pokemon:을/를} 내보냈다!",
   "battle.go": "가라, {pokemon}!",
@@ -391,30 +361,24 @@
   "move.rest.success": "{name}은(는) 잠들면서 HP를 회복했다!",
   "move.recoil": "{name}은(는) 반동 데미지를 입었다!",
   "move.drain": "{name}은(는) HP를 흡수했다!",
-
   "achievement.unlocked": "🏆 업적 달성: {name}! ",
   "achievement.unlocked_pokemon": "🏆 업적 달성: {name}! {pokemon:을/를} 얻었습니다!",
   "achievement.unlocked_message": "🏆 업적 달성: {name}! {message}",
-
   "region.not_found": "\"{name}\" 지역을 찾을 수 없습니다.",
   "region.locked_caught": "포획",
   "region.locked_seen": "발견",
   "region.locked": "이 지역은 포켓몬 {count}종 {label} 후 해금됩니다.",
-
   "hook.levelup": "⬆️ {pokemon} Lv.{from} → Lv.{to}! (XP: +{xp})",
   "hook.evolution": "✨ {pokemon:이/가} {newPokemon}(으)로 진화했습니다!",
   "hook.party_join": "🎊 {pokemon:이/가} 파티에 합류했습니다!",
   "hook.evolution_candidate_line": "- 포켓몬: {pokemon}\n  그대로 쓸 질문 (AskUserQuestion.question, 한 글자도 바꾸지 말 것): \"{pokemon:이/가} 진화할 준비가 되었어! 어느 폼으로 진화할까?\"\n  진화 대상 전체: {targets}",
   "hook.evolution_block_reason": "파티 포켓몬이 진화할 준비가 되었습니다.\n\n반드시 AskUserQuestion을 호출하세요. 포켓몬당 하나의 subquestion (최대 4 포켓몬까지 배치).\n\n각 subquestion 규칙:\n- `question` 필드: 아래 후보 항목의 '그대로 쓸 질문'을 문자 그대로(paraphrase 금지) 복사해서 사용합니다.\n- `options` (버튼, 최대 4개):\n  - 진화 대상 3개 이하 → 모든 대상 + '거부'.\n  - 진화 대상 4개 이상 → 앞 3개 대상 + '거부'. 나머지 대상은 question 본문 뒤에 별도 줄로 \"다른 폼: A, B, C\" 처럼 나열해 사용자가 'Other'로 이름을 타이핑할 수 있게 합니다.\n- `multiSelect`: false\n\n후보:\n{candidateList}\n\n사용자 응답 처리:\n- 버튼으로 대상 선택 → `tokenmon evolve <pokemon> <target>` 실행.\n- '거부' 버튼 또는 Other에 '거부'/'no'/'cancel' → 아무것도 하지 않음 (자동 재질문 없음).\n- Other 입력의 경우 `tokenmon evolve` 실행 전에 반드시 validate:\n  - 입력 텍스트(대소문자 무시, 한/영 이름 모두 허용)가 위 '진화 대상 전체' 목록의 포켓몬 이름과 일치하면 evolve 실행.\n  - 일치하지 않으면 \"인식되지 않은 선택입니다. 버튼을 누르거나 다음 중 하나를 입력해 주세요: {targets}, 거부\"처럼 짧게 안내하고 동일한 AskUserQuestion을 다시 호출 (무한루프 방지: 최대 2회 재질문, 그 후에는 '거부'로 간주).",
-
   "tier.heated": "풀숲이 크게 흔들리고 있다... (다음 턴 조우율 1.5x, XP 1.5x)",
   "tier.intense": "주변에 수상한 기운이 감돌고 있다... (다음 턴 조우율 2.5x, XP 2.5x)",
   "tier.legendary": "공기 속에 강한 에너지가 차오른다! (다음 턴 조우율 4x, XP 5x)",
-
   "tip.volume_xp": "한번에 많은 토큰을 사용하면 경험치를 더 많이 받을 수 있다고 한다.",
   "tip.volume_encounter": "긴 작업을 하면 야생 포켓몬이 더 자주 나타나는 것 같다.",
   "tip.volume_rare": "복잡한 작업일수록 강한 포켓몬이 나타날 확률이 높아진다는 소문이 있다.",
-
   "tip.battle_type_advantage": "💡 타입 상성으로 승률이 크게 변합니다! 약점을 노려보세요",
   "tip.battle_level_matters": "💡 레벨 차이가 클수록 승률이 급변합니다 (Lv.4 vs Lv.12 = ~17%)",
   "tip.battle_best_pokemon": "💡 전투 시 타입 상성이 가장 좋은 파티원이 자동 선택됩니다",
@@ -445,12 +409,10 @@
   "tip.item_ball_count": "🔴 현재 몬스터볼: {count}개. 새로운 포켓몬을 만날 준비를 하세요!",
   "tip.item_achievement_balls": "🔴 업적 보상으로 몬스터볼을 대량 획득할 수 있습니다 (최대 10개!)",
   "tip.item_ball_strategy": "🔴 이미 포획한 포켓몬과의 전투에서는 몬스터볼이 소비되지 않습니다",
-
   "item_drop.tool": "모험 도중 몬스터볼을 발견했습니다! 몬스터볼 {n}개를 손에 넣었습니다!",
   "item_drop.subagent": "동료가 몬스터볼을 가지고 돌아왔습니다! 몬스터볼 {n}개를 손에 넣었습니다!",
   "item_drop.session_end": "오늘의 모험 보수로 몬스터볼 {n}개를 받았습니다!",
   "item_drop.generic": "몬스터볼 {n}개를 주웠습니다!",
-
   "cli.dashboard.region": "지역: {region} (Lv.{min}-{max})",
   "cli.dashboard.streak": "연속 출석: {days}일 (최고: {best})",
   "cli.dashboard.pokedex": "도감: {caught}/{total} ({pct}%)",
@@ -463,7 +425,6 @@
   "cli.dashboard.activity_encounters": "• 인카운터 {count}회",
   "cli.dashboard.events_title": "오늘의 이벤트",
   "cli.dashboard.events_none": "활성 이벤트 없음",
-
   "cli.stats.header": "=== 통계 ===",
   "cli.stats.streak_header": "[ 연속 출석 ]",
   "cli.stats.streak_days": "  현재 연속: {days}일",
@@ -478,13 +439,10 @@
   "cli.stats.alltime_battles": "  전투: {wins}승 / {losses}패",
   "cli.stats.alltime_catches": "  포획: {count}회",
   "cli.stats.alltime_encounters": "  인카운터: {count}회",
-
   "cli.help.cmd_dashboard": "  dashboard           전체 대시보드",
   "cli.help.cmd_stats": "  stats               통계 보기 (주간 + 전체)",
-
   "event.active_header": "활성 이벤트",
   "event.none": "활성 이벤트 없음",
-
   "rewards.milestone_reached": "🎉 도감 마일스톤 달성: {label}",
   "rewards.pokeball_reward": "  → 몬스터볼 x{count} 획득!",
   "rewards.xp_multiplier_reward": "  → XP 배율 +{value}% 영구 증가!",
@@ -495,7 +453,6 @@
   "rewards.type_master": "⭐ 타입 마스터 달성: {type}! (배틀 XP 1.2배)",
   "rewards.chain_complete": "🔗 진화 체인 완성! (몬스터볼 x{count} 획득)",
   "rewards.type_master_legendary": "⭐ 타입 마스터 {count}개 달성! 특별 전설 포켓몬 해금!",
-
   "cli.legendary.header": "=== 전설의 포켓몬 ===",
   "cli.legendary.no_pending": "해금 대기 중인 전설 그룹이 없습니다. 더 많이 포획하세요!",
   "cli.legendary.pool_header": "[ 전설 풀 (야생 출현) ]",
@@ -503,7 +460,6 @@
   "cli.legendary.invalid_choice": "잘못된 선택입니다.",
   "cli.legendary.selected": "✨ {pokemon}(이)가 팀에 합류했습니다!",
   "cli.legendary.pool_added": "  {names}(이)가 야생 인카운터 풀에 추가되었습니다.",
-
   "cli.box.header": "[ 박스 ]",
   "cli.box.empty": "  박스가 비어 있습니다.",
   "cli.box.sort_hint": "--sort level|type|name|rarity 로 정렬. --search 로 이름 검색 가능.",
@@ -511,7 +467,6 @@
   "cli.box.filter": "  필터: {filter}",
   "cli.box.no_results": "  필터에 맞는 포켓몬이 없습니다.",
   "cli.box.shiny_tag": "★",
-
   "cli.party.swap_usage": "사용법: tokenmon party swap <슬롯> <포켓몬>",
   "cli.party.swap_invalid_slot": "잘못된 슬롯 번호입니다. (1-{max})",
   "cli.party.swap_not_in_box": "{pokemon}(이)가 박스에 없습니다.",
@@ -522,69 +477,55 @@
   "cli.party.reorder_success": "✓ {pokemon}: 슬롯 {from} → 슬롯 {to}",
   "cli.party.suggest_header": "[ {region} 추천 파티 ]",
   "cli.party.suggest_no_region": "지역이 설정되지 않았습니다.",
-
   "cli.help.cmd_legendary": "  legendary           전설 포켓몬 보기/선택",
   "cli.help.cmd_box": "  box [--sort key]    박스 보기 (보관된 포켓몬)",
   "cli.help.cmd_party_swap": "  party swap <s> <p>  파티 슬롯과 박스 포켓몬 교환",
   "cli.help.cmd_party_reorder": "  party reorder <f> <t> 파티 순서 변경",
   "cli.help.cmd_party_suggest": "  party suggest       현재 지역 추천 파티",
-
   "notification.legendary_unlocked": "전설 그룹 해금! 실행: tokenmon legendary",
-
   "cli.pokedex.type_master_header": "[ 타입 마스터 ]",
   "cli.pokedex.type_progress": "  {type}: {caught}/{total} ({pct}%)",
   "cli.pokedex.type_mastered": "  {type}: 마스터 ✓ (XP 1.2배)",
-
-  "star.prompt": "⭐ Tok\u00e9mon 즐기고 계신가요? tokenmon star 로 GitHub 스타를 눌러주세요!",
-  "star.success": "⭐ Tok\u00e9mon에 스타를 눌러주셔서 감사합니다!",
+  "star.prompt": "⭐ Tokémon 즐기고 계신가요? tokenmon star 로 GitHub 스타를 눌러주세요!",
+  "star.success": "⭐ Tokémon에 스타를 눌러주셔서 감사합니다!",
   "star.failed": "스타 실패. gh CLI가 설치되어 있고 인증되었는지 확인하세요.",
   "star.dismissed": "스타 프롬프트를 비활성화했습니다.",
   "rest.activate": "💤 {hours}시간 휴식 보너스가 적용됩니다! 다음 {turns}턴 경험치 {mult}배",
   "tip.rest_info": "💤 가끔 쉬어가면 경험치 보너스를 받을 수 있습니다!",
   "tip.rest_threshold": "💤 2시간 이상 쉬면 휴식 보너스가 활성화됩니다.",
-
-  "cli.lock_failed": "잠금 획득에 실패했습니다. 다시 시도해주세요.",
   "cli.call.not_found": "포켓몬을 찾을 수 없습니다: {name}",
   "cli.nickname.not_found": "포켓몬을 찾을 수 없습니다: {name}",
   "cli.nickname.too_long": "닉네임은 7글자 이하로 지어주세요.",
   "cli.nickname.current": "{species}의 닉네임: {nickname}",
   "cli.nickname.none": "{species}에게 아직 닉네임이 없습니다.",
   "cli.nickname.set": "{species}의 닉네임을 '{nickname}'(으)로 정했습니다!",
-
   "rarity.common": "일반",
   "rarity.uncommon": "고급",
   "rarity.rare": "희귀",
   "rarity.legendary": "전설",
   "rarity.mythical": "환상",
-
   "exp_group.medium_fast": "보통빠름",
   "exp_group.medium_slow": "보통느림",
   "exp_group.fast": "빠름",
   "exp_group.slow": "느림",
   "exp_group.erratic": "불규칙",
   "exp_group.fluctuating": "변동",
-
   "weather.location_set": "날씨 위치가 {location}(으)로 설정되었습니다. 매 세션마다 업데이트됩니다.",
   "weather.fetch_failed": "날씨 데이터를 가져올 수 없습니다. 다음 세션에 재시도합니다.",
-
   "gym.gate_rejected": "이 체육관에 도전하려면 이 지역의 도감을 더 채우거나 파티를 더 성장시켜야 합니다! (도감: {caught}/{required}마리, 파티 평균 레벨: Lv.{avgLevel}/{requiredLevel})",
-
   "tip.gym_region_rumor": "각 지역에는 강력한 관장이 기다리고 있다는 소문이 있다.",
   "tip.gym_badge_reward": "관장에게 이기면 특별한 배지를 얻을 수 있다고 한다.",
   "tip.gym_gate_hint": "🏟️ 체육관에 도전하려면 해당 지역의 도감을 채우거나 파티를 성장시키세요!",
   "tip.gym_badge_collect": "🏟️ 배지를 모아 챔피언에게 도전하세요! `/tkm gym list`로 확인",
   "tip.gym_next_info": "🏟️ 다음 체육관: {leaderName} ({type}타입) — 상성을 준비하세요!",
   "tip.gym_badge_progress": "배지를 {badgeCount}개 모았다. 챔피언까지 {remaining}개 남았다고 한다.",
-
   "gym.champion_badge_required": "모든 배지를 모아야 챔피언에게 도전할 수 있습니다! (현재 배지: {badgeCount}/8)",
-
   "gym.badge_earned": "🥊 {badge} 획득! ({leader} 격파) [{count}/8]",
   "gym.champion_victory_header": "챔피언 승리!",
   "gym.champion_victory_detail": "{region} 챔피언 {leader} 격파!",
   "gym.title_earned": "칭호 획득: {title}",
   "gym.reward_pokemon": "보상: {pokemon} 획득!",
   "gym.reward_xp_dump": "{pokemon}에게 {xp} XP 부여! (Lv.{oldLevel} → Lv.{newLevel})",
-
   "achievement.first_badge": "첫 번째 배지",
   "achievement.four_badges": "배지 수집가",
   "achievement.eight_badges": "체육관 마스터",
@@ -593,7 +534,6 @@
   "achievement.total_badges_30": "배지 마니아",
   "achievement.three_gen_champion": "멀티 챔피언",
   "achievement.all_gen_champion": "포켓몬 마스터",
-
   "title.champion_kanto": "관동 챔피언",
   "title.champion_johto": "성도 챔피언",
   "title.champion_hoenn": "호연 챔피언",
@@ -605,7 +545,6 @@
   "title.champion_paldea": "팔데아 챔피언",
   "title.multi_champion": "멀티 챔피언",
   "title.pokemon_master": "포켓몬 마스터",
-
   "status.paralysis.inflicted": "{name:은/는} 마비되었다!",
   "status.paralysis.immobile": "{name:은/는} 몸이 저려 움직일 수 없다!",
   "status.sleep.inflicted": "{name:은/는} 잠들었다!",
@@ -653,5 +592,82 @@
   "stat.name.sp_defense": "특수방어",
   "stat.name.speed": "스피드",
   "stat.name.accuracy": "명중률",
-  "stat.name.evasion": "회피율"
+  "stat.name.evasion": "회피율",
+  "battle.used_move": "{name}의 {move}!",
+  "battle.effect_super": "효과가 굉장했다!",
+  "battle.effect_not_very": "효과가 별로인 듯하다...",
+  "battle.effect_immune": "효과가 없는 듯하다...",
+  "battle.fainted": "{name}은(는) 쓰러졌다!",
+  "gym.status_line": "⚔️ {leader}의 체육관 — {type}",
+  "battle.struggle": "{name}은(는) 발버둥쳤다!",
+  "battle.surrender": "항복했다...",
+  "gym.already_cleared": "이 지역({region})의 체육관은 이미 클리어했어. 다른 지역으로 이동해야 새 체육관에 도전할 수 있어.",
+  "battle.opp_sent_out": "상대가 {name}(을)를 내보냈다!",
+  "battle.battle_start": "배틀 시작!",
+  "battle.tui.gym_name": "{leader}의 체육관",
+  "battle.tui.type_specialist": "{type} 타입 전문",
+  "battle.standalone": "배틀",
+  "battle.tui.switch_btn": "교체",
+  "battle.tui.surrender_btn": "항복",
+  "battle.tui.badge_obtained": "{badge}을(를) 획득했다!",
+  "battle.tui.victory": "승리!",
+  "battle.tui.defeat": "패배...",
+  "battle.tui.defeat_to": "{leader}에게 졌다...",
+  "common.yes": "예",
+  "common.no": "아니오",
+  "cli.gym_list.title": "{gen} 체육관",
+  "cli.gym_list.empty": "체육관 데이터가 없습니다.",
+  "cli.gym_list.badge_count": "배지: {count}/{total}",
+  "cli.gym_list.error": "{gen} 체육관 데이터를 찾을 수 없습니다.",
+  "cli.moves.physical": "물리",
+  "cli.moves.special": "특수",
+  "cli.moves.no_moves": "(기술 없음)",
+  "cli.moves.not_owned": "{name}은(는) 보유하지 않은 포켓몬입니다.",
+  "cli.moves.learnable_title": "{name} Lv.{level} — 습득 가능 기술",
+  "cli.moves.no_learnable": "(습득 가능한 기술이 없습니다)",
+  "cli.moves.legend": "● 장착중  ○ 습득 가능  · 레벨 부족",
+  "cli.moves.not_learnable": "기술 ID {id}은(는) 이 포켓몬이 배울 수 없는 기술입니다.",
+  "cli.moves.level_required": "레벨이 부족합니다. (필요: Lv.{required}, 현재: Lv.{current})",
+  "cli.moves.invalid_slot": "슬롯 번호는 1-4 사이여야 합니다.",
+  "cli.moves.lock_failed": "상태 잠금을 획득하지 못했습니다. 다시 시도해 주세요.",
+  "cli.moves.swap_success": "{name}의 슬롯 {slot} 기술을 변경했습니다.",
+  "cli.moves.no_pokemon": "파티에 포켓몬이 없습니다.",
+  "cli.moves.swap_usage": "사용법: moves <포켓몬> swap <슬롯(1-4)> <기술ID>",
+  "battle.opp_label": "상대 {name} Lv.{level} HP:{hp}/{maxHp}",
+  "battle.self_label": "내 {name} Lv.{level} HP:{hp}/{maxHp}",
+  "battle.self_hp_next_turn": "(상대 HP는 다음 턴 결과에서 확인)",
+  "fb.transport.timeout": "{label} 대기 중 시간이 초과되었습니다.",
+  "fb.transport.listen_failed": "host가 {host}:{port}에서 listen하지 못했습니다. 이미 사용 중인 포트인지, host 주소가 유효한지 확인하세요. ({errorCode})",
+  "fb.transport.listen_resolve_address_failed": "friendly battle spike host가 바인딩 주소를 확인하지 못했습니다.",
+  "fb.transport.advertise_required_listen": "host가 {host} 같은 wildcard 주소로 listen할 때는 guest에게 전달할 --join-host(광고용 host)가 필요합니다.",
+  "fb.transport.advertise_required_concrete": "--join-host는 guest가 실제로 접속할 수 있는 구체적인 host여야 합니다. {host} 같은 wildcard 주소는 사용할 수 없습니다.",
+  "fb.transport.room_full": "이미 guest가 연결되어 있습니다.",
+  "fb.transport.unsupported_protocol": "지원하지 않는 friendly battle protocol 버전입니다. host={host}, guest={guest}",
+  "fb.transport.bad_session_code": "세션 코드가 일치하지 않습니다. host가 보여준 session code({sessionCode})를 다시 확인하세요.",
+  "fb.transport.generation_mismatch": "세대가 일치하지 않습니다. host={host}, guest={guest}",
+  "fb.transport.invalid_guest_snapshot": "guest snapshot 검증에 실패했습니다: {reason}",
+  "fb.transport.snapshot_generation_mismatch": "guest snapshot 세대가 host 세대와 다릅니다. host={host}, snapshot={snapshot}",
+  "fb.transport.socket_closed_guest": "guest 연결이 종료되었습니다.",
+  "fb.transport.not_connected": "아직 guest가 연결되지 않았습니다. join 정보를 확인하세요.",
+  "fb.transport.not_ready": "battle을 시작하려면 양쪽 모두 ready 상태여야 합니다.",
+  "fb.transport.battle_not_started_send": "battle이 시작되기 전에는 이벤트를 보낼 수 없습니다.",
+  "fb.transport.connection_failed": "host에 연결하지 못했습니다. host 프로세스가 실행 중인지, 주소({host})와 포트({port})가 맞는지 확인하세요. ({errorCode})",
+  "fb.transport.protocol_mismatch": "protocol 버전이 일치하지 않습니다. host={host}, guest={guest}",
+  "fb.transport.hello_ack_generation_mismatch": "세대가 일치하지 않습니다. host={host}, guest={guest}",
+  "fb.transport.socket_closed_host": "host 연결이 종료되었습니다.",
+  "fb.transport.socket_error": "friendly battle socket 오류: {errorCode}",
+  "fb.transport.battle_not_started_submit": "battle 시작 신호를 받기 전에는 행동을 제출할 수 없습니다.",
+  "fb.cli.host.next_action.join_host": "guest가 접속할 실제 join host를 --join-host 로 지정한 뒤 다시 host 하세요.",
+  "fb.cli.host.next_action.listen": "입력한 host/port를 확인하거나 이미 같은 포트를 쓰는 프로세스를 종료한 뒤 다시 host 하세요.",
+  "fb.cli.host.next_action.ready": "guest가 join 후 ready 단계까지 완료했는지 확인한 뒤 다시 host 하세요.",
+  "fb.cli.host.next_action.join": "guest가 올바른 host/port/session code로 join 했는지 확인하세요.",
+  "fb.cli.host.next_action.battle": "battle 시작 후 상대 행동이 도착하는지 확인하고, 필요하면 다시 host 하세요.",
+  "fb.cli.host.next_action.generic": "입력한 host/port/session code와 guest 진행 상태를 확인한 뒤 다시 host 하세요.",
+  "fb.cli.host.timeout.join": "guest join 대기 중 시간이 초과되었습니다.",
+  "fb.cli.host.timeout.ready": "guest ready 대기 중 시간이 초과되었습니다.",
+  "fb.cli.host.timeout.guest_choice": "guest choice 대기 중 시간이 초과되었습니다.",
+  "fb.cli.guest.next_action.handshake": "host가 보여준 session code를 다시 확인한 뒤 다시 join 하세요.",
+  "fb.cli.guest.next_action.connect": "host 프로세스와 입력한 host/port/session code를 다시 확인하세요.",
+  "fb.cli.guest.next_action.ready": "host가 battle 시작 전까지 유지되고 있는지 확인한 뒤 다시 join 하세요.",
+  "fb.cli.guest.next_action.battle": "host가 battle 시작 단계까지 진행됐는지 확인한 뒤 다시 join 하세요."
 }

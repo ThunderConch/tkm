@@ -18,7 +18,7 @@ import { selectAiAction } from '../core/gym-ai.js';
 import { getGymById, awardGymVictory, canChallengeGym } from '../core/gym.js';
 import { getPokemonDB, getPokemonName, speciesIdToGeneration } from '../core/pokemon-data.js';
 import { getActiveGeneration } from '../core/paths.js';
-import { initLocale, t } from '../i18n/index.js';
+import { initLocale, t, getLocale } from '../i18n/index.js';
 import { readGlobalConfig, readConfig, writeConfig } from '../core/config.js';
 import { checkAchievements, checkCommonAchievements, formatAchievementMessage } from '../core/achievements.js';
 import { withLockRetry } from '../core/lock.js';
@@ -95,6 +95,7 @@ function buildQuestionContext(player: BattlePokemon, opponent: BattlePokemon): s
 function buildMoveOptions(player: BattlePokemon): Array<{
   index: number;
   nameKo: string;
+  nameEn: string;
   pp: number;
   maxPp: number;
   disabled: boolean;
@@ -102,6 +103,7 @@ function buildMoveOptions(player: BattlePokemon): Array<{
   return player.moves.map((move, index) => ({
     index: index + 1,
     nameKo: move.data.nameKo,
+    nameEn: move.data.nameEn,
     pp: move.currentPp,
     maxPp: move.data.pp,
     disabled: move.currentPp <= 0 || player.fainted,
@@ -248,7 +250,7 @@ function handleInit(): void {
       output({
         status: 'rejected',
         messages: [
-          `이 지역(${currentRegion})의 체육관은 이미 클리어했어. 다른 지역으로 이동해야 새 체육관에 도전할 수 있어.`,
+          t('gym.already_cleared', { region: currentRegion }),
         ],
       });
       process.exit(0);
@@ -383,8 +385,8 @@ function handleInit(): void {
   output(withBattleMetadata(bsf, {
     status: 'ongoing',
     messages: [
-      t('battle.gym_challenge', { leader: gym.leaderKo }),
-      t('battle.send_out', { leader: gym.leaderKo, pokemon: opponentActive.displayName }),
+      t('battle.gym_challenge', { leader: gym.leader }),
+      t('battle.send_out', { leader: gym.leader, pokemon: opponentActive.displayName }),
       t('battle.go', { pokemon: playerActive.displayName }),
     ],
     menu: buildMenu(playerActive),
@@ -491,7 +493,7 @@ function handleAction(): void {
     if (nextIdx !== -1) {
       battleState.opponent.activeIndex = nextIdx;
       const newActive = getActivePokemon(battleState.opponent);
-      messages.push(t('battle.send_out', { leader: gym.leaderKo, pokemon: newActive.displayName }));
+      messages.push(t('battle.send_out', { leader: gym.leader, pokemon: newActive.displayName }));
     }
   }
 
@@ -614,7 +616,7 @@ function handleFaintedSwitch(bsf: BattleStateFile, messages: string[]): void {
 function handleVictory(bsf: BattleStateFile, messages: string[]): void {
   const { battleState, gym, generation, playerPartyNames } = bsf;
 
-  messages.push(t('battle.victory', { leader: gym.leaderKo }));
+  messages.push(t('battle.victory', { leader: gym.leader }));
 
   // Re-read state inside lock to avoid overwriting hook changes
   const lockResult = withLockRetry(() => {
@@ -669,13 +671,17 @@ function handleVictory(bsf: BattleStateFile, messages: string[]): void {
     if (isChampion) {
       messages.push('═══════════════════════════════');
       messages.push(`  🏆 ${t('gym.champion_victory_header')} 🏆`);
-      messages.push(`  ${t('gym.champion_victory_detail', { region: gym.badgeKo.replace(/ 챔피언배지$/, ''), leader: gym.leaderKo })}`);
+      const champRegion = getLocale() === 'ko'
+        ? gym.badgeKo.replace(/ 챔피언배지$/, '')
+        : gym.badge.replace(/^champion_/, '').replace(/^\w/, c => c.toUpperCase());
+      messages.push(`  ${t('gym.champion_victory_detail', { region: champRegion, leader: gym.leader })}`);
       for (const achEvent of victoryResult.achEvents) {
         messages.push(`  ${formatAchievementMessage(achEvent)}`);
       }
       messages.push('═══════════════════════════════');
     } else {
-      messages.push(t('gym.badge_earned', { badge: gym.badgeKo, leader: gym.leaderKo, count: victoryResult.badgeCount }));
+      const badgeName = getLocale() === 'ko' ? gym.badgeKo : `${gym.badge.charAt(0).toUpperCase() + gym.badge.slice(1)} Badge`;
+      messages.push(t('gym.badge_earned', { badge: badgeName, leader: gym.leader, count: victoryResult.badgeCount }));
       for (const achEvent of victoryResult.achEvents) {
         messages.push(formatAchievementMessage(achEvent));
       }
@@ -705,7 +711,7 @@ function handleVictory(bsf: BattleStateFile, messages: string[]): void {
 function handleDefeat(bsf: BattleStateFile, messages: string[]): void {
   const { battleState, gym } = bsf;
 
-  messages.push(t('battle.defeat', { leader: gym.leaderKo }));
+  messages.push(t('battle.defeat', { leader: gym.leader }));
 
   deleteBattleState();
 

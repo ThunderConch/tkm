@@ -3,6 +3,8 @@ import { FriendlyBattleTransportError, connectFriendlyBattleSpikeGuest, createFr
 import type { FriendlyBattleBattleEvent, FriendlyBattleChoice } from '../friendly-battle/contracts.js';
 import { loadFriendlyBattleCurrentProfile } from '../friendly-battle/local-harness.js';
 import { buildFriendlyBattlePartySnapshot } from '../friendly-battle/snapshot.js';
+import { readGlobalConfig } from '../core/config.js';
+import { initLocale, t } from '../i18n/index.js';
 
 type Command = 'host' | 'join';
 
@@ -10,6 +12,9 @@ type ParsedArgs = {
   command: Command;
   values: Map<string, string>;
 };
+
+const globalConfig = readGlobalConfig();
+initLocale(globalConfig.language, globalConfig.voice_tone);
 
 function usage(): never {
   console.error('Usage:');
@@ -70,7 +75,9 @@ function shellEscape(value: string): string {
 }
 
 function formatRetryHintFromError(errorMessage: string, fallbackCommand: string): string {
-  const sessionCodeMatch = errorMessage.match(/session code\(([^)]+)\)/i);
+  const sessionCodeInParens = errorMessage.match(/session code\(([^)]+)\)/i);
+  const sessionCodeAfterColon = errorMessage.match(/session code:\s*(\S+)/i);
+  const sessionCodeMatch = sessionCodeInParens ?? sessionCodeAfterColon;
   if (!sessionCodeMatch) {
     return fallbackCommand;
   }
@@ -163,16 +170,16 @@ async function runHost(values: Map<string, string>): Promise<void> {
             : 'host';
 
     const nextAction = stage === 'listen' && error.code === 'advertise_host_required'
-      ? 'guest가 접속할 실제 join host를 --join-host 로 지정한 뒤 다시 host 하세요.'
+      ? t('fb.cli.host.next_action.join_host')
       : stage === 'listen'
-        ? '입력한 host/port를 확인하거나 이미 같은 포트를 쓰는 프로세스를 종료한 뒤 다시 host 하세요.'
+        ? t('fb.cli.host.next_action.listen')
       : stage === 'ready'
-        ? 'guest가 join 후 ready 단계까지 완료했는지 확인한 뒤 다시 host 하세요.'
+        ? t('fb.cli.host.next_action.ready')
         : stage === 'join'
-          ? 'guest가 올바른 host/port/session code로 join 했는지 확인하세요.'
+          ? t('fb.cli.host.next_action.join')
           : stage === 'battle'
-            ? 'battle 시작 후 상대 행동이 도착하는지 확인하고, 필요하면 다시 host 하세요.'
-          : '입력한 host/port/session code와 guest 진행 상태를 확인한 뒤 다시 host 하세요.';
+            ? t('fb.cli.host.next_action.battle')
+          : t('fb.cli.host.next_action.generic');
 
     printFriendlyBattleFailure({
       stage,
@@ -226,7 +233,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
     const joined = await withStageTimeout(
       host.waitForGuestJoin(timeoutMs),
       'join_timeout',
-      'guest join 대기 중 시간이 초과되었습니다.',
+      t('fb.cli.host.timeout.join'),
     );
     console.log(`STAGE: guest_joined (${joined.guestPlayerName})`);
 
@@ -235,7 +242,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
     await withStageTimeout(
       host.waitUntilCanStart(timeoutMs),
       'ready_timeout',
-      'guest ready 대기 중 시간이 초과되었습니다.',
+      t('fb.cli.host.timeout.ready'),
     );
     const battleId = `spike-${sessionCode}`;
     await host.startBattle(battleId);
@@ -263,7 +270,7 @@ async function runHost(values: Map<string, string>): Promise<void> {
     const guestChoice = await withStageTimeout(
       host.waitForGuestChoice(timeoutMs),
       'guest_choice_timeout',
-      'guest choice 대기 중 시간이 초과되었습니다.',
+      t('fb.cli.host.timeout.guest_choice'),
     );
     console.log(`GUEST_CHOICE: ${formatFriendlyBattleChoice(guestChoice.choice)}`);
 
@@ -336,12 +343,12 @@ async function runJoin(values: Map<string, string>): Promise<void> {
           : currentStage;
 
     const nextAction = stage === 'handshake'
-      ? 'host가 보여준 session code를 다시 확인한 뒤 다시 join 하세요.'
+      ? t('fb.cli.guest.next_action.handshake')
       : stage === 'connect' || stage === 'join'
-        ? 'host 프로세스와 입력한 host/port/session code를 다시 확인하세요.'
+        ? t('fb.cli.guest.next_action.connect')
         : stage === 'ready'
-          ? 'host가 battle 시작 전까지 유지되고 있는지 확인한 뒤 다시 join 하세요.'
-          : 'host가 battle 시작 단계까지 진행됐는지 확인한 뒤 다시 join 하세요.';
+          ? t('fb.cli.guest.next_action.ready')
+          : t('fb.cli.guest.next_action.battle');
 
     printFriendlyBattleFailure({
       stage,

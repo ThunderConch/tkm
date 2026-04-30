@@ -81,7 +81,7 @@ export function applyConfusionSelfDamage(pokemon: BattlePokemon, messages: strin
   messages.push(t('volatile.confusion.self_hit', { name: pokemon.displayName }));
   if (pokemon.currentHp <= 0) {
     pokemon.fainted = true;
-    messages.push(`${pokemon.displayName}은(는) 쓰러졌다!`);
+    messages.push(t('battle.fainted', { name: pokemon.displayName }));
   }
 }
 

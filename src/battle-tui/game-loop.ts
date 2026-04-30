@@ -2,6 +2,7 @@ import { renderBattleScreen, renderSurrenderConfirm, renderBattleEnd } from './r
 import { createBattleState, resolveTurn, getActivePokemon, hasAlivePokemon } from '../core/turn-battle.js';
 import { selectAiAction } from '../core/gym-ai.js';
 import { startInput, stopInput } from './input.js';
+import { t } from '../i18n/index.js';
 import type { BattleState, BattlePokemon, TurnAction, GymData } from '../core/types.js';
 
 // ── Types ──
@@ -44,7 +45,7 @@ function autoSwitchAi(game: GameLoop): void {
   for (let i = 0; i < oppTeam.pokemon.length; i++) {
     if (!oppTeam.pokemon[i].fainted) {
       oppTeam.activeIndex = i;
-      game.recentMessages.push(`상대가 ${oppTeam.pokemon[i].displayName}(을)를 내보냈다!`);
+      game.recentMessages.push(t('battle.opp_sent_out', { name: oppTeam.pokemon[i].displayName }));
       return;
     }
   }
@@ -148,7 +149,7 @@ function handleSwitchKey(game: GameLoop, key: string): void {
     // Forced switch — no AI turn, just swap
     team.activeIndex = targetIndex;
     const newActive = getActivePokemon(team);
-    game.recentMessages = [`${newActive.displayName}(을)를 내보냈다!`];
+    game.recentMessages = [t('battle.go', { pokemon: newActive.displayName })];
     game.battleState.phase = 'select_action';
     game.phase = 'action_select';
   } else {
@@ -192,8 +193,8 @@ export function startGameLoop(
     gym,
     phase: 'action_select',
     recentMessages: gym
-      ? [`${gym.leaderKo}이(가) 승부를 걸어왔다!`]
-      : ['배틀 시작!'],
+      ? [t('battle.gym_challenge', { leader: gym.leader })]
+      : [t('battle.battle_start')],
     onComplete,
   };
 

@@ -398,7 +398,7 @@ function renderBattleMode(battleData: {
   console.log(padTo(oppHp, colWidth) + gapStr + playerHp);
 
   // Gym info bottom line
-  const gymLine = `\u2800\u2800\u2800\u2800\u2800\u2800\u2800\u2800⚔️ ${gym.leaderKo}의 체육관 — ${gym.type}`;
+  const gymLine = `⠀⠀⠀⠀⠀⠀⠀⠀${t('gym.status_line', { leader: gym.leader, type: gym.type })}`;
   console.log(charWrap(gymLine, printWidth));
 }
 
@@ -624,8 +624,9 @@ function main(): void {
     // PP = remaining context tokens expressed as move PP for ace pokemon
     const baseId = parseInt(toBaseId(p.speciesId), 10);
     const sigMove = SIGNATURE_MOVES[baseId];
+    const moveName = lang === 'ko' ? sigMove?.move_ko : sigMove?.move_en;
     const ppFull = (isAce && sigMove && sigMove.pp > 0)
-      ? ` ${sigMove.move_ko} PP:${calcPp(sigMove.pp, contextTokensUsed)}/${sigMove.pp}`
+      ? ` ${moveName} PP:${calcPp(sigMove.pp, contextTokensUsed)}/${sigMove.pp}`
       : '';
     const ppShort = (isAce && sigMove && sigMove.pp > 0)
       ? ` PP:${calcPp(sigMove.pp, contextTokensUsed)}/${sigMove.pp}`

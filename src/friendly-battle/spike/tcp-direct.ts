@@ -18,6 +18,7 @@ import {
 } from '../local-harness.js';
 import { assertValidFriendlyBattlePartySnapshot } from '../snapshot.js';
 import { AsyncQueue } from '../async-queue.js';
+import { t } from '../../i18n/index.js';
 
 export class FriendlyBattleTransportError extends Error {
   readonly code: string;
@@ -94,7 +95,7 @@ function isWildcardHost(host: string): boolean {
 }
 
 const transportTimeoutError = (label: string, _ms: number) =>
-  new FriendlyBattleTransportError('timeout', `${label} 대기 중 시간이 초과되었습니다.`);
+  new FriendlyBattleTransportError('timeout', t('fb.transport.timeout', { label }));
 
 export async function createFriendlyBattleSpikeHost(options: HostOptions) {
   const guestJoinQueue = new AsyncQueue<GuestJoinEvent>(transportTimeoutError);
@@ -115,7 +116,11 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       reject(
         new FriendlyBattleTransportError(
           'listen_failed',
-          `host가 ${options.host}:${options.port}에서 listen하지 못했습니다. 이미 사용 중인 포트인지, host 주소가 유효한지 확인하세요. (${error.code ?? 'unknown'})`,
+          t('fb.transport.listen_failed', {
+            host: options.host,
+            port: options.port,
+            errorCode: error.code ?? 'unknown',
+          }),
         ),
       );
     };
@@ -125,7 +130,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       server.off('error', onListenError);
       const address = server.address();
       if (!address || typeof address === 'string') {
-        reject(new FriendlyBattleTransportError('listen_failed', 'friendly battle spike host가 바인딩 주소를 확인하지 못했습니다.'));
+        reject(new FriendlyBattleTransportError('listen_failed', t('fb.transport.listen_resolve_address_failed')));
         return;
       }
       resolve({ host: address.address, port: address.port });
@@ -138,7 +143,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     });
     throw new FriendlyBattleTransportError(
       'advertise_host_required',
-      `host가 ${listenAddress.host} 같은 wildcard 주소로 listen할 때는 guest에게 전달할 --join-host(광고용 host)가 필요합니다.`,
+      t('fb.transport.advertise_required_listen', { host: listenAddress.host }),
     );
   }
 
@@ -148,7 +153,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     });
     throw new FriendlyBattleTransportError(
       'advertise_host_required',
-      `--join-host는 guest가 실제로 접속할 수 있는 구체적인 host여야 합니다. ${options.advertiseHost} 같은 wildcard 주소는 사용할 수 없습니다.`,
+      t('fb.transport.advertise_required_concrete', { host: options.advertiseHost }),
     );
   }
 
@@ -165,7 +170,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       writeMessage(incomingSocket, {
         type: 'hello_reject',
         code: 'room_full',
-        message: '이미 guest가 연결되어 있습니다.',
+        message: t('fb.transport.room_full'),
       });
       incomingSocket.end();
       return;
@@ -183,7 +188,10 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'unsupported_protocol',
-              message: `지원하지 않는 friendly battle protocol 버전입니다. host=${FRIENDLY_BATTLE_PROTOCOL_VERSION}, guest=${message.protocolVersion}`,
+              message: t('fb.transport.unsupported_protocol', {
+                host: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+                guest: message.protocolVersion,
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -196,7 +204,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'bad_session_code',
-              message: `세션 코드가 일치하지 않습니다. host가 보여준 session code(${options.sessionCode})를 다시 확인하세요.`,
+              message: t('fb.transport.bad_session_code', { sessionCode: options.sessionCode }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -209,7 +217,10 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'generation_mismatch',
-              message: `세대가 일치하지 않습니다. host=${options.generation}, guest=${message.generation}`,
+              message: t('fb.transport.generation_mismatch', {
+                host: options.generation,
+                guest: message.generation,
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -224,7 +235,9 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'invalid_guest_snapshot',
-              message: `guest snapshot 검증에 실패했습니다: ${error instanceof Error ? error.message : String(error)}`,
+              message: t('fb.transport.invalid_guest_snapshot', {
+                reason: error instanceof Error ? error.message : String(error),
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -237,7 +250,10 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'generation_mismatch',
-              message: `guest snapshot 세대가 host 세대와 다릅니다. host=${options.generation}, snapshot=${message.guestSnapshot.generation}`,
+              message: t('fb.transport.snapshot_generation_mismatch', {
+                host: options.generation,
+                snapshot: message.guestSnapshot.generation,
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -284,7 +300,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
         socket = null;
       }
       if (!closed && handshakeAccepted) {
-        destroyQueues(new FriendlyBattleTransportError('socket_closed', 'guest 연결이 종료되었습니다.'));
+        destroyQueues(new FriendlyBattleTransportError('socket_closed', t('fb.transport.socket_closed_guest')));
       }
     });
 
@@ -295,7 +311,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
 
   const ensureSocket = (): net.Socket => {
     if (!socket) {
-      throw new FriendlyBattleTransportError('not_connected', '아직 guest가 연결되지 않았습니다. join 정보를 확인하세요.');
+      throw new FriendlyBattleTransportError('not_connected', t('fb.transport.not_connected'));
     }
     return socket;
   };
@@ -327,7 +343,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
 
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
-        throw new FriendlyBattleTransportError('timeout', `${label} 대기 중 시간이 초과되었습니다.`);
+        throw new FriendlyBattleTransportError('timeout', t('fb.transport.timeout', { label }));
       }
 
       const nextReadyState = await readyStateQueue.shift(remainingMs, label);
@@ -358,7 +374,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     async startBattle(battleId: string): Promise<void> {
       const activeSocket = ensureSocket();
       if (!hostReady || !guestReady) {
-        throw new FriendlyBattleTransportError('not_ready', '둘 다 ready 상태가 되어야 battle을 시작할 수 있습니다.');
+        throw new FriendlyBattleTransportError('not_ready', t('fb.transport.not_ready'));
       }
       battleStarted = true;
       writeMessage(activeSocket, { type: 'battle_started', battleId });
@@ -369,7 +385,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     sendBattleEvent(event: FriendlyBattleBattleEvent): FriendlyBattleBattleEvent {
       const activeSocket = ensureSocket();
       if (!battleStarted) {
-        throw new FriendlyBattleTransportError('battle_not_started', 'battle이 시작되기 전에는 이벤트를 보낼 수 없습니다.');
+        throw new FriendlyBattleTransportError('battle_not_started', t('fb.transport.battle_not_started_send'));
       }
       battleEventLog.push(structuredClone(event));
       writeMessage(activeSocket, { type: 'battle_event', event });
@@ -423,7 +439,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     while (true) {
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
-        throw new FriendlyBattleTransportError('timeout', `${label} 대기 중 시간이 초과되었습니다.`);
+        throw new FriendlyBattleTransportError('timeout', t('fb.transport.timeout', { label }));
       }
 
       const readyState = await readyStateQueue.shift(remainingMs, label);
@@ -439,7 +455,11 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
       reject(
         new FriendlyBattleTransportError(
           'connection_failed',
-          `host에 연결하지 못했습니다. host가 실행 중인지, 주소(${options.host})와 포트(${options.port})가 맞는지 확인하세요. (${error.code ?? 'unknown'})`,
+          t('fb.transport.connection_failed', {
+            host: options.host,
+            port: options.port,
+            errorCode: error.code ?? 'unknown',
+          }),
         ),
       );
     });
@@ -484,7 +504,10 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
           failAndDestroy(
             new FriendlyBattleTransportError(
               'unsupported_protocol',
-              `protocol version이 맞지 않습니다. host=${message.protocolVersion}, guest=${FRIENDLY_BATTLE_PROTOCOL_VERSION}`,
+              t('fb.transport.protocol_mismatch', {
+                host: message.protocolVersion,
+                guest: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+              }),
             ),
           );
           return;
@@ -493,7 +516,10 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
           failAndDestroy(
             new FriendlyBattleTransportError(
               'generation_mismatch',
-              `generation이 맞지 않습니다. host=${message.generation}, guest=${options.generation}`,
+              t('fb.transport.hello_ack_generation_mismatch', {
+                host: message.generation,
+                guest: options.generation,
+              }),
             ),
           );
           return;
@@ -523,7 +549,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
 
   socket.on('close', () => {
     if (!closed) {
-      closeWithError(new FriendlyBattleTransportError('socket_closed', 'host 연결이 종료되었습니다.'));
+      closeWithError(new FriendlyBattleTransportError('socket_closed', t('fb.transport.socket_closed_host')));
     }
   });
 
@@ -532,7 +558,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
       closeWithError(
         new FriendlyBattleTransportError(
           'socket_error',
-          `friendly battle socket error: ${error.code ?? 'unknown'}`,
+          t('fb.transport.socket_error', { errorCode: error.code ?? 'unknown' }),
         ),
       );
     }
@@ -553,7 +579,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     failAndDestroy(
       error instanceof Error
         ? error
-        : new FriendlyBattleTransportError('timeout', 'hello handshake 대기 중 시간이 초과되었습니다.'),
+        : new FriendlyBattleTransportError('timeout', t('fb.transport.timeout', { label: 'hello handshake' })),
     );
     throw error;
   }
@@ -571,7 +597,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     },
     async submitChoice(value: string): Promise<FriendlyBattleChoiceEnvelope> {
       if (!battleStarted) {
-        throw new FriendlyBattleTransportError('battle_not_started', 'battle 시작 신호를 받기 전에는 행동을 보낼 수 없습니다.');
+        throw new FriendlyBattleTransportError('battle_not_started', t('fb.transport.battle_not_started_submit'));
       }
       const envelope = createFriendlyBattleChoiceEnvelope('guest', value);
       writeMessage(socket, { type: 'submit_choice', envelope });

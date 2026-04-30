@@ -6,7 +6,7 @@ import {
   fg256, renderHpBar, hLine, center, typeColor,
 } from './ansi.js';
 import { getActivePokemon } from '../core/turn-battle.js';
-import { t } from '../i18n/index.js';
+import { t, getLocale } from '../i18n/index.js';
 import type { BattleState, BattlePokemon, GymData } from '../core/types.js';
 
 const WIDTH = 50;
@@ -74,8 +74,8 @@ export function renderBattleScreen(
   // Header
   lines.push(doubleLine());
   const headerText = gym
-    ? `${BOLD}${gym.leaderKo}의 체육관${RESET} — ${fg256(typeColor(gym.type))}${gym.type}${RESET} 타입 전문`
-    : `${BOLD}배틀${RESET}`;
+    ? `${BOLD}${t('battle.tui.gym_name', { leader: gym.leader })}${RESET} — ${fg256(typeColor(gym.type))}${t('battle.tui.type_specialist', { type: gym.type })}${RESET}`
+    : `${BOLD}${t('battle.standalone')}${RESET}`;
   lines.push(center(headerText, WIDTH));
   lines.push(doubleLine());
   lines.push('');
@@ -130,19 +130,20 @@ function renderMoveMenu(player: BattlePokemon): string {
   }
 
   // Bottom row: switch & surrender
-  rows.push(center(`${BOLD}5${RESET}.교체    ${BOLD}6${RESET}.항복`, WIDTH));
+  rows.push(center(`${BOLD}5${RESET}.${t('battle.tui.switch_btn')}    ${BOLD}6${RESET}.${t('battle.tui.surrender_btn')}`, WIDTH));
 
   return rows.join('\n');
 }
 
 function formatMoveEntry(
   index: number,
-  move: { data: { nameKo: string; type: string; pp: number }; currentPp: number },
+  move: { data: { nameKo: string; nameEn?: string; type: string; pp: number }; currentPp: number },
 ): string {
   const num = index + 1;
   const color = fg256(typeColor(move.data.type));
   const ppStr = `${move.currentPp}/${move.data.pp}`;
-  return `${BOLD}${num}${RESET}.${color}${move.data.nameKo}${RESET} ${DIM}${ppStr}${RESET}`;
+  const name = getLocale() === 'ko' ? move.data.nameKo : (move.data.nameEn ?? move.data.nameKo);
+  return `${BOLD}${num}${RESET}.${color}${name}${RESET} ${DIM}${ppStr}${RESET}`;
 }
 
 function renderSwitchMenu(state: BattleState): string {
@@ -167,7 +168,7 @@ export function renderSurrenderConfirm(): string {
   const lines: string[] = [];
   lines.push('');
   lines.push(`  ${BOLD}${t('battle.surrender_confirm')}${RESET}`);
-  lines.push(`  ${BOLD}1${RESET}. 예    ${BOLD}2${RESET}. 아니오`);
+  lines.push(`  ${BOLD}1${RESET}. ${t('common.yes')}    ${BOLD}2${RESET}. ${t('common.no')}`);
   lines.push('');
   return lines.join('\n');
 }
@@ -185,16 +186,17 @@ export function renderBattleEnd(
   lines.push(doubleLine());
 
   if (state.winner === 'player') {
-    lines.push(center(`${BOLD}승리!${RESET}`, WIDTH));
+    lines.push(center(`${BOLD}${t('battle.tui.victory')}${RESET}`, WIDTH));
     if (gym) {
+      const badgeName = getLocale() === 'ko' ? gym.badgeKo : `${gym.badge.charAt(0).toUpperCase() + gym.badge.slice(1)} Badge`;
       lines.push('');
-      lines.push(center(`${fg256(typeColor(gym.type))}${gym.badgeKo}${RESET}을(를) 획득했다!`, WIDTH));
+      lines.push(center(`${fg256(typeColor(gym.type))}${t('battle.tui.badge_obtained', { badge: badgeName })}${RESET}`, WIDTH));
     }
   } else {
-    lines.push(center(`${BOLD}패배...${RESET}`, WIDTH));
+    lines.push(center(`${BOLD}${t('battle.tui.defeat')}${RESET}`, WIDTH));
     if (gym) {
       lines.push('');
-      lines.push(center(`${gym.leaderKo}에게 졌다...`, WIDTH));
+      lines.push(center(t('battle.tui.defeat_to', { leader: gym.leader }), WIDTH));
     }
   }
 
