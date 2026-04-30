@@ -13,10 +13,13 @@ import {
   createFriendlyBattleSpikeHost,
 } from '../src/friendly-battle/spike/tcp-direct.js';
 import { buildFriendlyBattlePartySnapshot } from '../src/friendly-battle/snapshot.js';
+import { initLocale } from '../src/i18n/index.js';
 import { makeConfig, makeState } from './helpers.js';
 
 const pluginRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const DEFAULT_GENERATION = 'gen4';
+
+initLocale('en');
 
 function makeGuestSnapshot(options: {
   generation?: string;
@@ -294,7 +297,7 @@ describe('friendly battle TCP direct transport spike', () => {
       (error: unknown) => {
         assert.ok(error instanceof FriendlyBattleTransportError);
         assert.equal(error.code, 'connection_failed');
-        assert.match(error.message, /host.*실행|주소|포트/i);
+        assert.match(error.message, /host is running|address|port/i);
         return true;
       },
     );
@@ -379,7 +382,7 @@ describe('friendly battle TCP direct transport spike', () => {
         (error: unknown) => {
           assert.ok(error instanceof FriendlyBattleTransportError);
           assert.equal(error.code, 'socket_closed');
-          assert.match(error.message, /연결이 종료/);
+          assert.match(error.message, /connection was closed/i);
           return true;
         },
       );
@@ -410,7 +413,7 @@ describe('friendly battle TCP direct transport spike', () => {
         (error: unknown) => {
           assert.ok(error instanceof FriendlyBattleTransportError);
           assert.equal(error.code, 'listen_failed');
-          assert.match(error.message, /listen.*포트|사용 중|host 주소/i);
+          assert.match(error.message, /listen|port is in use|host address/i);
           return true;
         },
       );

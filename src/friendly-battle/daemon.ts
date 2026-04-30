@@ -38,7 +38,7 @@ import {
 } from './local-harness.js';
 import { getLoadedMovesDB } from '../core/battle-setup.js';
 import { getDisplayName as getPokemonDisplayName } from '../core/pokemon-data.js';
-import { getLocale, initLocale } from '../i18n/index.js';
+import { getLocale, initLocale, t } from '../i18n/index.js';
 import { readGlobalConfig } from '../core/config.js';
 import {
   friendlyBattleSessionsDir,

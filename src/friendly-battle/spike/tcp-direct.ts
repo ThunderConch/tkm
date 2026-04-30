@@ -116,7 +116,11 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       reject(
         new FriendlyBattleTransportError(
           'listen_failed',
-          `host failed to listen on ${options.host}:${options.port}. Check if the port is in use or the host address is valid. (${error.code ?? 'unknown'})`,
+          t('fb.transport.listen_failed', {
+            host: options.host,
+            port: options.port,
+            errorCode: error.code ?? 'unknown',
+          }),
         ),
       );
     };
@@ -126,7 +130,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       server.off('error', onListenError);
       const address = server.address();
       if (!address || typeof address === 'string') {
-        reject(new FriendlyBattleTransportError('listen_failed', 'friendly battle spike host could not resolve binding address.'));
+        reject(new FriendlyBattleTransportError('listen_failed', t('fb.transport.listen_resolve_address_failed')));
         return;
       }
       resolve({ host: address.address, port: address.port });
@@ -139,7 +143,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     });
     throw new FriendlyBattleTransportError(
       'advertise_host_required',
-      `when host listens on a wildcard address like ${listenAddress.host}, --join-host is required for guest advertisement.`,
+      t('fb.transport.advertise_required_listen', { host: listenAddress.host }),
     );
   }
 
@@ -149,7 +153,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     });
     throw new FriendlyBattleTransportError(
       'advertise_host_required',
-      `--join-host must be a concrete address guests can connect to; wildcard addresses like ${options.advertiseHost} are not allowed.`,
+      t('fb.transport.advertise_required_concrete', { host: options.advertiseHost }),
     );
   }
 
@@ -166,7 +170,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
       writeMessage(incomingSocket, {
         type: 'hello_reject',
         code: 'room_full',
-        message: 'A guest is already connected.',
+        message: t('fb.transport.room_full'),
       });
       incomingSocket.end();
       return;
@@ -184,7 +188,10 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'unsupported_protocol',
-              message: `Unsupported protocol version. host=${FRIENDLY_BATTLE_PROTOCOL_VERSION}, guest=${message.protocolVersion}`,
+              message: t('fb.transport.unsupported_protocol', {
+                host: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+                guest: message.protocolVersion,
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -197,7 +204,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'bad_session_code',
-              message: `Session code mismatch. Expected session code: ${options.sessionCode}`,
+              message: t('fb.transport.bad_session_code', { sessionCode: options.sessionCode }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -210,7 +217,10 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'generation_mismatch',
-              message: `Generation mismatch. host=${options.generation}, guest=${message.generation}`,
+              message: t('fb.transport.generation_mismatch', {
+                host: options.generation,
+                guest: message.generation,
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -225,7 +235,9 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'invalid_guest_snapshot',
-              message: `Guest snapshot validation failed: ${error instanceof Error ? error.message : String(error)}`,
+              message: t('fb.transport.invalid_guest_snapshot', {
+                reason: error instanceof Error ? error.message : String(error),
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -238,7 +250,10 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
             writeMessage(incomingSocket, {
               type: 'hello_reject',
               code: 'generation_mismatch',
-              message: `Guest snapshot generation differs from host. host=${options.generation}, snapshot=${message.guestSnapshot.generation}`,
+              message: t('fb.transport.snapshot_generation_mismatch', {
+                host: options.generation,
+                snapshot: message.guestSnapshot.generation,
+              }),
             });
             if (socket === incomingSocket) {
               socket = null;
@@ -285,7 +300,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
         socket = null;
       }
       if (!closed && handshakeAccepted) {
-        destroyQueues(new FriendlyBattleTransportError('socket_closed', 'Guest connection was closed.'));
+        destroyQueues(new FriendlyBattleTransportError('socket_closed', t('fb.transport.socket_closed_guest')));
       }
     });
 
@@ -296,7 +311,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
 
   const ensureSocket = (): net.Socket => {
     if (!socket) {
-      throw new FriendlyBattleTransportError('not_connected', 'No guest connected yet. Check join information.');
+      throw new FriendlyBattleTransportError('not_connected', t('fb.transport.not_connected'));
     }
     return socket;
   };
@@ -359,7 +374,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     async startBattle(battleId: string): Promise<void> {
       const activeSocket = ensureSocket();
       if (!hostReady || !guestReady) {
-        throw new FriendlyBattleTransportError('not_ready', 'Both sides must be ready before battle can start.');
+        throw new FriendlyBattleTransportError('not_ready', t('fb.transport.not_ready'));
       }
       battleStarted = true;
       writeMessage(activeSocket, { type: 'battle_started', battleId });
@@ -370,7 +385,7 @@ export async function createFriendlyBattleSpikeHost(options: HostOptions) {
     sendBattleEvent(event: FriendlyBattleBattleEvent): FriendlyBattleBattleEvent {
       const activeSocket = ensureSocket();
       if (!battleStarted) {
-        throw new FriendlyBattleTransportError('battle_not_started', 'Cannot send events before battle has started.');
+        throw new FriendlyBattleTransportError('battle_not_started', t('fb.transport.battle_not_started_send'));
       }
       battleEventLog.push(structuredClone(event));
       writeMessage(activeSocket, { type: 'battle_event', event });
@@ -424,7 +439,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     while (true) {
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
-        throw new FriendlyBattleTransportError('timeout', `${label} 대기 중 시간이 초과되었습니다.`);
+        throw new FriendlyBattleTransportError('timeout', t('fb.transport.timeout', { label }));
       }
 
       const readyState = await readyStateQueue.shift(remainingMs, label);
@@ -440,7 +455,11 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
       reject(
         new FriendlyBattleTransportError(
           'connection_failed',
-          `Failed to connect to host. Check if host is running and address (${options.host}) and port (${options.port}) are correct. (${error.code ?? 'unknown'})`,
+          t('fb.transport.connection_failed', {
+            host: options.host,
+            port: options.port,
+            errorCode: error.code ?? 'unknown',
+          }),
         ),
       );
     });
@@ -485,7 +504,10 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
           failAndDestroy(
             new FriendlyBattleTransportError(
               'unsupported_protocol',
-              `Protocol version mismatch. host=${message.protocolVersion}, guest=${FRIENDLY_BATTLE_PROTOCOL_VERSION}`,
+              t('fb.transport.protocol_mismatch', {
+                host: message.protocolVersion,
+                guest: FRIENDLY_BATTLE_PROTOCOL_VERSION,
+              }),
             ),
           );
           return;
@@ -494,7 +516,10 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
           failAndDestroy(
             new FriendlyBattleTransportError(
               'generation_mismatch',
-              `Generation mismatch. host=${message.generation}, guest=${options.generation}`,
+              t('fb.transport.hello_ack_generation_mismatch', {
+                host: message.generation,
+                guest: options.generation,
+              }),
             ),
           );
           return;
@@ -524,7 +549,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
 
   socket.on('close', () => {
     if (!closed) {
-      closeWithError(new FriendlyBattleTransportError('socket_closed', 'Host connection was closed.'));
+      closeWithError(new FriendlyBattleTransportError('socket_closed', t('fb.transport.socket_closed_host')));
     }
   });
 
@@ -533,7 +558,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
       closeWithError(
         new FriendlyBattleTransportError(
           'socket_error',
-          `friendly battle socket error: ${error.code ?? 'unknown'}`,
+          t('fb.transport.socket_error', { errorCode: error.code ?? 'unknown' }),
         ),
       );
     }
@@ -572,7 +597,7 @@ export async function connectFriendlyBattleSpikeGuest(options: GuestOptions) {
     },
     async submitChoice(value: string): Promise<FriendlyBattleChoiceEnvelope> {
       if (!battleStarted) {
-        throw new FriendlyBattleTransportError('battle_not_started', 'Cannot submit action before battle start signal is received.');
+        throw new FriendlyBattleTransportError('battle_not_started', t('fb.transport.battle_not_started_submit'));
       }
       const envelope = createFriendlyBattleChoiceEnvelope('guest', value);
       writeMessage(socket, { type: 'submit_choice', envelope });
