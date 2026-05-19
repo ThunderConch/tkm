@@ -12,8 +12,13 @@ import { PNG } from 'pngjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
-const RAW_DIR = join(PROJECT_ROOT, 'sprites', 'raw');
-const BRAILLE_DIR = join(PROJECT_ROOT, 'sprites', 'braille');
+
+// Each (input, output) pair is processed identically. Shiny variants come from
+// PokeAPI sprites.front_shiny (downloaded via scripts/fetch-shiny-sprites.ts).
+const VARIANTS: { rawDir: string; outDir: string; label: string }[] = [
+  { rawDir: join(PROJECT_ROOT, 'sprites', 'raw'),       outDir: join(PROJECT_ROOT, 'sprites', 'braille'),       label: 'braille' },
+  { rawDir: join(PROJECT_ROOT, 'sprites', 'raw_shiny'), outDir: join(PROJECT_ROOT, 'sprites', 'braille_shiny'), label: 'braille_shiny' },
+];
 
 // Braille dot positions (Unicode offset = sum of bit values)
 // Col 0: dots 1,2,3,7 → bits 0,1,2,6
@@ -98,25 +103,31 @@ function convertToBraille(pngBuffer: Buffer, targetWidth: number = 20): string {
 }
 
 // Main
-mkdirSync(BRAILLE_DIR, { recursive: true });
-
-const files = readdirSync(RAW_DIR).filter(f => f.endsWith('.png')).sort();
-let count = 0;
-
-for (const file of files) {
-  const id = file.replace('.png', '');
-  const outPath = join(BRAILLE_DIR, `${id}.txt`);
-
-  if (existsSync(outPath)) continue; // idempotent
-
-  try {
-    const buf = readFileSync(join(RAW_DIR, file));
-    const braille = convertToBraille(buf, 20);
-    writeFileSync(outPath, braille + '\n', 'utf-8');
-    count++;
-  } catch (err: any) {
-    console.error(`Failed ${id}: ${err.message}`);
+for (const { rawDir, outDir, label } of VARIANTS) {
+  if (!existsSync(rawDir)) {
+    console.log(`Skipping ${label}: ${rawDir} does not exist`);
+    continue;
   }
-}
+  mkdirSync(outDir, { recursive: true });
 
-console.log(`Generated ${count} braille sprites (${files.length} total)`);
+  const files = readdirSync(rawDir).filter(f => f.endsWith('.png')).sort();
+  let count = 0;
+
+  for (const file of files) {
+    const id = file.replace('.png', '');
+    const outPath = join(outDir, `${id}.txt`);
+
+    if (existsSync(outPath)) continue; // idempotent
+
+    try {
+      const buf = readFileSync(join(rawDir, file));
+      const braille = convertToBraille(buf, 20);
+      writeFileSync(outPath, braille + '\n', 'utf-8');
+      count++;
+    } catch (err: any) {
+      console.error(`Failed ${label}/${id}: ${err.message}`);
+    }
+  }
+
+  console.log(`Generated ${count} ${label} sprites (${files.length} total)`);
+}

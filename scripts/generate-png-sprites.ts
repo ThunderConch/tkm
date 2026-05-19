@@ -13,16 +13,19 @@ import { generateKitty, generateIterm2, generateSixel } from '../src/sprites/png
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..');
-const RAW_DIR = join(PROJECT_ROOT, 'sprites', 'raw');
-
-const KITTY_DIR  = join(PROJECT_ROOT, 'sprites', 'kitty');
-const SIXEL_DIR  = join(PROJECT_ROOT, 'sprites', 'sixel');
-const ITERM2_DIR = join(PROJECT_ROOT, 'sprites', 'iterm2');
 
 type RendererTarget = 'kitty' | 'sixel' | 'iterm2';
 
-const DIR_MAP: Record<RendererTarget, string> = { kitty: KITTY_DIR, sixel: SIXEL_DIR, iterm2: ITERM2_DIR };
+const VARIANTS: { rawDir: string; suffix: string }[] = [
+  { rawDir: join(PROJECT_ROOT, 'sprites', 'raw'),       suffix: '' },
+  { rawDir: join(PROJECT_ROOT, 'sprites', 'raw_shiny'), suffix: '_shiny' },
+];
+
 const EXT_MAP: Record<RendererTarget, string> = { kitty: '.bin', sixel: '.sixel', iterm2: '.b64' };
+
+function outDirFor(target: RendererTarget, suffix: string): string {
+  return join(PROJECT_ROOT, 'sprites', `${target}${suffix}`);
+}
 
 function main(): void {
   const arg = process.argv[2];
@@ -42,39 +45,46 @@ function main(): void {
     targets = ['kitty', 'sixel', 'iterm2'];
   }
 
-  for (const target of targets) {
-    mkdirSync(DIR_MAP[target], { recursive: true });
-  }
-
-  const files = readdirSync(RAW_DIR).filter(f => f.endsWith('.png')).sort();
-  const counts: Record<string, number> = {};
-
-  for (const file of files) {
-    const id = file.replace('.png', '');
-    const pngBuf = readFileSync(join(RAW_DIR, file));
+  for (const { rawDir, suffix } of VARIANTS) {
+    if (!existsSync(rawDir)) {
+      console.log(`Skipping suffix='${suffix}': ${rawDir} does not exist`);
+      continue;
+    }
 
     for (const target of targets) {
-      const outPath = join(DIR_MAP[target], `${id}${EXT_MAP[target]}`);
-      if (existsSync(outPath)) continue; // idempotent
+      mkdirSync(outDirFor(target, suffix), { recursive: true });
+    }
 
-      try {
-        let data: string;
-        switch (target) {
-          case 'kitty':  data = generateKitty(pngBuf); break;
-          case 'iterm2': data = generateIterm2(pngBuf); break;
-          case 'sixel':  data = generateSixel(pngBuf); break;
+    const files = readdirSync(rawDir).filter(f => f.endsWith('.png')).sort();
+    const counts: Record<string, number> = {};
+
+    for (const file of files) {
+      const id = file.replace('.png', '');
+      const pngBuf = readFileSync(join(rawDir, file));
+
+      for (const target of targets) {
+        const outPath = join(outDirFor(target, suffix), `${id}${EXT_MAP[target]}`);
+        if (existsSync(outPath)) continue; // idempotent
+
+        try {
+          let data: string;
+          switch (target) {
+            case 'kitty':  data = generateKitty(pngBuf); break;
+            case 'iterm2': data = generateIterm2(pngBuf); break;
+            case 'sixel':  data = generateSixel(pngBuf); break;
+          }
+          writeFileSync(outPath, data, 'utf-8');
+          counts[target] = (counts[target] ?? 0) + 1;
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err);
+          console.error(`Failed ${target}${suffix}/${id}: ${msg}`);
         }
-        writeFileSync(outPath, data, 'utf-8');
-        counts[target] = (counts[target] ?? 0) + 1;
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        console.error(`Failed ${target}/${id}: ${msg}`);
       }
     }
-  }
 
-  for (const target of targets) {
-    console.log(`Generated ${counts[target] ?? 0} ${target} sprites (${files.length} total)`);
+    for (const target of targets) {
+      console.log(`Generated ${counts[target] ?? 0} ${target}${suffix} sprites (${files.length} total)`);
+    }
   }
 }
 

@@ -40,6 +40,14 @@ export const SPRITES_KITTY_DIR = join(PLUGIN_ROOT, 'sprites', 'kitty');
 export const SPRITES_SIXEL_DIR = join(PLUGIN_ROOT, 'sprites', 'sixel');
 export const SPRITES_ITERM2_DIR = join(PLUGIN_ROOT, 'sprites', 'iterm2');
 
+// Shiny variants — populated from PokeAPI sprites.front_shiny (official game palettes).
+export const SPRITES_RAW_SHINY_DIR = join(PLUGIN_ROOT, 'sprites', 'raw_shiny');
+export const SPRITES_TERMINAL_SHINY_DIR = join(PLUGIN_ROOT, 'sprites', 'terminal_shiny');
+export const SPRITES_BRAILLE_SHINY_DIR = join(PLUGIN_ROOT, 'sprites', 'braille_shiny');
+export const SPRITES_KITTY_SHINY_DIR = join(PLUGIN_ROOT, 'sprites', 'kitty_shiny');
+export const SPRITES_SIXEL_SHINY_DIR = join(PLUGIN_ROOT, 'sprites', 'sixel_shiny');
+export const SPRITES_ITERM2_SHINY_DIR = join(PLUGIN_ROOT, 'sprites', 'iterm2_shiny');
+
 // ── Active generation resolution ──
 
 let _activeGenCache: string | null = null;

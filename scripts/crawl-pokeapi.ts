@@ -18,6 +18,8 @@ const DATA_DIR = join(PROJECT_ROOT, 'data');
 const CRIES_DIR = join(PROJECT_ROOT, 'cries');
 const SPRITES_RAW_DIR = join(PROJECT_ROOT, 'sprites', 'raw');
 const SPRITES_TERMINAL_DIR = join(PROJECT_ROOT, 'sprites', 'terminal');
+const SPRITES_RAW_SHINY_DIR = join(PROJECT_ROOT, 'sprites', 'raw_shiny');
+const SPRITES_TERMINAL_SHINY_DIR = join(PROJECT_ROOT, 'sprites', 'terminal_shiny');
 
 // --- Config ---
 const GEN4_START = 387;
@@ -366,6 +368,11 @@ async function main() {
       if (spriteUrl) {
         await downloadFile(spriteUrl, join(SPRITES_RAW_DIR, `${id}.png`));
       }
+      // Download shiny sprite (official game palette)
+      const shinyUrl = pokemonData.sprites?.front_shiny;
+      if (shinyUrl) {
+        await downloadFile(shinyUrl, join(SPRITES_RAW_SHINY_DIR, `${id}.png`));
+      }
 
       process.stdout.write(` ${koName}\n`);
       await sleep(DELAY_MS);
@@ -387,18 +394,26 @@ async function main() {
     }
   }
 
-  // Phase 3: Convert sprites to terminal art
+  // Phase 3: Convert sprites to terminal art (both regular and shiny)
   console.log('\nConverting sprites to terminal art...');
-  for (let id = GEN4_START; id <= GEN4_END; id++) {
-    const rawPath = join(SPRITES_RAW_DIR, `${id}.png`);
-    const termPath = join(SPRITES_TERMINAL_DIR, `${id}.txt`);
-    if (existsSync(termPath)) continue; // idempotent
-    if (!existsSync(rawPath)) continue;
-    try {
-      const buf = readFileSync(rawPath);
-      writeFileSync(termPath, convertPngToTerminal(buf) + '\n', 'utf-8');
-    } catch (err: any) {
-      console.error(`  Sprite conversion failed for #${id}: ${err.message}`);
+  const conversionVariants: { rawDir: string; outDir: string; label: string }[] = [
+    { rawDir: SPRITES_RAW_DIR,       outDir: SPRITES_TERMINAL_DIR,       label: 'terminal' },
+    { rawDir: SPRITES_RAW_SHINY_DIR, outDir: SPRITES_TERMINAL_SHINY_DIR, label: 'terminal_shiny' },
+  ];
+  for (const { rawDir, outDir, label } of conversionVariants) {
+    if (!existsSync(rawDir)) continue;
+    mkdirSync(outDir, { recursive: true });
+    for (let id = GEN4_START; id <= GEN4_END; id++) {
+      const rawPath = join(rawDir, `${id}.png`);
+      const termPath = join(outDir, `${id}.txt`);
+      if (existsSync(termPath)) continue; // idempotent
+      if (!existsSync(rawPath)) continue;
+      try {
+        const buf = readFileSync(rawPath);
+        writeFileSync(termPath, convertPngToTerminal(buf) + '\n', 'utf-8');
+      } catch (err: any) {
+        console.error(`  ${label} conversion failed for #${id}: ${err.message}`);
+      }
     }
   }
 
