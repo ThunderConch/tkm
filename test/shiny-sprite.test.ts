@@ -1,280 +1,62 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { join } from 'path';
 import {
-  rgbToHsl,
-  hslToRgb,
-  ansi256ToRgb,
-  rgbToAnsi256,
-  shiftAnsiHue,
-  hueShiftPng,
-  SHINY_HUE_SHIFT,
-} from '../src/sprites/shiny.js';
+  SPRITES_RAW_DIR,
+  SPRITES_RAW_SHINY_DIR,
+  SPRITES_BRAILLE_DIR,
+  SPRITES_BRAILLE_SHINY_DIR,
+} from '../src/core/paths.js';
 
-describe('sprites/shiny', () => {
-  // -------------------------------------------------------
-  // 1. rgbToHsl / hslToRgb round-trip
-  // -------------------------------------------------------
-  describe('rgbToHsl / hslToRgb round-trip', () => {
-    const testCases: [number, number, number][] = [
-      [255, 0, 0],       // pure red
-      [0, 255, 0],       // pure green
-      [0, 0, 255],       // pure blue
-      [255, 255, 0],     // yellow
-      [0, 255, 255],     // cyan
-      [255, 0, 255],     // magenta
-      [255, 255, 255],   // white
-      [0, 0, 0],         // black
-      [128, 128, 128],   // gray
-      [100, 200, 50],    // arbitrary color
-      [37, 142, 219],    // another arbitrary color
-      [210, 105, 30],    // chocolate
-    ];
+// The shiny sprite pipeline replaced the old runtime hue-rotation transform.
+// Shiny PNGs are mirrored from PokeAPI's `sprites.front_shiny` (official game
+// palettes) and converted into the same downstream formats as the regular
+// sprites. These tests check the data + directory invariants the runtime
+// relies on; the actual palette correctness comes from PokeAPI.
 
-    for (const [r, g, b] of testCases) {
-      it(`round-trip for RGB(${r}, ${g}, ${b})`, () => {
-        const [h, s, l] = rgbToHsl(r, g, b);
-        const [rr, rg, rb] = hslToRgb(h, s, l);
-        assert.ok(Math.abs(rr - r) <= 1, `R: expected ~${r}, got ${rr}`);
-        assert.ok(Math.abs(rg - g) <= 1, `G: expected ~${g}, got ${rg}`);
-        assert.ok(Math.abs(rb - b) <= 1, `B: expected ~${b}, got ${rb}`);
-      });
+describe('shiny sprite data', () => {
+  it('shiny raw directory exists', () => {
+    assert.ok(existsSync(SPRITES_RAW_SHINY_DIR), `${SPRITES_RAW_SHINY_DIR} missing — run scripts/fetch-shiny-sprites.ts`);
+    assert.ok(statSync(SPRITES_RAW_SHINY_DIR).isDirectory());
+  });
+
+  it('shiny braille directory exists', () => {
+    assert.ok(existsSync(SPRITES_BRAILLE_SHINY_DIR), `${SPRITES_BRAILLE_SHINY_DIR} missing — run scripts/generate-braille-sprites.ts`);
+    assert.ok(statSync(SPRITES_BRAILLE_SHINY_DIR).isDirectory());
+  });
+
+  it('shiny coverage is non-trivial (at least 100 species)', () => {
+    const shinyPngs = readdirSync(SPRITES_RAW_SHINY_DIR).filter(f => f.endsWith('.png'));
+    assert.ok(shinyPngs.length >= 100, `expected ≥100 shiny PNGs, found ${shinyPngs.length}`);
+  });
+
+  it('every shiny PNG has a matching regular PNG (no orphans)', () => {
+    const shinyIds = new Set(readdirSync(SPRITES_RAW_SHINY_DIR).filter(f => f.endsWith('.png')));
+    const rawIds = new Set(readdirSync(SPRITES_RAW_DIR).filter(f => f.endsWith('.png')));
+    const orphans = [...shinyIds].filter(f => !rawIds.has(f));
+    assert.deepEqual(orphans, [], `orphan shiny sprites without regular counterparts: ${orphans.slice(0, 5).join(', ')}`);
+  });
+
+  it('shiny braille files exist for downloaded shiny PNGs', () => {
+    const shinyPngs = readdirSync(SPRITES_RAW_SHINY_DIR).filter(f => f.endsWith('.png'));
+    const sample = shinyPngs.slice(0, 20);
+    for (const file of sample) {
+      const id = file.replace('.png', '');
+      const braillePath = join(SPRITES_BRAILLE_SHINY_DIR, `${id}.txt`);
+      assert.ok(existsSync(braillePath), `missing braille_shiny/${id}.txt — run scripts/generate-braille-sprites.ts`);
     }
   });
 
-  // -------------------------------------------------------
-  // 2. shiftAnsiHue preserves non-ANSI text
-  // -------------------------------------------------------
-  describe('shiftAnsiHue structure preservation', () => {
-    it('does not modify plain text without ANSI codes', () => {
-      const plain = 'Hello, world! This is plain text. 12345 #$%';
-      assert.equal(shiftAnsiHue(plain), plain);
-    });
+  it('shiny braille differs from regular braille for the same id', () => {
+    // Pick the first id that has both regular and shiny braille files.
+    const shinyFiles = readdirSync(SPRITES_BRAILLE_SHINY_DIR).filter(f => f.endsWith('.txt'));
+    const regularSet = new Set(readdirSync(SPRITES_BRAILLE_DIR).filter(f => f.endsWith('.txt')));
+    const both = shinyFiles.find(f => regularSet.has(f));
+    assert.ok(both, 'expected at least one id with both regular and shiny braille sprites');
 
-    it('does not modify reset sequences', () => {
-      const text = '\x1b[0m';
-      assert.equal(shiftAnsiHue(text), text);
-    });
-
-    it('preserves text around ANSI codes', () => {
-      const text = 'before\x1b[38;5;196mcolored\x1b[0mafter';
-      const shifted = shiftAnsiHue(text);
-      assert.ok(shifted.startsWith('before'), 'text before ANSI code preserved');
-      assert.ok(shifted.includes('colored'), 'text content preserved');
-      assert.ok(shifted.endsWith('after'), 'text after ANSI code preserved');
-    });
-
-    it('preserves braille characters', () => {
-      const braille = '\u2800\u2801\u2802\u2803';
-      const text = `\x1b[38;5;196m${braille}\x1b[0m`;
-      const shifted = shiftAnsiHue(text);
-      assert.ok(shifted.includes(braille), 'braille characters preserved');
-    });
-  });
-
-  // -------------------------------------------------------
-  // 3. shiftAnsiHue color change
-  // -------------------------------------------------------
-  describe('shiftAnsiHue color shift', () => {
-    it('shifts foreground ANSI 256 codes', () => {
-      const text = '\x1b[38;5;196mhello\x1b[0m';
-      const shifted = shiftAnsiHue(text);
-      assert.notEqual(shifted, text, 'color code should be shifted');
-      assert.ok(/\x1b\[38;5;\d+m/.test(shifted), 'foreground escape format preserved');
-    });
-
-    it('shifts background ANSI 256 codes', () => {
-      const text = '\x1b[48;5;21mworld\x1b[0m';
-      const shifted = shiftAnsiHue(text);
-      assert.notEqual(shifted, text, 'background code should be shifted');
-      assert.ok(/\x1b\[48;5;\d+m/.test(shifted), 'background escape format preserved');
-    });
-
-    it('shifts both fg and bg in a single string', () => {
-      const text = '\x1b[38;5;196m\x1b[48;5;21mtest\x1b[0m';
-      const shifted = shiftAnsiHue(text);
-      const fgMatch = shifted.match(/\x1b\[38;5;(\d+)m/);
-      const bgMatch = shifted.match(/\x1b\[48;5;(\d+)m/);
-      assert.ok(fgMatch, 'fg code present');
-      assert.ok(bgMatch, 'bg code present');
-      assert.notEqual(fgMatch![1], '196', 'fg code should differ from original');
-      assert.notEqual(bgMatch![1], '21', 'bg code should differ from original');
-    });
-
-    it('360-degree shift produces same codes', () => {
-      const text = '\x1b[38;5;196mhello\x1b[48;5;82mworld\x1b[0m';
-      const shifted = shiftAnsiHue(text, 360);
-      assert.equal(shifted, text, '360-degree shift should be identity');
-    });
-
-    it('0-degree shift produces same codes', () => {
-      const text = '\x1b[38;5;196mhello\x1b[48;5;82mworld\x1b[0m';
-      const shifted = shiftAnsiHue(text, 0);
-      assert.equal(shifted, text, '0-degree shift should be identity');
-    });
-  });
-
-  // -------------------------------------------------------
-  // 4. hueShiftPng 360 degrees = original
-  // -------------------------------------------------------
-  describe('hueShiftPng', () => {
-    it('360-degree shift produces identical pixels', async () => {
-      let PNG: typeof import('pngjs').PNG;
-      try {
-        PNG = (await import('pngjs')).PNG;
-      } catch {
-        return; // pngjs not available, skip
-      }
-
-      const img = new PNG({ width: 4, height: 4 });
-      const colors: [number, number, number, number][] = [
-        [255, 0, 0, 255],     // red
-        [0, 255, 0, 255],     // green
-        [0, 0, 255, 255],     // blue
-        [255, 255, 0, 255],   // yellow
-        [255, 0, 255, 255],   // magenta
-        [0, 255, 255, 255],   // cyan
-        [128, 64, 32, 255],   // brown
-        [200, 100, 150, 255], // pink
-        [0, 0, 0, 255],       // black
-        [255, 255, 255, 255], // white
-        [128, 128, 128, 255], // gray
-        [50, 100, 200, 255],  // arbitrary
-        [0, 0, 0, 0],         // transparent
-        [255, 0, 0, 64],      // semi-transparent (below 128 threshold)
-        [100, 200, 50, 255],  // lime-ish
-        [210, 105, 30, 255],  // chocolate
-      ];
-
-      for (let i = 0; i < 16; i++) {
-        const [r, g, b, a] = colors[i];
-        img.data[i * 4] = r;
-        img.data[i * 4 + 1] = g;
-        img.data[i * 4 + 2] = b;
-        img.data[i * 4 + 3] = a;
-      }
-
-      const originalBuf = PNG.sync.write(img);
-      const shiftedBuf = hueShiftPng(originalBuf, 360);
-      const shiftedImg = PNG.sync.read(shiftedBuf);
-
-      for (let i = 0; i < 16; i++) {
-        const oR = img.data[i * 4];
-        const oG = img.data[i * 4 + 1];
-        const oB = img.data[i * 4 + 2];
-        const oA = img.data[i * 4 + 3];
-        const sR = shiftedImg.data[i * 4];
-        const sG = shiftedImg.data[i * 4 + 1];
-        const sB = shiftedImg.data[i * 4 + 2];
-        const sA = shiftedImg.data[i * 4 + 3];
-
-        assert.equal(sA, oA, `pixel ${i}: alpha unchanged`);
-        if (oA < 128) {
-          assert.equal(sR, oR, `pixel ${i}: transparent R unchanged`);
-          assert.equal(sG, oG, `pixel ${i}: transparent G unchanged`);
-          assert.equal(sB, oB, `pixel ${i}: transparent B unchanged`);
-        } else {
-          assert.ok(Math.abs(sR - oR) <= 1, `pixel ${i}: R expected ~${oR}, got ${sR}`);
-          assert.ok(Math.abs(sG - oG) <= 1, `pixel ${i}: G expected ~${oG}, got ${sG}`);
-          assert.ok(Math.abs(sB - oB) <= 1, `pixel ${i}: B expected ~${oB}, got ${sB}`);
-        }
-      }
-    });
-
-    it('0-degree shift produces identical pixels', async () => {
-      let PNG: typeof import('pngjs').PNG;
-      try {
-        PNG = (await import('pngjs')).PNG;
-      } catch {
-        return;
-      }
-
-      const img = new PNG({ width: 2, height: 2 });
-      const colors: [number, number, number, number][] = [
-        [255, 0, 0, 255],
-        [0, 255, 0, 255],
-        [0, 0, 255, 255],
-        [128, 128, 128, 255],
-      ];
-
-      for (let i = 0; i < 4; i++) {
-        const [r, g, b, a] = colors[i];
-        img.data[i * 4] = r;
-        img.data[i * 4 + 1] = g;
-        img.data[i * 4 + 2] = b;
-        img.data[i * 4 + 3] = a;
-      }
-
-      const originalBuf = PNG.sync.write(img);
-      const shiftedBuf = hueShiftPng(originalBuf, 0);
-      const shiftedImg = PNG.sync.read(shiftedBuf);
-
-      for (let i = 0; i < 4; i++) {
-        const oR = img.data[i * 4];
-        const oG = img.data[i * 4 + 1];
-        const oB = img.data[i * 4 + 2];
-        const sR = shiftedImg.data[i * 4];
-        const sG = shiftedImg.data[i * 4 + 1];
-        const sB = shiftedImg.data[i * 4 + 2];
-
-        assert.ok(Math.abs(sR - oR) <= 1, `pixel ${i}: R expected ~${oR}, got ${sR}`);
-        assert.ok(Math.abs(sG - oG) <= 1, `pixel ${i}: G expected ~${oG}, got ${sG}`);
-        assert.ok(Math.abs(sB - oB) <= 1, `pixel ${i}: B expected ~${oB}, got ${sB}`);
-      }
-    });
-
-    it('preserves transparent pixels unchanged', async () => {
-      let PNG: typeof import('pngjs').PNG;
-      try {
-        PNG = (await import('pngjs')).PNG;
-      } catch {
-        return;
-      }
-
-      const img = new PNG({ width: 2, height: 1 });
-      // Opaque red
-      img.data[0] = 255; img.data[1] = 0; img.data[2] = 0; img.data[3] = 255;
-      // Fully transparent
-      img.data[4] = 50; img.data[5] = 100; img.data[6] = 200; img.data[7] = 0;
-
-      const buf = PNG.sync.write(img);
-      const shifted = hueShiftPng(buf, 180);
-      const result = PNG.sync.read(shifted);
-
-      // Transparent pixel should be completely untouched
-      assert.equal(result.data[4], 50, 'transparent pixel R unchanged');
-      assert.equal(result.data[5], 100, 'transparent pixel G unchanged');
-      assert.equal(result.data[6], 200, 'transparent pixel B unchanged');
-      assert.equal(result.data[7], 0, 'transparent pixel A unchanged');
-
-      // Opaque pixel should have changed (red -> cyan-ish with 180 degree shift)
-      assert.notEqual(result.data[0], 255, 'opaque pixel R should change');
-    });
-  });
-
-  // -------------------------------------------------------
-  // Additional utility tests
-  // -------------------------------------------------------
-  describe('ansi256ToRgb / rgbToAnsi256', () => {
-    it('round-trips for 6x6x6 cube colors', () => {
-      for (const code of [16, 21, 46, 82, 124, 196, 201, 226, 231]) {
-        const [r, g, b] = ansi256ToRgb(code);
-        const result = rgbToAnsi256(r, g, b);
-        assert.equal(result, code, `round-trip for code ${code}: got ${result}`);
-      }
-    });
-
-    it('round-trips for grayscale', () => {
-      for (const code of [232, 240, 248, 255]) {
-        const [r, g, b] = ansi256ToRgb(code);
-        const result = rgbToAnsi256(r, g, b);
-        assert.equal(result, code, `grayscale round-trip for code ${code}: got ${result}`);
-      }
-    });
-  });
-
-  describe('SHINY_HUE_SHIFT constant', () => {
-    it('equals 180', () => {
-      assert.equal(SHINY_HUE_SHIFT, 180);
-    });
+    const regular = readFileSync(join(SPRITES_BRAILLE_DIR, both!), 'utf-8');
+    const shiny = readFileSync(join(SPRITES_BRAILLE_SHINY_DIR, both!), 'utf-8');
+    assert.notEqual(shiny, regular, `expected shiny sprite to differ from regular for id ${both}`);
   });
 });

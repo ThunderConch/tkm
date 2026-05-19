@@ -5,9 +5,8 @@ import { readState, readSession } from './core/state.js';
 import { readConfig, readGlobalConfig } from './core/config.js';
 import { getPokemonDB, getPokemonName, getRegionName, getGenerationsDB, getDisplayName } from './core/pokemon-data.js';
 import { levelToXp, xpToLevel } from './core/xp.js';
-import { SPRITES_BRAILLE_DIR, SPRITES_TERMINAL_DIR, getActiveGeneration, PLUGIN_ROOT } from './core/paths.js';
+import { SPRITES_BRAILLE_DIR, SPRITES_TERMINAL_DIR, SPRITES_BRAILLE_SHINY_DIR, SPRITES_TERMINAL_SHINY_DIR, getActiveGeneration, PLUGIN_ROOT } from './core/paths.js';
 import { formatBattleMessage } from './core/battle.js';
-import { shiftAnsiHue } from './sprites/shiny.js';
 import { isShinyKey, toBaseId } from './core/shiny-utils.js';
 import { t, initLocale } from './i18n/index.js';
 import { readWeatherCache, WEATHER_LABELS, type WeatherCondition } from './core/weather.js';
@@ -79,19 +78,25 @@ function getEmoji(types: string[]): string {
 }
 
 function loadSprite(pokemonId: number, isShiny: boolean = false): string[] {
-  const brailleFile = join(SPRITES_BRAILLE_DIR, `${pokemonId}.txt`);
-  const terminalFile = join(SPRITES_TERMINAL_DIR, `${pokemonId}.txt`);
-  const file = existsSync(brailleFile) ? brailleFile : existsSync(terminalFile) ? terminalFile : null;
+  // Shiny variants use real game palettes mirrored from PokeAPI's sprites.front_shiny.
+  // Fall back to the regular sprite if the shiny asset is missing for this id.
+  const brailleDir = isShiny ? SPRITES_BRAILLE_SHINY_DIR : SPRITES_BRAILLE_DIR;
+  const terminalDir = isShiny ? SPRITES_TERMINAL_SHINY_DIR : SPRITES_TERMINAL_DIR;
+  const candidates = [
+    join(brailleDir, `${pokemonId}.txt`),
+    join(terminalDir, `${pokemonId}.txt`),
+  ];
+  if (isShiny) {
+    candidates.push(join(SPRITES_BRAILLE_DIR, `${pokemonId}.txt`));
+    candidates.push(join(SPRITES_TERMINAL_DIR, `${pokemonId}.txt`));
+  }
+  const file = candidates.find(p => existsSync(p)) ?? null;
   if (!file) return [];
   const lines = readFileSync(file, 'utf-8').split('\n');
   // Remove only trailing empty string from file's final newline (preserve blank sprite rows)
   if (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
   // Replace regular spaces with braille blank (⠀ U+2800) so all chars have consistent font width
-  const brailleLines = lines.map(line => line.replace(/ /g, '\u2800'));
-  if (isShiny && brailleLines.length > 0) {
-    return brailleLines.map(line => shiftAnsiHue(line));
-  }
-  return brailleLines;
+  return lines.map(line => line.replace(/ /g, '\u2800'));
 }
 
 function visibleLength(s: string): number {
